@@ -72,7 +72,11 @@ function MediaItem({
         if (playable) setPlaying(true)
         else onOpen()
       }}
-      className="group/media relative block h-full w-full cursor-zoom-in overflow-hidden bg-surface-2"
+      // 눌렀을 때 할 일이 다르면 커서도 달라야 한다. 동영상·GIF 는 그 자리에서
+      // 재생되고, 사진만 원본 보기로 확대된다.
+      className={`group/media relative block h-full w-full overflow-hidden bg-surface-2 ${
+        playable ? 'cursor-pointer' : 'cursor-zoom-in'
+      }`}
       aria-label={media.altText ?? (playable ? '동영상 재생' : '이미지 원본 보기')}
     >
       {/* 확대 효과는 두지 않는다. 카드 어디에 마우스를 올려도 섬네일이 들썩여 읽기를 방해한다. */}
