@@ -17,8 +17,8 @@ import { LikeIcon, QuoteIcon, ReplyIcon, RepostIcon, VerifiedIcon, ViewsIcon } f
 
 /**
  * 밀도별 치수를 한곳에 모아둔다.
- * '조밀' 은 view 수만 감추는 게 아니라 사진·글자·여백·미디어를 함께 줄여
- * 한 화면에 들어오는 글 수를 실제로 늘린다.
+ * '조밀' 은 사진·글자·여백·미디어를 함께 줄여 한 화면에 들어오는 글 수를 실제로 늘린다.
+ * 조회수는 감추지 않는다 — 동작 버튼들과 한 줄에 있어 감춰도 세로가 줄지 않는다.
  */
 interface Metrics {
   padding: string
@@ -28,7 +28,6 @@ interface Metrics {
   clamp: string
   gap: string
   statsMargin: string
-  showViews: boolean
   shrinkMedia: boolean
 }
 
@@ -40,7 +39,6 @@ const METRICS: Record<Settings['density'], Metrics> = {
     clamp: '',
     gap: 'gap-3',
     statsMargin: 'mt-2.5',
-    showViews: true,
     shrinkMedia: false,
   },
   compact: {
@@ -50,7 +48,6 @@ const METRICS: Record<Settings['density'], Metrics> = {
     clamp: 'line-clamp-6',
     gap: 'gap-2.5',
     statsMargin: 'mt-1',
-    showViews: false,
     shrinkMedia: true,
   },
 }
@@ -629,7 +626,7 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
             />
 
             {/* 조회수는 누를 수 없는 숫자다. 동작 버튼들 끝에 같은 리듬으로 붙인다. */}
-            {metrics.showViews && tweet.stats.views ? (
+            {tweet.stats.views ? (
               <span
                 className="flex items-center gap-1.5 text-[12.5px] tabular-nums text-faint"
                 title="조회수"
