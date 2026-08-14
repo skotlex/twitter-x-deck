@@ -13,7 +13,13 @@
  */
 import { CHANNEL, isCapturedPayload, type DeckCommand, type FrameMessage } from '@core/messages'
 import { DEFAULT_SETTINGS, loadSettings, watchSettings, type Settings } from '@core/settings'
-import { TIMELINE_KINDS, TIMELINE_OPERATION, type CollectorState, type TimelineKind } from '@core/types'
+import {
+  isNotificationKind,
+  TIMELINE_KINDS,
+  TIMELINE_OPERATION,
+  type CollectorState,
+  type TimelineKind,
+} from '@core/types'
 import {
   findHomeNavLink,
   findRefreshPill,
@@ -134,6 +140,23 @@ export function startCollector(
   }
 
   /**
+   * 홈 링크를 다시 눌러 타임라인을 새로 받아온다. 눌렀으면 true.
+   *
+   * 이미 홈에 있을 때 홈을 누르면 x.com 이 목록을 맨 위로 올리며 새로 받아온다.
+   * 탭을 다시 누르는 것과 달리 실제 요청이 나가는 것이 확인된 경로다.
+   *
+   * 알림·멘션 화면에서는 절대 쓰지 않는다. 그 문서를 홈으로 데려가 담당하던
+   * 컬럼을 통째로 잃는다.
+   */
+  function clickHome(): boolean {
+    if (isNotificationKind(target())) return false
+    const home = findHomeNavLink()
+    if (!home) return false
+    simulateClick(home)
+    return true
+  }
+
+  /**
    * 새 타임라인을 강제로 받아온다.
    *
    * 한 가지 방법에 기대지 않고 사다리를 오른다 — 앞 칸이 통했으면 응답이 들어오면서
@@ -153,8 +176,9 @@ export function startCollector(
     switch (escalation) {
       case 0: {
         // 홈 링크 재클릭 — 이미 홈에 있으면 맨 위로 올리며 타임라인을 새로 받는다.
-        const home = findHomeNavLink()
-        if (home) simulateClick(home)
+        // 알림 화면에서는 쓰면 안 된다. 그 문서를 홈으로 데려가 담당을 잃는다.
+        const home = clickHome()
+        if (!home) pressLoadNewPostsShortcut()
         break
       }
       case 1: {
@@ -215,24 +239,24 @@ export function startCollector(
 
     // 같은 화면에 실제로 떠 있는 다른 탭을 고른다. 홈과 알림은 탭 목록이 따로라
     // 이름만 보고 고르면 이 문서에 없는 탭을 집는다.
+    // 홈 링크 재클릭이 실제 요청을 내는 것이 확인된 경로다. 탭을 다시 누르는 것만으로는
+    // x.com 이 이미 받아둔 목록을 다시 그리기만 하고 요청을 안 낼 때가 있다.
+    clickHome()
+
+    // 홈 링크가 없거나(알림 화면·좁은 프레임) 그것만으로 부족할 때를 위해 탭도 튕긴다.
+    // 홈 클릭으로 담당 탭이 풀렸다면 돌아오는 클릭이 그것까지 함께 되돌린다.
     const wanted = target()
     const away = TIMELINE_KINDS.filter((kind) => kind !== wanted)
       .map((kind) => findTab(kind))
       .find((tab) => tab !== null)
 
-    if (!away) {
-      const tab = findTab(wanted)
-      if (tab) simulateClick(tab)
-      pressLoadNewPostsShortcut()
-      return
-    }
-
     // tick 이 그 사이에 끼어들어 탭을 되돌리지 않도록 확인 시계를 미뤄둔다.
     lastTabAssertAt = now
-    simulateClick(away)
+    if (away) simulateClick(away)
     window.setTimeout(() => {
       const back = findTab(wanted)
       if (back) simulateClick(back)
+      pressLoadNewPostsShortcut()
     }, TAB_BOUNCE_MS)
   }
 
