@@ -136,7 +136,7 @@ function QuotedTweet({
         event.stopPropagation()
         onOpenDetail()
       }}
-      className="mt-2.5 rounded-xl border border-line bg-surface-2 p-3 transition-colors group-hover/card:bg-surface-3 hover:border-accent/40"
+      className="mt-2.5 rounded-xl border border-line bg-surface-2 p-3 transition-colors group-hover/card:bg-surface-3 hover:border-button"
     >
       <a
         href={tweet.url}
@@ -191,8 +191,10 @@ function LinkCard({ card, mediaSize }: { card: NonNullable<Tweet['card']>; media
     ? { href: card.url, target: '_blank', rel: 'noreferrer noopener' as const }
     : {}
   // 인용 상자와 같은 이유로, 카드가 밝아지는 동안에는 한 단계 더 진하게 둔다.
+  // 가리켰을 때의 테두리는 강조색이 아니라 버튼 색을 쓴다 — 화면의 다른 검정
+  // 표시들과 같은 말을 하게 된다. 다크 테마에서는 그 색이 흰색으로 뒤집힌다.
   const shell = `mt-2.5 overflow-hidden rounded-xl border border-line bg-surface-2 transition-colors group-hover/card:bg-surface-3 ${
-    card.url ? 'hover:border-accent/40' : ''
+    card.url ? 'hover:border-button' : ''
   }`
 
   if (side) {
