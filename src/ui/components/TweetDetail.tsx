@@ -33,17 +33,29 @@ export function TweetDetail({ url, handle, onClose }: TweetDetailProps) {
 
   // 같은 오리진이라 프레임 문서에 스타일을 직접 얹을 수 있다.
   const handleLoad = useCallback(() => {
+    let doc: Document | null = null
     try {
-      const doc = frameRef.current?.contentDocument
-      if (!doc) {
-        setBlocked(true)
-        return
-      }
-      const sheet = new CSSStyleSheet()
+      doc = frameRef.current?.contentDocument ?? null
+    } catch {
+      doc = null
+    }
+    if (!doc) {
+      setBlocked(true)
+      return
+    }
+    setBlocked(false)
+
+    // 껍데기 감추기는 덤이다. 여기서 넘어져도 게시물은 그대로 보여야 하므로
+    // 프레임을 못 띄운 것으로 취급하지 않는다.
+    try {
+      const view = doc.defaultView
+      if (!view) return
+      // 구성된 스타일시트는 만든 문서에서만 쓸 수 있다. 프레임 것으로 만들어야 한다.
+      const sheet = new view.CSSStyleSheet()
       sheet.replaceSync(HIDE_X_CHROME_CSS)
       doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet]
     } catch {
-      setBlocked(true)
+      // 사이드바가 그대로 보일 뿐이다.
     }
   }, [])
 
