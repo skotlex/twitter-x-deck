@@ -68,6 +68,8 @@ export interface Settings {
   cardDivider: boolean
   /** 이미지·동영상을 어떻게 다룰지. */
   mediaMode: MediaMode
+  /** 동영상·GIF 에 마우스를 올리면 소리 없이 미리 재생한다. */
+  hoverPlay: boolean
   /** 미디어가 차지하는 최대 높이. 작을수록 한 화면에 글이 많이 들어온다. */
   mediaSize: MediaSize
   /** 목록을 위로 올려둔 동안에는 새 글을 끼워넣지 않고 상단 알림으로만 모아둔다. */
@@ -91,6 +93,7 @@ export const DEFAULT_SETTINGS: Settings = {
   columnBorder: true,
   cardDivider: true,
   mediaMode: 'show',
+  hoverPlay: true,
   mediaSize: 'medium',
   holdWhileScrolled: true,
   theme: 'system',

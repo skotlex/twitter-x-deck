@@ -421,6 +421,17 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
                 }
               />
               <Row
+                label="자동 재생"
+                hint="동영상·GIF 에 마우스를 올리면 소리 없이 미리 재생합니다. 끄면 눌러야 재생됩니다."
+                control={
+                  <Toggle
+                    checked={settings.hoverPlay}
+                    onChange={(next) => onUpdate({ hoverPlay: next })}
+                    label="자동 재생"
+                  />
+                }
+              />
+              <Row
                 label="미디어 크기"
                 hint="작게 둘수록 한 화면에 글이 많이 들어옵니다. 원본은 이미지를 눌러서 봅니다."
                 control={

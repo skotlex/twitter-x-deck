@@ -117,6 +117,7 @@ function opensDetail(event: React.MouseEvent<HTMLElement>): boolean {
 function QuotedTweet({
   tweet,
   mediaMode,
+  hoverPlay,
   mediaSize,
   textClass,
   onOpenMedia,
@@ -124,6 +125,7 @@ function QuotedTweet({
 }: {
   tweet: Tweet
   mediaMode: MediaMode
+  hoverPlay: boolean
   mediaSize: MediaSize
   textClass: string
   onOpenMedia: (index: number) => void
@@ -160,6 +162,7 @@ function QuotedTweet({
         mode={mediaMode}
         size={smallerMediaSize(mediaSize)}
         sourceUrl={tweet.url}
+        hoverPlay={hoverPlay}
         onOpen={onOpenMedia}
       />
     </div>
@@ -594,6 +597,7 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
             mode={settings.mediaMode}
             size={mediaSize}
             sourceUrl={tweet.url}
+            hoverPlay={settings.hoverPlay}
             onOpen={(index) => setLightbox({ media: tweet.media, index, sourceUrl: tweet.url })}
           />
           {tweet.card && !tweet.media.length && settings.mediaMode !== 'hide' && (
@@ -603,6 +607,7 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
             <QuotedTweet
               tweet={quoted}
               mediaMode={settings.mediaMode}
+              hoverPlay={settings.hoverPlay}
               mediaSize={mediaSize}
               textClass={metrics.text}
               onOpenMedia={(index) => setLightbox({ media: quoted.media, index, sourceUrl: quoted.url })}

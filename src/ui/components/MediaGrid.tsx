@@ -21,12 +21,14 @@ function MediaItem({
   media,
   fit,
   sourceUrl,
+  hoverPlay,
   onOpen,
 }: {
   media: TweetMedia
   /** 높이가 잘리는 크기에서는 채워서 자르고, 원본 크기에서는 비율을 지킨다. */
   fit: 'cover' | 'contain'
   sourceUrl: string
+  hoverPlay: boolean
   onOpen: () => void
 }) {
   const [playing, setPlaying] = useState(false)
@@ -79,7 +81,7 @@ function MediaItem({
         else onOpen()
       }}
       // x.com 처럼 올려두기만 해도 돌려준다. 소리를 켜고 조작하려면 누르면 된다.
-      onMouseEnter={() => playable && setPreviewing(true)}
+      onMouseEnter={() => hoverPlay && playable && setPreviewing(true)}
       onMouseLeave={() => setPreviewing(false)}
       // 눌렀을 때 할 일이 다르면 커서도 달라야 한다. 동영상·GIF 는 그 자리에서
       // 재생되고, 사진만 원본 보기로 확대된다.
@@ -154,12 +156,14 @@ export function MediaSlot({
   mode,
   size,
   sourceUrl,
+  hoverPlay,
   onOpen,
 }: {
   media: TweetMedia[]
   mode: MediaMode
   size: MediaSize
   sourceUrl: string
+  hoverPlay: boolean
   onOpen?: (index: number) => void
 }) {
   const [revealed, setRevealed] = useState(false)
@@ -184,7 +188,15 @@ export function MediaSlot({
     )
   }
 
-  return <MediaGrid media={media} size={size} sourceUrl={sourceUrl} onOpen={onOpen} />
+  return (
+    <MediaGrid
+      media={media}
+      size={size}
+      sourceUrl={sourceUrl}
+      hoverPlay={hoverPlay}
+      onOpen={onOpen}
+    />
+  )
 }
 
 export interface MediaGridProps {
@@ -193,11 +205,13 @@ export interface MediaGridProps {
   size: MediaSize
   /** 재생이 실패했을 때 열어줄 원문 주소. */
   sourceUrl: string
+  /** 마우스를 올린 것만으로 미리 재생할지. */
+  hoverPlay: boolean
   /** 사진을 눌렀을 때 원본 보기를 띄운다. */
   onOpen?: (index: number) => void
 }
 
-export function MediaGrid({ media, size, sourceUrl, onOpen }: MediaGridProps) {
+export function MediaGrid({ media, size, sourceUrl, hoverPlay, onOpen }: MediaGridProps) {
   if (media.length === 0) return null
 
   const single = media.length === 1
@@ -218,7 +232,13 @@ export function MediaGrid({ media, size, sourceUrl, onOpen }: MediaGridProps) {
     >
       {media.slice(0, 4).map((item, index) => (
         <div key={`${item.previewUrl}-${index}`} className={`min-h-0 ${itemClass(media.length, index)}`}>
-          <MediaItem media={item} fit={fit} sourceUrl={sourceUrl} onOpen={() => onOpen?.(index)} />
+          <MediaItem
+            media={item}
+            fit={fit}
+            sourceUrl={sourceUrl}
+            hoverPlay={hoverPlay}
+            onOpen={() => onOpen?.(index)}
+          />
         </div>
       ))}
     </div>
