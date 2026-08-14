@@ -14,6 +14,33 @@ function area(): chrome.storage.StorageArea {
   return chrome.storage.sync ?? chrome.storage.local
 }
 
+/**
+ * 확장 바깥에 두는 사본.
+ *
+ * chrome.storage 는 sync 든 local 이든 확장에 딸린 저장소다. 확장을 지우면 함께
+ * 지워지므로 다시 깔면 설정이 초기값으로 돌아간다. 덱은 x.com 문서 위에서 도니
+ * 그 페이지의 저장소에 같은 값을 남겨둘 수 있다 — 이쪽은 확장의 생사와 무관하다.
+ * 되살릴 때만 읽는 자리라, 평소 판단의 기준은 여전히 확장 저장소다.
+ */
+const MIRROR_KEY = 'xdeck:settings'
+
+function readMirror(): Partial<Settings> | undefined {
+  try {
+    const raw = window.localStorage.getItem(MIRROR_KEY)
+    return raw ? (JSON.parse(raw) as Partial<Settings>) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function writeMirror(settings: Settings): void {
+  try {
+    window.localStorage.setItem(MIRROR_KEY, JSON.stringify(settings))
+  } catch {
+    // 저장소가 막힌 환경. 확장 저장소만으로 간다.
+  }
+}
+
 /** 미디어 표시 크기. `full` 은 원본 비율 그대로라 높이 제한이 없다. */
 export type MediaSize = 'small' | 'medium' | 'large' | 'full'
 
@@ -115,20 +142,28 @@ function migrate(value: Partial<Settings> | undefined): Partial<Settings> {
 export async function loadSettings(): Promise<Settings> {
   const stored = (await area().get(STORAGE_KEY))[STORAGE_KEY] as Partial<Settings> | undefined
   // 필드가 늘어나도 기존 저장값이 깨지지 않도록 항상 기본값 위에 덮는다.
-  if (stored) return { ...DEFAULT_SETTINGS, ...migrate(stored) }
+  if (stored) {
+    const settings = { ...DEFAULT_SETTINGS, ...migrate(stored) }
+    // 사본을 늘 최신으로 둔다. 확장을 지우는 순간에는 아무 것도 할 수 없으므로
+    // 그전에 남겨둔 것이 전부다.
+    writeMirror(settings)
+    return settings
+  }
 
-  // 예전 판은 local 에 담았다. 처음 한 번 옮겨 담고 그 뒤로는 sync 만 본다.
-  const legacy = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY] as
-    | Partial<Settings>
-    | undefined
-  const settings = { ...DEFAULT_SETTINGS, ...migrate(legacy) }
-  if (legacy) await area().set({ [STORAGE_KEY]: settings })
+  // 확장 저장소가 비었다는 건 새로 깔았다는 뜻이다. 페이지에 남겨둔 사본과
+  // 예전 판이 쓰던 local 저장분을 차례로 본다.
+  const rescued =
+    readMirror() ??
+    ((await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY] as Partial<Settings> | undefined)
+  const settings = { ...DEFAULT_SETTINGS, ...migrate(rescued) }
+  if (rescued) await area().set({ [STORAGE_KEY]: settings })
   return settings
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
   const next = { ...(await loadSettings()), ...patch }
   await area().set({ [STORAGE_KEY]: next })
+  writeMirror(next)
   return next
 }
 
