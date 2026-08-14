@@ -11,7 +11,7 @@ import { CHANNEL, isFrameMessage, type DeckCommand, type FrameMessage } from '@c
 import { parseTimelinePayload } from '@core/parser'
 import type { Settings } from '@core/settings'
 import { TIMELINE_KINDS, type CollectorStatus, type TimelineKind } from '@core/types'
-import { commandHostCollector, hostOwns, setHostKinds } from '../hostCollector'
+import { commandHostCollector, hostOwns, primeHostCollector, setHostKinds } from '../hostCollector'
 
 /** 한 컬럼이 DOM 에 유지하는 최대 카드 수. 넘으면 오래된 쪽을 잘라낸다. */
 const RENDER_CAP = 400
@@ -19,6 +19,14 @@ const RENDER_CAP = 400
 const PAGE_SIZE = 40
 /** 프레임이 이 시간 안에 응답이 없으면 뜨지 못한 것으로 본다. */
 const FRAME_TIMEOUT_MS = 25_000
+/** 아직 한 건도 못 받은 컬럼을 최상위 문서가 대신 훑기까지 기다리는 시간. */
+const PRIME_FIRST_MS = 5_000
+/** 프레임이 아직 한 번도 타임라인을 내놓지 않았을 때, 컬럼이 이만큼 조용하면 다시 대신 훑는다. */
+const PRIME_QUIET_MS = 15_000
+/** 프레임이 살아 있는 컬럼은 이만큼 조용할 때만 손을 댄다. */
+const PRIME_STALE_MS = 90_000
+/** 대타 방문이 필요한지 살피는 주기. */
+const PRIME_CHECK_MS = 2_500
 /** 보관 정책 적용 주기. */
 const PRUNE_INTERVAL_MS = 10 * 60_000
 
@@ -86,6 +94,8 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
   const loadingMore = useRef<Record<TimelineKind, boolean>>({ foryou: false, following: false })
   const settingsRef = useRef(settings)
   settingsRef.current = settings
+  /** 각 컬럼의 담당 프레임이 마지막으로 타임라인을 내놓은 시각. 프레임 생사의 유일한 근거다. */
+  const frameSeen = useRef<Record<TimelineKind, number | null>>({ foryou: null, following: null })
   // 콜백에서 최신 컬럼 상태를 읽되 의존성으로 끌어들이지 않기 위한 거울.
   const columnsRef = useRef(columns)
   columnsRef.current = columns
@@ -167,6 +177,11 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin || !isFrameMessage(event.data)) return
+      // 최상위 문서가 되던진 것과 자식 프레임이 보낸 것은 발신 창으로 갈린다.
+      // 대타로 채운 컬럼을 프레임이 살아 있다고 착각하지 않으려면 이 구분이 필요하다.
+      if (event.data.type === 'timeline' && event.source !== window) {
+        frameSeen.current[event.data.role] = Date.now()
+      }
       handleMessage(event.data)
     }
     window.addEventListener('message', onMessage)
@@ -222,6 +237,34 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     }, FRAME_TIMEOUT_MS)
     return () => window.clearTimeout(timer)
   }, [hostKind])
+
+  /**
+   * 프레임이 첫 타임라인을 내놓기 전까지 최상위 문서가 그 컬럼을 대신 채운다.
+   *
+   * 숨은 프레임은 x.com 을 처음부터 띄우는 데다, 떠도 기본 탭(추천)이 먼저라
+   * 담당 타임라인까지 한참이 걸린다. 그동안 이미 떠 있는 최상위 문서가 그 탭을
+   * 잠깐 들렀다 오면 같은 응답을 훨씬 먼저 받는다.
+   *
+   * 프레임이 한 번이라도 응답을 내놓으면 손을 뗀다 — 그 뒤로는 오래 조용할 때만 거든다.
+   */
+  useEffect(() => {
+    // 교대 수집으로 넘어갔으면 최상위 문서가 이미 두 탭을 다 돌고 있다.
+    if (rotating) return
+
+    const startedAt = Date.now()
+    const timer = window.setInterval(() => {
+      const now = Date.now()
+      for (const kind of settingsRef.current.columns) {
+        if (hostOwns(kind)) continue
+        const seen = frameSeen.current[kind]
+        const lastAny = columnsRef.current[kind].status.lastReceivedAt
+        const quietFor = now - (lastAny ?? startedAt)
+        const limit = lastAny === null ? PRIME_FIRST_MS : seen === null ? PRIME_QUIET_MS : PRIME_STALE_MS
+        if (quietFor > limit) primeHostCollector(kind)
+      }
+    }, PRIME_CHECK_MS)
+    return () => window.clearInterval(timer)
+  }, [rotating])
 
   // 보관 정책 적용.
   useEffect(() => {

@@ -6,6 +6,7 @@
  *   2) 담당 탭(추천/팔로잉)을 선택된 상태로 유지한다.
  *   3) '새 게시물 보기' 알림을 감지해 눌러서 다음 타임라인을 끌어온다.
  *   4) 담당 컬럼이 둘 이상이면 탭을 교대로 방문한다 (프레임을 못 띄울 때의 경로).
+ *   5) 요청이 오면 담당이 아닌 탭도 한 번 들렀다 온다 (프레임이 늦을 때의 대타).
  *
  * 전송 수단은 모른다 — 최상위 문서에서는 덱이 직접 받고, 자식 프레임에서는
  * 부모로 postMessage 한다. 호출하는 쪽이 `emit` 으로 정한다.
@@ -32,6 +33,10 @@ const PILL_COOLDOWN_MS = 3_000
 const TAB_ASSERT_COOLDOWN_MS = 4_000
 /** 교대 수집에서 한 탭에 머무는 시간. */
 const ROTATE_MS = 30_000
+/** 대타 방문에서 다른 탭에 머무는 최대 시간. 응답이 잡히면 그 즉시 돌아온다. */
+const PRIME_MAX_MS = 10_000
+/** 대타 방문에서 탭 클릭만으로 응답이 안 나올 때 한 번 더 찔러보기까지의 시간. */
+const PRIME_NUDGE_MS = 3_000
 
 /**
  * 응답이 어느 타임라인 것인지는 GraphQL operation 이름이 알려준다.
@@ -48,6 +53,8 @@ export interface CollectorHandle {
   command: (kind: TimelineKind, command: DeckCommand['command']) => void
   /** 담당 컬럼 목록을 바꾼다. 둘 이상이면 교대 수집으로 넘어간다. */
   setKinds: (kinds: TimelineKind[]) => void
+  /** 담당이 아닌 탭을 한 번만 들렀다 온다. 응답 한 건을 받으면 곧바로 원래 탭으로 복귀. */
+  prime: (kind: TimelineKind) => void
   dispose: () => void
 }
 
@@ -67,9 +74,17 @@ export function startCollector(
   let lastForcedRefreshAt = Date.now()
   /** 강제 갱신 사다리의 현재 칸. 새 응답이 들어오면 0 으로 되돌린다. */
   let escalation = 0
+  /** 대타로 들러 있는 타임라인. 없으면 null. */
+  let priming: TimelineKind | null = null
+  let primingUntil = 0
+  /** 이번 대타 방문에서 추가로 찔러볼 시각. 한 번 쓰고 나면 0. */
+  let primeNudgeAt = 0
 
-  /** 지금 선택돼 있어야 하는 타임라인. */
-  const target = (): TimelineKind => kinds[activeIndex % kinds.length] ?? 'foryou'
+  /** 담당 몫으로 선택돼 있어야 하는 타임라인. */
+  const home = (): TimelineKind => kinds[activeIndex % kinds.length] ?? 'foryou'
+
+  /** 지금 선택돼 있어야 하는 타임라인. 대타 방문 중이면 그쪽이 우선한다. */
+  const target = (): TimelineKind => priming ?? home()
 
   function setState(next: CollectorState, message?: string): void {
     // 담당하는 모든 컬럼의 상태를 함께 올린다 — 교대 수집이면 둘 다 같은 처지다.
@@ -130,11 +145,45 @@ export function startCollector(
     escalation = Math.min(escalation + 1, 3)
   }
 
+  /**
+   * 담당이 아닌 탭으로 잠깐 건너간다.
+   *
+   * 숨은 프레임은 x.com 을 처음부터 띄우느라 첫 타임라인이 한참 뒤에 온다. 그동안
+   * 이미 떠 있는 이 문서가 그 탭을 한 번 눌러주면 같은 응답을 훨씬 먼저 받아낼 수 있다.
+   * 담당 컬럼의 상태는 건드리지 않는다 — 어디까지나 대타다.
+   */
+  function prime(kind: TimelineKind): void {
+    if (priming || kinds.includes(kind)) return
+    const tab = findTab(kind)
+    if (!tab) return
+    const now = Date.now()
+    priming = kind
+    primingUntil = now + PRIME_MAX_MS
+    primeNudgeAt = now + PRIME_NUDGE_MS
+    simulateClick(tab)
+  }
+
+  /** 대타 방문을 끝내고 담당 탭으로 돌아온다. */
+  function endPrime(): void {
+    if (!priming) return
+    // 떠나는 컬럼의 알림 개수는 더 이상 우리가 볼 수 없다. 남은 숫자를 지워둔다.
+    setPending(priming, null)
+    priming = null
+    primeNudgeAt = 0
+    const tab = findTab(home())
+    if (tab) simulateClick(tab)
+    // 돌아오며 담당 타임라인을 새로 받게 되므로 강제 갱신 시계도 함께 되돌린다.
+    lastForcedRefreshAt = Date.now()
+  }
+
   function command(kind: TimelineKind, next: DeckCommand['command']): void {
     if (next === 'ping') {
       emit({ channel: CHANNEL, type: 'status', role: kind, state: states.get(kind) ?? 'idle' })
       return
     }
+
+    // 사용자 조작이 대타 방문보다 우선한다 — 담당 탭으로 먼저 돌아온다.
+    endPrime()
 
     // 교대 수집 중 다른 컬럼을 새로 받으라는 요청이면 그 탭으로 먼저 옮긴다.
     const index = kinds.indexOf(kind)
@@ -175,6 +224,9 @@ export function startCollector(
     })
     setState('streaming')
     setPending(role, null)
+
+    // 대타로 노리던 응답을 받았으면 더 머무를 이유가 없다.
+    if (priming === role) endPrime()
   }
 
   function tick(): void {
@@ -186,8 +238,22 @@ export function startCollector(
       return
     }
 
+    // 대타 방문은 응답이 오면 그때 끝난다. 안 오면 여기서 시간으로 끊는다.
+    if (priming) {
+      if (now > primingUntil) {
+        endPrime()
+        return
+      }
+      // 최근에 들렀던 탭이면 클릭해도 이미 받아둔 타임라인만 다시 그리고 요청이 안 나간다.
+      // 그럴 때를 위해 방문당 한 번, 선택자에 기대지 않는 단축키로 새 글을 끌어온다.
+      if (primeNudgeAt > 0 && now > primeNudgeAt) {
+        primeNudgeAt = 0
+        pressLoadNewPostsShortcut()
+      }
+    }
+
     // 담당이 둘 이상이면 주기적으로 다음 탭으로 넘어간다.
-    if (kinds.length > 1 && now - lastRotateAt > ROTATE_MS) {
+    if (!priming && kinds.length > 1 && now - lastRotateAt > ROTATE_MS) {
       activeIndex = (activeIndex + 1) % kinds.length
       lastRotateAt = now
       lastForcedRefreshAt = now
@@ -234,8 +300,9 @@ export function startCollector(
     setPending(wanted, null)
 
     // 알림이 한동안 안 뜨면 사다리를 한 칸 올라 직접 새 타임라인을 받아온다.
+    // 대타 방문 중에는 건너뛴다 — 사다리 끝의 문서 새로고침이 방문을 통째로 날린다.
     const idleFor = now - Math.max(lastCaptureAt, lastForcedRefreshAt)
-    if (settings.idleRefreshMs > 0 && idleFor > settings.idleRefreshMs) {
+    if (!priming && settings.idleRefreshMs > 0 && idleFor > settings.idleRefreshMs) {
       forceRefresh()
     }
   }
@@ -253,10 +320,13 @@ export function startCollector(
 
   return {
     command,
+    prime,
     setKinds(next) {
       if (next.length === 0) return
       kinds = [...next]
       activeIndex = 0
+      // 담당이 바뀌었으니 대타 방문은 의미가 없다. 새 담당 탭으로 돌아온다.
+      endPrime()
       lastRotateAt = Date.now()
       // 새로 맡은 컬럼에도 현재 상태를 알려야 하므로 캐시를 비운다.
       states.clear()

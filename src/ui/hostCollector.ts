@@ -30,6 +30,15 @@ export function setHostKinds(kinds: TimelineKind[]): void {
   handle.setKinds(kinds)
 }
 
+/**
+ * 최상위 문서가 담당이 아닌 컬럼을 한 번 대신 훑게 한다.
+ * 그 컬럼을 맡은 프레임이 아직 첫 타임라인을 못 내놓은 동안의 공백을 메우는 통로.
+ */
+export function primeHostCollector(kind: TimelineKind): void {
+  if (!handle || owned.includes(kind)) return
+  handle.prime(kind)
+}
+
 export function hostOwns(kind: TimelineKind): boolean {
   return owned.includes(kind)
 }
