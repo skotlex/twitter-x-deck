@@ -36,12 +36,24 @@ function isAppWindow(): boolean {
 }
 
 /**
+ * 덱이 대신하려는 화면인지.
+ *
+ * 덱은 홈 타임라인을 대신하는 물건이므로 그 자리에서는 부르지 않아도 얹는다.
+ * 게시물·프로필 같은 나머지 주소는 건드리지 않는다 — 우리 화면의 '원문 보기' 나
+ * '새 탭에서 열기' 가 여는 곳이 바로 거기라, 그것까지 덮으면 빠져나갈 길이 없다.
+ */
+function isTimelineHome(): boolean {
+  const path = window.location.pathname
+  return path === '/home' || path === '/'
+}
+
+/**
  * 이 탭이 덱 탭인지. 확장 아이콘으로 열릴 때 붙는 파라미터를 세션에 새겨두어,
  * x.com 의 SPA 이동이 쿼리를 지운 뒤에도 새로고침하면 덱이 그대로 살아난다.
  * 앱 창은 파라미터를 받을 자리가 없으므로 창 모양만으로 판단한다.
  */
 function isDeckTab(): boolean {
-  if (isAppWindow()) return true
+  if (isAppWindow() || isTimelineHome()) return true
   try {
     if (new URLSearchParams(window.location.search).get(DECK_PARAM) === '1') {
       window.sessionStorage.setItem(SESSION_KEY, '1')
