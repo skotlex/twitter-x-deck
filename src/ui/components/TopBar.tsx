@@ -1,7 +1,7 @@
 import type { DeckLayout, Settings } from '@core/settings'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import type { ColumnMap } from '../hooks/useCollector'
-import { ColumnsIcon, EyeIcon, MoonIcon, RowsIcon, SettingsIcon, SunIcon } from './icons'
+import { ColumnsIcon, EyeIcon, MoonIcon, QuoteIcon, RowsIcon, SettingsIcon, SunIcon } from './icons'
 
 export interface TopBarProps {
   columns: ColumnMap
@@ -18,6 +18,8 @@ export interface TopBarProps {
   /** 컬럼을 두 개 이상 늘어놓을 수 있는 폭인지. 아니면 방향 선택이 의미가 없다. */
   canArrange: boolean
   onChangeLayout: (layout: DeckLayout) => void
+  /** 새 게시물 작성창을 연다. */
+  onCompose: () => void
 }
 
 export function TopBar({
@@ -31,6 +33,7 @@ export function TopBar({
   onPeek,
   canArrange,
   onChangeLayout,
+  onCompose,
 }: TopBarProps) {
   const total = settings.columns.reduce((sum, kind) => sum + columns[kind].tweets.length, 0)
 
@@ -100,6 +103,16 @@ export function TopBar({
         <span className="mr-1 hidden text-[12.5px] tabular-nums text-faint sm:block">
           {total.toLocaleString('ko-KR')}건 보관
         </span>
+
+        <button
+          type="button"
+          onClick={onCompose}
+          className="mr-1 flex h-9 items-center gap-1.5 rounded-full bg-accent px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-accent-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+          title="새 게시물 작성"
+        >
+          <QuoteIcon className="h-4 w-4" />
+          <span className="hidden sm:block">글쓰기</span>
+        </button>
 
         <button
           type="button"

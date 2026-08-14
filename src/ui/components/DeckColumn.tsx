@@ -176,6 +176,12 @@ export function DeckColumn({
           </span>
         )}
 
+        {column.note && (
+          <span className="animate-fade rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">
+            {column.note}
+          </span>
+        )}
+
         {column.degraded && (
           <span
             className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-warn"
@@ -188,10 +194,12 @@ export function DeckColumn({
         <button
           type="button"
           onClick={() => onRefresh(kind)}
-          className="ml-auto grid h-8 w-8 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+          disabled={column.refreshing}
+          className="ml-auto grid h-8 w-8 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-progress disabled:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
           aria-label={`${TIMELINE_LABEL[kind]} 새로 받기`}
+          title={column.refreshing ? '새 글을 받아오는 중' : `${TIMELINE_LABEL[kind]} 새로 받기`}
         >
-          <RefreshIcon className="h-4 w-4" />
+          <RefreshIcon className={`h-4 w-4 ${column.refreshing ? 'animate-spin' : ''}`} />
         </button>
       </header>
 

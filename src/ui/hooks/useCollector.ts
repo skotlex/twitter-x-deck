@@ -27,6 +27,10 @@ const PRIME_QUIET_MS = 15_000
 const PRIME_STALE_MS = 90_000
 /** 대타 방문이 필요한지 살피는 주기. */
 const PRIME_CHECK_MS = 2_500
+/** 새로고침을 누른 뒤 응답을 기다리는 한계. */
+const REFRESH_TIMEOUT_MS = 12_000
+/** 새로고침 결과 안내를 띄워두는 시간. */
+const NOTE_MS = 4_000
 /** 보관 정책 적용 주기. */
 const PRUNE_INTERVAL_MS = 10 * 60_000
 
@@ -40,6 +44,10 @@ export interface ColumnState {
   hasMore: boolean
   /** 파싱이 폴백 경로로 떨어졌는지. 진단용. */
   degraded: boolean
+  /** 새로고침을 눌러 응답을 기다리는 중인지. */
+  refreshing: boolean
+  /** 새로고침 결과 한 줄. 잠깐 띄웠다 지운다. */
+  note: string | null
 }
 
 export type ColumnMap = Record<TimelineKind, ColumnState>
@@ -50,6 +58,8 @@ const emptyColumn = (kind: TimelineKind): ColumnState => ({
   buffered: [],
   hasMore: true,
   degraded: false,
+  refreshing: false,
+  note: null,
 })
 
 const initialColumns = (): ColumnMap => ({
@@ -90,6 +100,8 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
   const [rotating, setRotating] = useState(false)
 
   const frames = useRef(new Map<TimelineKind, HTMLIFrameElement>())
+  const refreshTimers = useRef<Partial<Record<TimelineKind, number>>>({})
+  const noteTimers = useRef<Partial<Record<TimelineKind, number>>>({})
   const holds = useRef<Record<TimelineKind, boolean>>({ foryou: false, following: false })
   const loadingMore = useRef<Record<TimelineKind, boolean>>({ foryou: false, following: false })
   const settingsRef = useRef(settings)
@@ -119,6 +131,24 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     frames.current.get(kind)?.contentWindow?.postMessage(message, window.location.origin)
   }, [])
 
+  /**
+   * 새로고침을 끝내고 결과를 한 줄로 알린다.
+   *
+   * 새로 온 글이 없을 때도 무언가 보여야 한다 — 눌렀는데 화면이 그대로면
+   * 버튼이 죽은 것과 구별되지 않는다.
+   */
+  const settleRefresh = useCallback((kind: TimelineKind, note: string | null) => {
+    window.clearTimeout(refreshTimers.current[kind])
+    window.clearTimeout(noteTimers.current[kind])
+    setColumns((prev) => ({ ...prev, [kind]: { ...prev[kind], refreshing: false, note } }))
+    if (!note) return
+    noteTimers.current[kind] = window.setTimeout(() => {
+      setColumns((prev) =>
+        prev[kind].note === note ? { ...prev, [kind]: { ...prev[kind], note: null } } : prev,
+      )
+    }, NOTE_MS)
+  }, [])
+
   /** 수집기에서 올라온 메시지 하나를 처리한다. */
   const handleMessage = useCallback((message: FrameMessage) => {
     const kind = message.role
@@ -146,9 +176,15 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     const capturedAt = Date.now()
     const { tweets, degraded } = parseTimelinePayload(message.body, kind, capturedAt)
     // 게시물이 하나도 없는 응답은 파싱 상태의 근거가 못 된다 — 판정을 그대로 유지한다.
-    if (tweets.length === 0) return
+    if (tweets.length === 0) {
+      if (columnsRef.current[kind].refreshing) settleRefresh(kind, '새 글 없음')
+      return
+    }
 
     void saveTweets(tweets).then((inserted) => {
+      if (columnsRef.current[kind].refreshing) {
+        settleRefresh(kind, inserted.length > 0 ? null : '새 글 없음')
+      }
       setColumns((prev) => {
         const column = prev[kind]
         const status: CollectorStatus = {
@@ -171,7 +207,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
         }
       })
     })
-  }, [])
+  }, [settleRefresh])
 
   // 최상위 문서의 수집기와 자식 프레임 모두 같은 오리진에서 같은 형태로 보낸다.
   useEffect(() => {
@@ -293,9 +329,15 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
 
   const refresh = useCallback(
     (kind: TimelineKind) => {
+      if (columnsRef.current[kind].refreshing) return
+      window.clearTimeout(noteTimers.current[kind])
+      setColumns((prev) => ({ ...prev, [kind]: { ...prev[kind], refreshing: true, note: null } }))
       sendCommand(kind, 'refresh')
+      refreshTimers.current[kind] = window.setTimeout(() => {
+        settleRefresh(kind, '응답 없음')
+      }, REFRESH_TIMEOUT_MS)
     },
-    [sendCommand],
+    [sendCommand, settleRefresh],
   )
 
   const loadMore = useCallback(async (kind: TimelineKind) => {

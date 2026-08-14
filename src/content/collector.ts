@@ -163,6 +163,28 @@ export function startCollector(
     simulateClick(tab)
   }
 
+  /**
+   * 사용자가 새로고침을 눌렀을 때.
+   *
+   * 사다리를 타지 않는다 — 그 끝은 문서 새로고침이고, 최상위 문서에서는 덱까지
+   * 통째로 다시 뜬다. 대신 확실한 수를 한 번에 쓴다: 알림이 떠 있으면 그걸 누르고,
+   * 없으면 탭을 눌러 타임라인을 다시 받고 '새 글 불러오기' 단축키까지 함께 넣는다.
+   */
+  function manualRefresh(): void {
+    lastForcedRefreshAt = Date.now()
+
+    const pill = findRefreshPill()
+    if (pill) {
+      simulateClick(pill.element)
+      lastPillClickAt = lastForcedRefreshAt
+      return
+    }
+
+    const tab = findTab(target())
+    if (tab) simulateClick(tab)
+    pressLoadNewPostsShortcut()
+  }
+
   /** 대타 방문을 끝내고 담당 탭으로 돌아온다. */
   function endPrime(): void {
     if (!priming) return
@@ -201,7 +223,7 @@ export function startCollector(
       return
     }
 
-    forceRefresh()
+    manualRefresh()
   }
 
   const onWindowMessage = (event: MessageEvent): void => {

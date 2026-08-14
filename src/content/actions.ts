@@ -171,8 +171,8 @@ export async function runTweetAction(tweetUrl: string, action: TweetAction): Pro
   }
 }
 
-/** 글을 써야 끝나는 동작. 둘 다 x.com 작성 화면을 그대로 빌려 쓴다. */
-export type ComposeMode = 'reply' | 'quote'
+/** 글을 써야 끝나는 동작. 셋 다 x.com 작성 화면을 그대로 빌려 쓴다. */
+export type ComposeMode = 'reply' | 'quote' | 'post'
 
 /** 대상 게시물에서 작성 화면이 필요로 하는 것만 추린 것. */
 export interface ComposeTarget {
@@ -180,8 +180,14 @@ export interface ComposeTarget {
   url: string
 }
 
-/** 작성 화면 주소. 덱 안 대화상자와 새 창이 같은 곳을 본다. */
-export function composerUrl(mode: ComposeMode, target: ComposeTarget): string {
+/**
+ * 작성 화면 주소. 덱 안 대화상자와 새 창이 같은 곳을 본다.
+ *
+ * 새 글은 전용 작성 페이지가 따로 있어 그쪽이 깔끔하다. 답글·인용은 그런 주소가
+ * 없어 intent 를 쓰는데, 이건 홈으로 리다이렉트되며 작성란만 미리 채워준다.
+ */
+export function composerUrl(mode: ComposeMode, target?: ComposeTarget): string {
+  if (mode === 'post' || !target) return 'https://x.com/compose/post'
   // 인용은 본문에 원문 주소를 실어 보낸다 — x.com 이 그걸 인용 카드로 바꿔 단다.
   return mode === 'quote'
     ? `https://x.com/intent/post?url=${encodeURIComponent(target.url)}`
@@ -192,10 +198,10 @@ export function composerUrl(mode: ComposeMode, target: ComposeTarget): string {
  * 작성창을 새 창으로 띄운다.
  * 평소에는 덱 안 대화상자로 처리하고, 그게 막혔을 때만 쓰는 뒷문이다.
  */
-export function openComposerPopup(mode: ComposeMode, target: ComposeTarget): void {
+export function openComposerPopup(mode: ComposeMode, target?: ComposeTarget): void {
   window.open(
     composerUrl(mode, target),
-    `xdeck-${mode}-${target.id}`,
+    `xdeck-${mode}-${target?.id ?? 'new'}`,
     'width=620,height=760,noopener,noreferrer',
   )
 }

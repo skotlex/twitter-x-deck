@@ -12,6 +12,7 @@ import { Lightbox } from './Lightbox'
 import { MediaGrid } from './MediaGrid'
 import { PostComposer } from './PostComposer'
 import { RichText } from './RichText'
+import { TweetDetail } from './TweetDetail'
 import { LikeIcon, QuoteIcon, ReplyIcon, RepostIcon, VerifiedIcon, ViewsIcon } from './icons'
 
 /**
@@ -484,13 +485,29 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
   const mediaSize = metrics.shrinkMedia ? smallerMediaSize(settings.mediaSize) : settings.mediaSize
   const [lightbox, setLightbox] = useState<LightboxTarget | null>(null)
   const [composer, setComposer] = useState<ComposeMode | null>(null)
+  const [detail, setDetail] = useState(false)
   // 동작 실패 이유. 툴팁에만 두면 아무도 모른 채 숫자만 되돌아간다.
   const [actionError, setActionError] = useState<string | null>(null)
   const quoted = tweet.quoted
 
+  /**
+   * 카드를 누르면 답글까지 함께 보는 상세를 연다 — x.com 과 같은 감각이다.
+   *
+   * 다만 카드 안에는 이미 제 할 일이 있는 것들이 잔뜩 있다. 링크·버튼·사진은
+   * 그 자리의 동작이 우선하고, 이미 열려 있는 대화상자 안의 클릭이 뒤로 새어
+   * 나와서도 안 된다. 글을 긁는 중이었다면 그건 복사하려던 것이지 클릭이 아니다.
+   */
+  const openDetail = (event: React.MouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null
+    if (target?.closest('a, button, video, [role="button"], [role="dialog"]')) return
+    if (window.getSelection()?.toString()) return
+    setDetail(true)
+  }
+
   return (
     <article
-      className={`group/card relative border-b border-line-soft transition-colors hover:bg-surface-2/60 ${metrics.padding} ${
+      onClick={openDetail}
+      className={`group/card relative cursor-pointer border-b border-line-soft transition-colors hover:bg-surface-2/60 ${metrics.padding} ${
         animate ? 'animate-enter' : ''
       }`}
     >
@@ -593,6 +610,10 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
           )}
         </div>
       </div>
+
+      {detail && (
+        <TweetDetail url={tweet.url} handle={tweet.author.handle} onClose={() => setDetail(false)} />
+      )}
 
       {composer && (
         <PostComposer

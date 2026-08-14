@@ -14,9 +14,10 @@ const LOAD_TIMEOUT_MS = 12_000
 
 export interface PostComposerProps {
   mode: ComposeMode
-  target: ComposeTarget
+  /** 답글·인용의 대상. 새 글에는 없다. */
+  target?: ComposeTarget
   /** 누구의 글에 답하거나 인용하는지 머리글에 적는다. */
-  handle: string
+  handle?: string
   onClose: () => void
 }
 
@@ -33,7 +34,15 @@ export interface PostComposerProps {
 export function PostComposer({ mode, target, handle, onClose }: PostComposerProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const [blocked, setBlocked] = useState(false)
-  const title = mode === 'quote' ? '님의 게시물 인용' : '님에게 답글'
+  const title =
+    mode === 'post' || !handle ? (
+      '새 게시물'
+    ) : (
+      <>
+        <span className="text-accent">@{handle}</span>{' '}
+        {mode === 'quote' ? '님의 게시물 인용' : '님에게 답글'}
+      </>
+    )
 
   useEffect(() => {
     // 오버레이가 키 이벤트를 x.com 쪽으로 못 가게 끊으므로 캡처 단계로 받는다.
@@ -86,14 +95,12 @@ export function PostComposer({ mode, target, handle, onClose }: PostComposerProp
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`@${handle} ${title}`}
+      aria-label={mode === 'post' ? '새 게시물 작성' : `@${handle} 에게 답글·인용`}
       className="animate-fade fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4 backdrop-blur-sm"
     >
       <div className="flex h-[720px] max-h-full w-[620px] max-w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl shadow-black/40">
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
-          <span className="truncate text-[14px] font-semibold text-text">
-            <span className="text-accent">@{handle}</span> {title}
-          </span>
+          <span className="truncate text-[14px] font-semibold text-text">{title}</span>
           <button
             type="button"
             onClick={openPopup}
@@ -129,7 +136,7 @@ export function PostComposer({ mode, target, handle, onClose }: PostComposerProp
             ref={frameRef}
             name={COMPOSE_FRAME_NAME}
             src={composerUrl(mode, target)}
-            title={mode === 'quote' ? '인용 작성' : '답글 작성'}
+            title={mode === 'post' ? '새 게시물 작성' : mode === 'quote' ? '인용 작성' : '답글 작성'}
             className="min-h-0 flex-1 border-0 bg-canvas"
           />
         )}

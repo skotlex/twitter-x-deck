@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import { CollectorFrame } from './components/CollectorFrame'
 import { DeckColumn, type ColumnReorder } from './components/DeckColumn'
+import { PostComposer } from './components/PostComposer'
 import { SettingsPanel } from './components/SettingsPanel'
 import { TopBar } from './components/TopBar'
 import { useCollector } from './hooks/useCollector'
@@ -24,6 +25,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
   const isDeck = useMediaQuery(DECK_BREAKPOINT)
   const [activeColumn, setActiveColumn] = useState<TimelineKind>(hostKind)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [composing, setComposing] = useState(false)
   const [peeking, setPeeking] = useState(false)
   const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>('dark')
   const [dragKind, setDragKind] = useState<TimelineKind | null>(null)
@@ -114,6 +116,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
             onPeek={() => setPeeking(true)}
             canArrange={isDeck && settings.columns.length > 1}
             onChangeLayout={(layout) => update({ layout })}
+            onCompose={() => setComposing(true)}
           />
 
           <main
@@ -143,6 +146,8 @@ export function App({ hostKind, onPassthrough }: AppProps) {
             onUpdate={update}
             onClose={() => setSettingsOpen(false)}
           />
+
+          {composing && <PostComposer mode="post" onClose={() => setComposing(false)} />}
         </>
       )}
 

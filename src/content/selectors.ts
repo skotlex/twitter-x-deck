@@ -182,6 +182,20 @@ export function findMenuItem(doc: Document, testIds: string[]): HTMLElement | nu
   return null
 }
 
+/**
+ * 덱 안 상세 창에서 x.com 의 바깥 껍데기를 지우는 스타일.
+ *
+ * 게시물 상세를 프레임으로 띄우면 좌측 내비게이션과 우측 추천 칸까지 따라온다.
+ * 좁은 창에서는 정작 볼 게시물과 답글이 밀려나므로 본문만 남긴다.
+ * 실패해도 잃는 건 화면이 조금 지저분해지는 것뿐이라 조용히 넘어가도 된다.
+ */
+export const HIDE_X_CHROME_CSS = `
+header[role="banner"],
+[data-testid="sidebarColumn"],
+[data-testid="BottomBar"] { display: none !important; }
+[data-testid="primaryColumn"] { width: 100% !important; max-width: none !important; border: 0 !important; }
+`
+
 /** 로그인이 풀렸는지 판단한다. /home 밖으로 튕겼거나 로그인 UI 가 보이면 참. */
 export function isLoggedOut(): boolean {
   const path = window.location.pathname
