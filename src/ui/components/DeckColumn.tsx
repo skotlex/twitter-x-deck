@@ -51,6 +51,8 @@ export interface DeckColumnProps {
   /** 최상위 문서가 탭을 교대로 방문하며 수집하는 중인지. */
   rotating: boolean
   reorder: ColumnReorder | null
+  /** 카드에서 게시·반응이 끝났을 때. 그 결과가 실릴 컬럼을 새로 받는다. */
+  onActed: () => void
 }
 
 export function DeckColumn({
@@ -63,6 +65,7 @@ export function DeckColumn({
   onLoadMore,
   rotating,
   reorder,
+  onActed,
 }: DeckColumnProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [atTop, setAtTop] = useState(true)
@@ -240,6 +243,7 @@ export function DeckColumn({
                 tweet={tweet}
                 settings={settings}
                 animate={settledRef.current && atTop && index < 12}
+                onActed={onActed}
               />
             ))
           )}

@@ -12,6 +12,12 @@ import { useSettings } from './hooks/useSettings'
 /** 이 폭 아래로는 컬럼을 하나만 띄우고 상단 탭으로 전환한다. */
 const DECK_BREAKPOINT = '(min-width: 900px)'
 
+/**
+ * 내 게시·반응이 끝난 뒤 팔로잉을 다시 받기까지 두는 틈.
+ * 곧바로 요청하면 방금 올린 글이 아직 타임라인에 실리지 않아 헛걸음이 된다.
+ */
+const AFTER_ACTION_DELAY_MS = 1_500
+
 export interface AppProps {
   /** 이 문서가 직접 수집하는 컬럼. 나머지는 숨은 프레임이 맡는다. */
   hostKind: TimelineKind
@@ -51,6 +57,17 @@ export function App({ hostKind, onPassthrough }: AppProps) {
   const toggleTheme = useCallback(() => {
     update({ theme: resolvedTheme === 'light' ? 'dark' : 'light' })
   }, [resolvedTheme, update])
+
+  /**
+   * 내가 쓰거나 반응한 결과는 팔로잉 타임라인에 실린다. 그 컬럼만 조용히 다시 받아
+   * 방금 한 일이 바로 보이게 한다 — 돌아가는 표시도 결과 안내도 내지 않는다.
+   */
+  const { refresh } = collector
+  const showsFollowing = settings.columns.includes('following')
+  const handleActed = useCallback(() => {
+    if (!showsFollowing) return
+    window.setTimeout(() => refresh('following', { quiet: true }), AFTER_ACTION_DELAY_MS)
+  }, [refresh, showsFollowing])
 
   const handleLoadMore = useCallback(
     (kind: TimelineKind) => {
@@ -136,6 +153,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
                 onLoadMore={handleLoadMore}
                 rotating={collector.rotating}
                 reorder={reorder}
+                onActed={handleActed}
               />
             ))}
           </main>
@@ -147,7 +165,13 @@ export function App({ hostKind, onPassthrough }: AppProps) {
             onClose={() => setSettingsOpen(false)}
           />
 
-          {composing && <PostComposer mode="post" onClose={() => setComposing(false)} />}
+          {composing && (
+            <PostComposer
+              mode="post"
+              onPosted={handleActed}
+              onClose={() => setComposing(false)}
+            />
+          )}
         </>
       )}
 

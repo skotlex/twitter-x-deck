@@ -89,8 +89,11 @@ export interface Collector {
   flush: (kind: TimelineKind) => void
   /** 스크롤 위치에 따라 새 글을 즉시 반영할지 대기시킬지 알린다. */
   setHold: (kind: TimelineKind, hold: boolean) => void
-  /** 해당 컬럼을 강제로 새로 받아온다. */
-  refresh: (kind: TimelineKind) => void
+  /**
+   * 해당 컬럼을 강제로 새로 받아온다.
+   * `quiet` 는 사람이 누른 게 아닐 때 쓴다 — 돌아가는 표시도 결과 안내도 내지 않는다.
+   */
+  refresh: (kind: TimelineKind, options?: { quiet?: boolean }) => void
   /** 과거 글을 한 페이지 더 읽어온다. */
   loadMore: (kind: TimelineKind) => Promise<void>
 }
@@ -328,7 +331,12 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
   }, [])
 
   const refresh = useCallback(
-    (kind: TimelineKind) => {
+    (kind: TimelineKind, options?: { quiet?: boolean }) => {
+      // 자동 새로고침은 화면에 흔적을 남기지 않는다. 새 글이 있으면 그게 곧 응답이다.
+      if (options?.quiet) {
+        sendCommand(kind, 'refresh')
+        return
+      }
       if (columnsRef.current[kind].refreshing) return
       window.clearTimeout(noteTimers.current[kind])
       setColumns((prev) => ({ ...prev, [kind]: { ...prev[kind], refreshing: true, note: null } }))

@@ -18,6 +18,8 @@ export interface PostComposerProps {
   target?: ComposeTarget
   /** 누구의 글에 답하거나 인용하는지 머리글에 적는다. */
   handle?: string
+  /** 글이 실제로 올라갔을 때. 닫기만으로는 게시 여부를 알 수 없다. */
+  onPosted?: () => void
   onClose: () => void
 }
 
@@ -31,7 +33,7 @@ export interface PostComposerProps {
  * 배경을 눌러도 닫지 않는다. 쓰던 글이 한 번의 헛클릭으로 날아가서는 안 된다 —
  * 닫는 길은 X 버튼과 Esc 두 개뿐이다.
  */
-export function PostComposer({ mode, target, handle, onClose }: PostComposerProps) {
+export function PostComposer({ mode, target, handle, onPosted, onClose }: PostComposerProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const [blocked, setBlocked] = useState(false)
   const title =
@@ -65,11 +67,12 @@ export function PostComposer({ mode, target, handle, onClose }: PostComposerProp
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin || !isComposedMessage(event.data)) return
+      onPosted?.()
       onClose()
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [onClose])
+  }, [onClose, onPosted])
 
   // 프레임이 끝내 안 뜨면 사용자를 세워두지 않고 새 창으로 가는 길을 알려준다.
   useEffect(() => {

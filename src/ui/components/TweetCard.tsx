@@ -277,6 +277,8 @@ function useToggleAction(
   on: TweetAction,
   off: TweetAction,
   report: (message: string | null) => void,
+  /** 반영이 끝난 뒤 알릴 곳. 타임라인에 흔적을 남기는 동작에만 준다. */
+  onDone?: () => void,
 ) {
   const [active, setActive] = useState(initial)
   const [busy, setBusy] = useState(false)
@@ -291,6 +293,7 @@ function useToggleAction(
     report(null)
     try {
       await runTweetAction(tweetUrl, next ? on : off)
+      onDone?.()
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : '실패했다'
       setActive(!next)
@@ -308,7 +311,10 @@ function useToggleAction(
 const shownCount = (value: number, initial: boolean, active: boolean): number =>
   value + (active === initial ? 0 : active ? 1 : -1)
 
-/** 누르면 바로 켜고 끄는 동작 (하트). */
+/**
+ * 누르면 바로 켜고 끄는 동작 (하트).
+ * 하트는 타임라인에 아무 것도 남기지 않으므로 끝나도 컬럼을 다시 받지 않는다.
+ */
 function ToggleAction({
   icon,
   value,
@@ -392,12 +398,14 @@ function RepostAction({
   tweetUrl,
   onQuote,
   report,
+  onActed,
 }: {
   value: number
   initial: boolean
   tweetUrl: string
   onQuote: () => void
   report: (message: string | null) => void
+  onActed: () => void
 }) {
   const [open, setOpen] = useState(false)
   const { active, busy, error, toggle } = useToggleAction(
@@ -406,6 +414,7 @@ function RepostAction({
     'repost',
     'unrepost',
     report,
+    onActed,
   )
   const shown = shownCount(value, initial, active)
 
@@ -478,9 +487,11 @@ export interface TweetCardProps {
   settings: Settings
   /** 새로 들어온 카드에만 등장 애니메이션을 준다. */
   animate?: boolean
+  /** 타임라인에 흔적이 남는 일을 마친 직후 (리포스트·인용·답글). 그 컬럼을 새로 받는 신호다. */
+  onActed: () => void
 }
 
-function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
+function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardProps) {
   const metrics = METRICS[settings.density]
   const mediaSize = metrics.shrinkMedia ? smallerMediaSize(settings.mediaSize) : settings.mediaSize
   const [lightbox, setLightbox] = useState<LightboxTarget | null>(null)
@@ -580,6 +591,7 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
               tweetUrl={tweet.url}
               onQuote={() => setComposer('quote')}
               report={setActionError}
+              onActed={onActed}
             />
             <ToggleAction
               icon={<LikeIcon className="h-3.5 w-3.5" />}
@@ -620,6 +632,7 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
           mode={composer}
           target={{ id: tweet.id, url: tweet.url }}
           handle={tweet.author.handle}
+          onPosted={onActed}
           onClose={() => setComposer(null)}
         />
       )}
