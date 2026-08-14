@@ -14,7 +14,15 @@ import { MediaSlot } from './MediaGrid'
 import { PostComposer } from './PostComposer'
 import { RichText } from './RichText'
 import { XPageModal } from './XPageModal'
-import { LikeIcon, QuoteIcon, ReplyIcon, RepostIcon, VerifiedIcon, ViewsIcon } from './icons'
+import {
+  EyeIcon,
+  LikeIcon,
+  QuoteIcon,
+  ReplyIcon,
+  RepostIcon,
+  VerifiedIcon,
+  ViewsIcon,
+} from './icons'
 
 /**
  * 밀도별 치수를 한곳에 모아둔다.
@@ -659,9 +667,11 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
               href={tweet.url}
               target="_blank"
               rel="noreferrer noopener"
-              className="ml-auto text-[12.5px] text-faint opacity-0 transition-opacity hover:text-accent focus-visible:opacity-100 group-hover/card:opacity-100"
+              aria-label="x.com 에서 원문 보기"
+              title="x.com 에서 원문 보기"
+              className="ml-auto grid h-7 w-7 place-items-center rounded-full text-faint opacity-0 transition-opacity hover:bg-surface-2 hover:text-text focus-visible:opacity-100 group-hover/card:opacity-100"
             >
-              원문 보기
+              <EyeIcon className="h-4 w-4" />
             </a>
           </div>
 
