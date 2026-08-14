@@ -7,13 +7,19 @@
  */
 import { CHANNEL, type CapturedPayload } from '@core/messages'
 import { isComposeFrame, readFrameRole } from '@core/role'
-import { CREATE_TWEET_OPERATION, isNotificationKind, TIMELINE_OPERATION } from '@core/types'
+import {
+  CREATE_TWEET_OPERATION,
+  DELETE_TWEET_OPERATION,
+  isNotificationKind,
+  TIMELINE_OPERATION,
+} from '@core/types'
 
 const GUARD = '__xDeckInterceptorInstalled'
 const OPERATION_RE = /\/i\/api\/graphql\/[^/]+\/([A-Za-z0-9_]+)/
 /** 알림 목록을 실어오는 옛 경로. GraphQL 로 안 올 때가 있어 함께 본다. */
 const NOTIFICATION_REST_RE = /\/i\/api\/2\/notifications\//
-const WATCHED = new Set<string>(Object.values(TIMELINE_OPERATION))
+// 삭제는 어느 문서에서 일어나든 알아야 한다. 우리 목록에 남은 글을 걷어낼 유일한 근거다.
+const WATCHED = new Set<string>([...Object.values(TIMELINE_OPERATION), DELETE_TWEET_OPERATION])
 /**
  * 이 문서에서는 감시 목록을 따지지 않고 타임라인처럼 생긴 응답을 전부 받는다.
  * 알림 쪽은 operation 이름을 확신할 수 없는데, 그 프레임은 담당 컬럼이 하나뿐이라
@@ -56,8 +62,17 @@ function installFetchHook(): void {
     try {
       const operation = watchedOperation(urlOf(input))
       if (operation) {
+        // 삭제는 응답에 무엇을 지웠는지가 없다. 보낸 쪽에 id 가 있으므로 그걸 넘긴다.
+        const sent =
+          operation === DELETE_TWEET_OPERATION && typeof init?.body === 'string' ? init.body : null
+
         void promise.then((response) => {
           const url = response.url || urlOf(input)
+          if (sent !== null) {
+            // 실제로 지워졌을 때만 알린다. 실패한 요청까지 믿으면 멀쩡한 글이 사라진다.
+            if (response.ok) emit(operation, url, sent)
+            return
+          }
           // 원본 스트림은 손대지 않는다. 복제본만 읽는다.
           response
             .clone()

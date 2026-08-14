@@ -5,7 +5,7 @@
  * 컬럼별로 독립된 읽음 위치·정렬을 유지하기 위해서다.
  */
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
-import { isNotification, type DeckItem, type TimelineKind } from './types'
+import { isNotification, TIMELINE_KINDS, type DeckItem, type TimelineKind } from './types'
 
 const DB_NAME = 'x-deck'
 const DB_VERSION = 1
@@ -104,6 +104,17 @@ export async function loadRecent(
     cursor = await cursor.continue()
   }
   return out
+}
+
+/**
+ * 게시물 하나를 모든 컬럼에서 지운다.
+ * 같은 글이 추천·팔로잉에 함께 들어 있을 수 있어 한 자리만 지워서는 안 된다.
+ */
+export async function deleteTweet(id: string): Promise<void> {
+  const db = await getDb()
+  const tx = db.transaction(STORE, 'readwrite')
+  await Promise.all(TIMELINE_KINDS.map((source) => tx.store.delete(storageKey(source, id))))
+  await tx.done
 }
 
 export async function countBySource(source: TimelineKind): Promise<number> {

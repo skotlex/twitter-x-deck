@@ -10,7 +10,7 @@
  */
 import { CHANNEL, isCapturedPayload, isDeckCommand } from '@core/messages'
 import { isComposeFrame, readFrameRole } from '@core/role'
-import { CREATE_TWEET_OPERATION } from '@core/types'
+import { CREATE_TWEET_OPERATION, DELETE_TWEET_OPERATION } from '@core/types'
 import { startCollector } from './collector'
 
 const role = readFrameRole()
@@ -26,10 +26,15 @@ if (role && framed) {
     if (event.origin === origin && isDeckCommand(event.data)) handle.command(role, event.data.command)
   })
 } else if (isComposeFrame() && framed) {
-  // 인터셉터가 잡아준 게시 뮤테이션 하나만 위로 넘긴다. 덱은 이걸 보고 창을 닫는다.
+  // 수집은 하지 않는다. 글이 올라갔다는 것과 지워졌다는 것만 위로 넘긴다.
+  // 덱은 전자로 창을 닫고 그 글을 목록에 끼워 넣으며, 후자로 지운 글을 걷어낸다.
   window.addEventListener('message', (event: MessageEvent) => {
     if (event.source !== window || !isCapturedPayload(event.data)) return
-    if (event.data.operation !== CREATE_TWEET_OPERATION) return
-    window.parent.postMessage({ channel: CHANNEL, type: 'composed' }, origin)
+    const { operation, body } = event.data
+    if (operation === CREATE_TWEET_OPERATION) {
+      window.parent.postMessage({ channel: CHANNEL, type: 'composed', body }, origin)
+    } else if (operation === DELETE_TWEET_OPERATION) {
+      window.parent.postMessage({ channel: CHANNEL, type: 'deleted', body }, origin)
+    }
   })
 }

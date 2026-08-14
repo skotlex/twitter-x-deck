@@ -6,9 +6,16 @@
  * x.com DOM 을 아는 코드는 여기에 한 줄도 없다 — 전부 content script 쪽에 있다.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { loadRecent, pruneTweets, saveTweets, type StoredItem } from '@core/db'
-import { CHANNEL, isFrameMessage, type DeckCommand, type FrameMessage } from '@core/messages'
-import { parseTimelinePayload } from '@core/parser'
+import { deleteTweet, loadRecent, pruneTweets, saveTweets, type StoredItem } from '@core/db'
+import {
+  CHANNEL,
+  isComposedMessage,
+  isDeletedMessage,
+  isFrameMessage,
+  type DeckCommand,
+  type FrameMessage,
+} from '@core/messages'
+import { parseCreatedTweet, parseDeletedId, parseTimelinePayload } from '@core/parser'
 import type { Settings } from '@core/settings'
 import {
   isNotification,
@@ -245,10 +252,58 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     })
   }, [settleRefresh])
 
+  /**
+   * 방금 올린 글을 목록에 바로 끼워 넣는다.
+   *
+   * 타임라인을 다시 받아오면 그 글이 실릴 때까지 기다려야 한다. 게시 응답에 그 글이
+   * 통째로 들어 있으므로 그것만 넣으면 x.com 이 자기 화면에서 하는 것과 같아진다.
+   */
+  const ingestCreated = useCallback((body: string) => {
+    const kind: TimelineKind = 'following'
+    if (!settingsRef.current.columns.includes(kind)) return
+    const created = parseCreatedTweet(body, kind)
+    if (!created) return
+
+    void saveTweets([created]).then((inserted) => {
+      if (inserted.length === 0) return
+      setColumns((prev) => ({ ...prev, [kind]: { ...prev[kind], tweets: prepend(inserted, prev[kind].tweets) } }))
+    })
+  }, [])
+
+  /** 지운 글을 목록과 저장소에서 걷어낸다. 어느 컬럼에 들어 있든 함께 지운다. */
+  const ingestDeleted = useCallback((body: string) => {
+    const id = parseDeletedId(body)
+    if (!id) return
+
+    void deleteTweet(id)
+    setColumns((prev) => {
+      const next = { ...prev }
+      for (const kind of TIMELINE_KINDS) {
+        const column = prev[kind]
+        const tweets = column.tweets.filter((item) => item.id !== id)
+        const buffered = column.buffered.filter((item) => item.id !== id)
+        if (tweets.length === column.tweets.length && buffered.length === column.buffered.length) {
+          continue
+        }
+        next[kind] = { ...column, tweets, buffered }
+      }
+      return next
+    })
+  }, [])
+
   // 최상위 문서의 수집기와 자식 프레임 모두 같은 오리진에서 같은 형태로 보낸다.
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || !isFrameMessage(event.data)) return
+      if (event.origin !== window.location.origin) return
+      if (isComposedMessage(event.data)) {
+        ingestCreated(event.data.body)
+        return
+      }
+      if (isDeletedMessage(event.data)) {
+        ingestDeleted(event.data.body)
+        return
+      }
+      if (!isFrameMessage(event.data)) return
       // 최상위 문서가 되던진 것과 자식 프레임이 보낸 것은 발신 창으로 갈린다.
       // 대타로 채운 컬럼을 프레임이 살아 있다고 착각하지 않으려면 이 구분이 필요하다.
       if (event.data.type === 'timeline' && event.source !== window) {
@@ -258,7 +313,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [handleMessage])
+  }, [handleMessage, ingestCreated, ingestDeleted])
 
   // 저장해둔 최근 글을 먼저 그려서 빈 화면을 보여주지 않는다.
   useEffect(() => {

@@ -47,10 +47,22 @@ export type FrameMessage =
       count: number | null
     }
 
-/** 작성창 프레임 → 덱. 글이 실제로 올라갔다는 신호. */
+/**
+ * 작성창 프레임 → 덱. 글이 실제로 올라갔다는 신호.
+ * 응답 본문을 함께 실어 보낸다 — 방금 올린 글이 그 안에 통째로 들어 있어,
+ * 타임라인을 다시 받아오지 않고도 목록에 바로 끼워 넣을 수 있다.
+ */
 export interface ComposedMessage {
   channel: typeof CHANNEL
   type: 'composed'
+  body: string
+}
+
+/** 글을 지웠다는 신호. 무엇을 지웠는지는 보낸 요청에만 있으므로 그 본문을 싣는다. */
+export interface DeletedMessage {
+  channel: typeof CHANNEL
+  type: 'deleted'
+  body: string
 }
 
 /** 덱 페이지 → 브리지. */
@@ -79,13 +91,21 @@ export function isDeckCommand(value: unknown): value is DeckCommand {
   )
 }
 
-export function isComposedMessage(value: unknown): value is ComposedMessage {
+function isTagged(value: unknown, type: string): boolean {
   return (
     typeof value === 'object' &&
     value !== null &&
     (value as { channel?: unknown }).channel === CHANNEL &&
-    (value as { type?: unknown }).type === 'composed'
+    (value as { type?: unknown }).type === type
   )
+}
+
+export function isComposedMessage(value: unknown): value is ComposedMessage {
+  return isTagged(value, 'composed')
+}
+
+export function isDeletedMessage(value: unknown): value is DeletedMessage {
+  return isTagged(value, 'deleted')
 }
 
 export function isCapturedPayload(value: unknown): value is CapturedPayload {

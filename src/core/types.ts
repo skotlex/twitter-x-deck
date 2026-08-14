@@ -43,6 +43,9 @@ export const TIMELINE_OPERATION: Record<string, string> = {
 /** 글이 실제로 올라갔을 때 x.com 이 부르는 뮤테이션. 작성창을 닫을 근거로 쓴다. */
 export const CREATE_TWEET_OPERATION = 'CreateTweet'
 
+/** 글을 지웠을 때의 뮤테이션. 지운 글을 우리 목록에서도 걷어낼 근거다. */
+export const DELETE_TWEET_OPERATION = 'DeleteTweet'
+
 export type MediaKind = 'photo' | 'video' | 'animated_gif'
 
 export interface TweetMedia {

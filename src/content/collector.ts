@@ -11,9 +11,16 @@
  * 전송 수단은 모른다 — 최상위 문서에서는 덱이 직접 받고, 자식 프레임에서는
  * 부모로 postMessage 한다. 호출하는 쪽이 `emit` 으로 정한다.
  */
-import { CHANNEL, isCapturedPayload, type DeckCommand, type FrameMessage } from '@core/messages'
+import {
+  CHANNEL,
+  isCapturedPayload,
+  type DeckCommand,
+  type DeletedMessage,
+  type FrameMessage,
+} from '@core/messages'
 import { DEFAULT_SETTINGS, loadSettings, watchSettings, type Settings } from '@core/settings'
 import {
+  DELETE_TWEET_OPERATION,
   isNotificationKind,
   TIMELINE_KINDS,
   TIMELINE_OPERATION,
@@ -89,7 +96,7 @@ export interface CollectorHandle {
 
 export function startCollector(
   initialKinds: TimelineKind[],
-  emit: (message: FrameMessage) => void,
+  emit: (message: FrameMessage | DeletedMessage) => void,
 ): CollectorHandle {
   let kinds = [...initialKinds]
   let activeIndex = 0
@@ -304,6 +311,12 @@ export function startCollector(
   const onWindowMessage = (event: MessageEvent): void => {
     // 인터셉터가 같은 문서 안에서 보낸 캡처만 받는다.
     if (event.source !== window || !isCapturedPayload(event.data)) return
+
+    // 삭제는 타임라인이 아니다. 파서에 넘기면 아무 것도 못 건지고 끝나므로 따로 넘긴다.
+    if (event.data.operation === DELETE_TWEET_OPERATION) {
+      emit({ channel: CHANNEL, type: 'deleted', body: event.data.body })
+      return
+    }
 
     lastCaptureAt = Date.now()
     lastForcedRefreshAt = lastCaptureAt

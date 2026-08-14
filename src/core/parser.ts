@@ -371,6 +371,38 @@ function deepCollectTweets(node: Raw, out: Raw[] = [], depth = 0): Raw[] {
   return out
 }
 
+/**
+ * 방금 올린 글의 응답에서 그 글 하나를 꺼낸다.
+ *
+ * 타임라인을 다시 받아올 것 없이 이 글만 목록에 끼워 넣으면 된다 — x.com 이
+ * 자기 화면에서 하는 것과 같은 수다. 응답 모양이 바뀌어도 전체 훑기로 건진다.
+ */
+export function parseCreatedTweet(
+  body: string,
+  source: TimelineKind,
+  capturedAt: number = Date.now(),
+): Tweet | null {
+  try {
+    const payload: Raw = JSON.parse(body)
+    const direct = payload?.data?.create_tweet?.tweet_results?.result
+    const raw = direct ?? deepCollectTweets(payload)[0]
+    return raw ? normalize(raw, source, capturedAt) : null
+  } catch {
+    return null
+  }
+}
+
+/** 삭제 요청에 실린 게시물 id. 무엇을 지웠는지는 보낸 쪽에만 있다. */
+export function parseDeletedId(body: string): string | null {
+  try {
+    const payload: Raw = JSON.parse(body)
+    const id = payload?.variables?.tweet_id ?? payload?.variables?.tweetId
+    return typeof id === 'string' && id ? id : null
+  } catch {
+    return null
+  }
+}
+
 export interface ParseResult {
   /** 게시물과 알림이 섞여 들어온다. 알림 타임라인에는 둘 다 있다. */
   items: DeckItem[]
