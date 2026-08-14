@@ -31,6 +31,8 @@ function MediaItem({
 }) {
   const [playing, setPlaying] = useState(false)
   const [failed, setFailed] = useState(false)
+  // 마우스를 올려둔 동안만 도는 미리보기. 누르기 전까지는 소리 없이 돈다.
+  const [previewing, setPreviewing] = useState(false)
   const playable = media.kind !== 'photo' && Boolean(media.playbackUrl)
 
   if (playing && media.playbackUrl && !failed) {
@@ -76,6 +78,9 @@ function MediaItem({
         if (playable) setPlaying(true)
         else onOpen()
       }}
+      // x.com 처럼 올려두기만 해도 돌려준다. 소리를 켜고 조작하려면 누르면 된다.
+      onMouseEnter={() => playable && setPreviewing(true)}
+      onMouseLeave={() => setPreviewing(false)}
       // 눌렀을 때 할 일이 다르면 커서도 달라야 한다. 동영상·GIF 는 그 자리에서
       // 재생되고, 사진만 원본 보기로 확대된다.
       className={`group/media relative block h-full w-full overflow-hidden bg-surface-2 ${
@@ -84,14 +89,30 @@ function MediaItem({
       aria-label={media.altText ?? (playable ? '동영상 재생' : '이미지 원본 보기')}
     >
       {/* 확대 효과는 두지 않는다. 카드 어디에 마우스를 올려도 섬네일이 들썩여 읽기를 방해한다. */}
-      <img
-        src={media.previewUrl}
-        alt={media.altText ?? ''}
-        loading="lazy"
-        decoding="async"
-        className={`h-full w-full ${fit === 'cover' ? 'object-cover' : 'object-contain'}`}
-      />
-      {playable && (
+      {previewing && media.playbackUrl ? (
+        <video
+          src={media.playbackUrl}
+          poster={media.previewUrl}
+          // 소리는 켜지 않는다. 브라우저가 사용자 조작 없는 소리 재생을 막기도 하고,
+          // 목록을 훑기만 해도 소리가 나면 그게 더 성가시다.
+          muted
+          autoPlay
+          loop
+          playsInline
+          preload="metadata"
+          onError={() => setFailed(true)}
+          className={`h-full w-full bg-black ${fit === 'cover' ? 'object-cover' : 'object-contain'}`}
+        />
+      ) : (
+        <img
+          src={media.previewUrl}
+          alt={media.altText ?? ''}
+          loading="lazy"
+          decoding="async"
+          className={`h-full w-full ${fit === 'cover' ? 'object-cover' : 'object-contain'}`}
+        />
+      )}
+      {playable && !previewing && (
         <span className="absolute inset-0 grid place-items-center">
           <span className="grid h-12 w-12 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm transition group-hover/media:bg-black/70">
             <PlayIcon className="h-5 w-5 translate-x-[1px]" />
