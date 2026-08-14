@@ -23,10 +23,25 @@ const SESSION_KEY = 'xdeck:deck'
 const OVERLAY_ID = 'x-deck-overlay'
 
 /**
+ * 설치한 웹앱 창에서 열렸는지.
+ *
+ * 앱 창에는 주소창이 없어 `?xdeck=1` 을 붙일 방법이 없고, 창을 껐다 켜면 세션
+ * 기록도 사라진다. 그래서 표시를 창의 **모양** 에서 읽는다 — 탭 브라우저가 아닌
+ * 창이면 x.com 을 앱으로 띄운 것이고, 그건 덱을 보려고 만든 창이다.
+ */
+function isAppWindow(): boolean {
+  return ['standalone', 'minimal-ui', 'window-controls-overlay', 'fullscreen'].some(
+    (mode) => window.matchMedia(`(display-mode: ${mode})`).matches,
+  )
+}
+
+/**
  * 이 탭이 덱 탭인지. 확장 아이콘으로 열릴 때 붙는 파라미터를 세션에 새겨두어,
  * x.com 의 SPA 이동이 쿼리를 지운 뒤에도 새로고침하면 덱이 그대로 살아난다.
+ * 앱 창은 파라미터를 받을 자리가 없으므로 창 모양만으로 판단한다.
  */
 function isDeckTab(): boolean {
+  if (isAppWindow()) return true
   try {
     if (new URLSearchParams(window.location.search).get(DECK_PARAM) === '1') {
       window.sessionStorage.setItem(SESSION_KEY, '1')
