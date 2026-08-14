@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { DeckLayout } from '@core/settings'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import { CollectorFrame } from './components/CollectorFrame'
 import { DeckColumn, type ColumnReorder } from './components/DeckColumn'
@@ -10,8 +11,15 @@ import { fontStack } from './lib/fonts'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import { useSettings } from './hooks/useSettings'
 
-/** 이 폭 아래로는 컬럼을 하나만 띄우고 상단 탭으로 전환한다. */
-const DECK_BREAKPOINT = '(min-width: 900px)'
+/**
+ * 두 컬럼을 늘어놓을 자리가 있는지 재는 두 자.
+ *
+ * 좌우로 놓으려면 폭이, 위아래로 쌓으려면 높이가 있어야 한다. 둘 중 하나만
+ * 충분해도 두 컬럼을 다 띄울 수 있다 — 세로로 긴 창에서 탭으로 가르던 것이
+ * 폭만 보고 판단한 탓이었다.
+ */
+const ROOM_SIDE_BY_SIDE = '(min-width: 900px)'
+const ROOM_STACKED = '(min-height: 700px)'
 
 /**
  * 내 게시·반응이 끝난 뒤 팔로잉을 다시 받기까지 두는 틈.
@@ -29,7 +37,12 @@ export interface AppProps {
 export function App({ hostKind, onPassthrough }: AppProps) {
   const { settings, update } = useSettings()
   const collector = useCollector(settings, hostKind)
-  const isDeck = useMediaQuery(DECK_BREAKPOINT)
+  const canSideBySide = useMediaQuery(ROOM_SIDE_BY_SIDE)
+  const canStack = useMediaQuery(ROOM_STACKED)
+  // 한 방향이라도 자리가 나면 두 컬럼을 다 띄운다.
+  const isDeck = canSideBySide || canStack
+  // 좌우로 놓을 폭이 없으면 방향은 고민할 것도 없이 위아래다.
+  const layout: DeckLayout = canSideBySide ? settings.layout : 'rows'
   const [activeColumn, setActiveColumn] = useState<TimelineKind>(hostKind)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [composing, setComposing] = useState(false)
@@ -133,14 +146,14 @@ export function App({ hostKind, onPassthrough }: AppProps) {
             onToggleTheme={toggleTheme}
             onOpenSettings={() => setSettingsOpen(true)}
             onPeek={() => setPeeking(true)}
-            canArrange={isDeck && settings.columns.length > 1}
+            canArrange={canSideBySide && settings.columns.length > 1}
             onChangeLayout={(layout) => update({ layout })}
             onCompose={() => setComposing(true)}
           />
 
           <main
             className={`flex min-h-0 flex-1 gap-3 overflow-hidden p-0 md:p-3 ${
-              isDeck && settings.layout === 'rows' ? 'flex-col' : ''
+              isDeck && layout === 'rows' ? 'flex-col' : ''
             }`}
           >
             {visibleColumns.map((kind) => (
