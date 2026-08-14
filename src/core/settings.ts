@@ -1,7 +1,18 @@
-/** 사용자 설정. chrome.storage.local 에 단일 키로 저장한다. */
+/**
+ * 사용자 설정. 단일 키로 저장한다.
+ *
+ * 저장 자리는 `sync` 다. `local` 은 확장을 지울 때 함께 지워져서, 다시 설치하면
+ * 지정해둔 것이 전부 초기값으로 돌아간다. `sync` 는 브라우저 계정에 남으므로
+ * 재설치를 건너 살아남고 다른 기기에서도 같은 설정으로 뜬다.
+ */
 import type { TimelineKind } from './types'
 
 const STORAGE_KEY = 'x-deck:settings'
+
+/** 설정을 둘 자리. sync 를 못 쓰는 환경에서는 local 로 물러선다. */
+function area(): chrome.storage.StorageArea {
+  return chrome.storage.sync ?? chrome.storage.local
+}
 
 /** 미디어 표시 크기. `full` 은 원본 비율 그대로라 높이 제한이 없다. */
 export type MediaSize = 'small' | 'medium' | 'large' | 'full'
@@ -99,26 +110,35 @@ function migrate(value: Partial<Settings> | undefined): Partial<Settings> {
 }
 
 export async function loadSettings(): Promise<Settings> {
-  const stored = await chrome.storage.local.get(STORAGE_KEY)
-  const value = stored[STORAGE_KEY] as Partial<Settings> | undefined
+  const stored = (await area().get(STORAGE_KEY))[STORAGE_KEY] as Partial<Settings> | undefined
   // 필드가 늘어나도 기존 저장값이 깨지지 않도록 항상 기본값 위에 덮는다.
-  return { ...DEFAULT_SETTINGS, ...migrate(value) }
+  if (stored) return { ...DEFAULT_SETTINGS, ...migrate(stored) }
+
+  // 예전 판은 local 에 담았다. 처음 한 번 옮겨 담고 그 뒤로는 sync 만 본다.
+  const legacy = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY] as
+    | Partial<Settings>
+    | undefined
+  const settings = { ...DEFAULT_SETTINGS, ...migrate(legacy) }
+  if (legacy) await area().set({ [STORAGE_KEY]: settings })
+  return settings
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
   const next = { ...(await loadSettings()), ...patch }
-  await chrome.storage.local.set({ [STORAGE_KEY]: next })
+  await area().set({ [STORAGE_KEY]: next })
   return next
 }
 
 /** 설정 변경을 구독한다. 반환값을 호출하면 구독을 해제한다. */
 export function watchSettings(listener: (settings: Settings) => void): () => void {
-  const handler = (
-    changes: Record<string, chrome.storage.StorageChange>,
-    areaName: string,
-  ): void => {
-    if (areaName !== 'local' || !(STORAGE_KEY in changes)) return
-    listener({ ...DEFAULT_SETTINGS, ...((changes[STORAGE_KEY]?.newValue ?? {}) as Partial<Settings>) })
+  const handler = (changes: Record<string, chrome.storage.StorageChange>): void => {
+    // 어느 영역에서 왔는지는 따지지 않는다. 우리 키가 바뀌었다는 사실만이 중요하고,
+    // 옮겨 담는 도중에는 local 에서 오는 변경도 그대로 반영해야 한다.
+    if (!(STORAGE_KEY in changes)) return
+    listener({
+      ...DEFAULT_SETTINGS,
+      ...migrate((changes[STORAGE_KEY]?.newValue ?? {}) as Partial<Settings>),
+    })
   }
   chrome.storage.onChanged.addListener(handler)
   return () => chrome.storage.onChanged.removeListener(handler)
