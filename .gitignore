@@ -1,0 +1,11 @@
+# Claude Code 로컬(개인 PC) 설정
+.claude/settings.local.json
+
+node_modules/
+dist/
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

@@ -1,0 +1,76 @@
+import type { CollectorState, TimelineKind } from './types'
+
+/** 모든 메시지에 붙는 채널 태그. x.com 페이지의 다른 postMessage 와 섞이지 않게 한다. */
+export const CHANNEL = 'xdeck/v1'
+
+/** iframe src 에 붙여 해당 프레임이 어느 컬럼용인지 알려주는 쿼리 파라미터. */
+export const ROLE_PARAM = 'xdeck_role'
+
+/** MAIN world 인터셉터 → ISOLATED world 브리지 (같은 프레임 안). */
+export interface CapturedPayload {
+  channel: typeof CHANNEL
+  type: 'captured'
+  /** GraphQL operation 이름. URL 마지막 세그먼트에서 뽑는다. */
+  operation: string
+  url: string
+  /** 파싱 전 응답 본문(JSON 문자열). 구조화는 덱 쪽에서 한다. */
+  body: string
+}
+
+/** 브리지 → 덱 페이지. */
+export type FrameMessage =
+  | {
+      channel: typeof CHANNEL
+      type: 'timeline'
+      role: TimelineKind
+      operation: string
+      body: string
+    }
+  | {
+      channel: typeof CHANNEL
+      type: 'status'
+      role: TimelineKind
+      state: CollectorState
+      message?: string
+    }
+  | {
+      channel: typeof CHANNEL
+      type: 'pending'
+      role: TimelineKind
+      /** 감지한 '새 게시물 보기' 개수. 숫자를 못 읽으면 null. */
+      count: number | null
+    }
+
+/** 덱 페이지 → 브리지. */
+export type DeckCommand =
+  | { channel: typeof CHANNEL; type: 'command'; command: 'refresh' }
+  | { channel: typeof CHANNEL; type: 'command'; command: 'select-tab' }
+  | { channel: typeof CHANNEL; type: 'command'; command: 'ping' }
+
+export function isFrameMessage(value: unknown): value is FrameMessage {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { channel?: unknown }).channel === CHANNEL &&
+    typeof (value as { type?: unknown }).type === 'string' &&
+    (value as { type: string }).type !== 'command'
+  )
+}
+
+export function isDeckCommand(value: unknown): value is DeckCommand {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { channel?: unknown }).channel === CHANNEL &&
+    (value as { type?: unknown }).type === 'command'
+  )
+}
+
+export function isCapturedPayload(value: unknown): value is CapturedPayload {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { channel?: unknown }).channel === CHANNEL &&
+    (value as { type?: unknown }).type === 'captured'
+  )
+}

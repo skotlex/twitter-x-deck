@@ -1,0 +1,140 @@
+@import 'tailwindcss';
+
+/*
+ * 색은 전부 시맨틱 변수로만 쓴다. 테마 전환은 :root 값만 갈아끼우면 되고
+ * 컴포넌트 쪽 클래스는 손대지 않는다.
+ */
+:root {
+  --canvas: #0b0c0f;
+  --surface: #131519;
+  --surface-2: #1a1d24;
+  --surface-3: #22262e;
+  --line: #23272f;
+  --line-soft: #1a1e25;
+  --text: #e9ebee;
+  --muted: #99a1ad;
+  --faint: #6a7280;
+  --accent: #5b9dff;
+  --accent-strong: #2f7ff0;
+  --accent-soft: rgb(91 157 255 / 0.14);
+  --danger: #f26d6d;
+  --success: #4ec98a;
+  --warn: #f0b45e;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+}
+
+:root[data-theme='light'] {
+  --canvas: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #f2f4f7;
+  --surface-3: #e8ebef;
+  --line: #e0e4ea;
+  --line-soft: #eceff3;
+  --text: #16181c;
+  --muted: #5a6470;
+  --faint: #8b95a2;
+  --accent: #1d6ff2;
+  --accent-strong: #0b57d0;
+  --accent-soft: rgb(29 111 242 / 0.1);
+  --danger: #d93a3a;
+  --success: #17915a;
+  --warn: #b97708;
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.06), 0 8px 24px -14px rgb(16 24 40 / 0.18);
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warn: var(--warn);
+
+  --font-sans:
+    'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo',
+    'Malgun Gothic', system-ui, sans-serif;
+
+  --shadow-card: var(--shadow-card);
+
+  --animate-enter: enter 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-fade: fade 0.2s ease-out;
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior: none;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+  }
+
+  /* 컬럼 스크롤바는 얇게. 호버할 때만 또렷해진다. */
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface-3) transparent;
+  }
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background: var(--surface-3);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .scroll-thin:hover::-webkit-scrollbar-thumb {
+    background: var(--line);
+    background-clip: content-box;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
