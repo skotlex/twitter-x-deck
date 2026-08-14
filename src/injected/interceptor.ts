@@ -37,6 +37,19 @@ function urlOf(input: RequestInfo | URL): string {
   return input?.url ?? ''
 }
 
+/**
+ * 삭제 요청에서 무엇을 지웠는지 알아낸다.
+ *
+ * 응답에는 그 정보가 없어 보낸 본문을 쓰는데, 그마저 문자열이 아닐 때가 있다
+ * (Request 객체로 감싸 보내거나 XHR 로 나가는 경우). 그럴 때는 지금 이 문서의
+ * 주소를 본다 — 글을 지우는 자리는 그 글의 상세 페이지이므로 주소에 id 가 있다.
+ */
+function deletedBody(sent: string | null): string | null {
+  if (sent) return sent
+  const id = /\/status\/(\d+)/.exec(window.location.pathname)?.[1]
+  return id ? JSON.stringify({ variables: { tweet_id: id } }) : null
+}
+
 function emit(operation: string, url: string, body: string): void {
   const payload: CapturedPayload = { channel: CHANNEL, type: 'captured', operation, url, body }
   window.postMessage(payload, window.location.origin)
@@ -62,15 +75,14 @@ function installFetchHook(): void {
     try {
       const operation = watchedOperation(urlOf(input))
       if (operation) {
-        // 삭제는 응답에 무엇을 지웠는지가 없다. 보낸 쪽에 id 가 있으므로 그걸 넘긴다.
-        const sent =
-          operation === DELETE_TWEET_OPERATION && typeof init?.body === 'string' ? init.body : null
+        const deleting = operation === DELETE_TWEET_OPERATION
+        const sent = deleting ? deletedBody(typeof init?.body === 'string' ? init.body : null) : null
 
         void promise.then((response) => {
           const url = response.url || urlOf(input)
-          if (sent !== null) {
+          if (deleting) {
             // 실제로 지워졌을 때만 알린다. 실패한 요청까지 믿으면 멀쩡한 글이 사라진다.
-            if (response.ok) emit(operation, url, sent)
+            if (response.ok && sent) emit(operation, url, sent)
             return
           }
           // 원본 스트림은 손대지 않는다. 복제본만 읽는다.
@@ -108,7 +120,14 @@ function installXhrHook(): void {
       const url = urls.get(this) ?? ''
       const operation = watchedOperation(url)
       if (operation) {
+        const deleting = operation === DELETE_TWEET_OPERATION
+        const sent = deleting ? deletedBody(typeof args[0] === 'string' ? args[0] : null) : null
+
         this.addEventListener('load', () => {
+          if (deleting) {
+            if (this.status >= 200 && this.status < 300 && sent) emit(operation, url, sent)
+            return
+          }
           if (this.responseType !== '' && this.responseType !== 'text') return
           emit(operation, url, this.responseText)
         })

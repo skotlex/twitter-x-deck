@@ -53,7 +53,9 @@ export function XPageModal({ url, handle, label = '님의 게시물', onClose }:
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin || !isDeletedMessage(event.data)) return
       const id = parseDeletedId(event.data.body)
-      if (id && url.includes(id)) onClose()
+      // 무엇을 지웠는지 못 읽었더라도 게시물을 띄운 창이라면 닫는다. 지울 수 있는
+      // 글은 내 글뿐이고, 그 창에서 일어난 삭제는 그 글일 수밖에 없다.
+      if (id ? url.includes(id) : url.includes('/status/')) onClose()
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
