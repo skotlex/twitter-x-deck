@@ -28,7 +28,7 @@ const PRIME_STALE_MS = 90_000
 /** 대타 방문이 필요한지 살피는 주기. */
 const PRIME_CHECK_MS = 2_500
 /** 새로고침을 누른 뒤 응답을 기다리는 한계. */
-const REFRESH_TIMEOUT_MS = 12_000
+const REFRESH_TIMEOUT_MS = 8_000
 /** 새로고침 결과 안내를 띄워두는 시간. */
 const NOTE_MS = 4_000
 /** 보관 정책 적용 주기. */
@@ -342,7 +342,10 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
       setColumns((prev) => ({ ...prev, [kind]: { ...prev[kind], refreshing: true, note: null } }))
       sendCommand(kind, 'refresh')
       refreshTimers.current[kind] = window.setTimeout(() => {
-        settleRefresh(kind, '응답 없음')
+        // 수집기가 멀쩡히 돌고 있는데 응답이 없었다면 x.com 이 받아올 게 없었던 것이다.
+        // 그걸 '응답 없음' 이라 부르면 고장난 것처럼 읽힌다.
+        const alive = columnsRef.current[kind].status.state === 'streaming'
+        settleRefresh(kind, alive ? '새 글 없음' : '응답 없음')
       }, REFRESH_TIMEOUT_MS)
     },
     [sendCommand, settleRefresh],

@@ -13,7 +13,7 @@
  */
 import { CHANNEL, isCapturedPayload, type DeckCommand, type FrameMessage } from '@core/messages'
 import { DEFAULT_SETTINGS, loadSettings, watchSettings, type Settings } from '@core/settings'
-import { TIMELINE_OPERATION, type CollectorState, type TimelineKind } from '@core/types'
+import { TIMELINE_KINDS, TIMELINE_OPERATION, type CollectorState, type TimelineKind } from '@core/types'
 import {
   findHomeNavLink,
   findRefreshPill,
@@ -37,6 +37,8 @@ const ROTATE_MS = 30_000
 const PRIME_MAX_MS = 10_000
 /** 대타 방문에서 탭 클릭만으로 응답이 안 나올 때 한 번 더 찔러보기까지의 시간. */
 const PRIME_NUDGE_MS = 3_000
+/** 수동 새로고침에서 옆 탭에 들렀다 돌아오기까지의 시간. */
+const TAB_BOUNCE_MS = 500
 
 /**
  * 응답이 어느 타임라인 것인지는 GraphQL operation 이름이 알려준다.
@@ -167,22 +169,42 @@ export function startCollector(
    * 사용자가 새로고침을 눌렀을 때.
    *
    * 사다리를 타지 않는다 — 그 끝은 문서 새로고침이고, 최상위 문서에서는 덱까지
-   * 통째로 다시 뜬다. 대신 확실한 수를 한 번에 쓴다: 알림이 떠 있으면 그걸 누르고,
-   * 없으면 탭을 눌러 타임라인을 다시 받고 '새 글 불러오기' 단축키까지 함께 넣는다.
+   * 통째로 다시 뜬다.
+   *
+   * 이미 열려 있는 탭을 다시 눌러봐야 x.com 은 아무 요청도 내지 않는다. 옆 탭에
+   * 잠깐 들렀다 돌아와야 담당 타임라인을 새로 받아온다 — 들르는 김에 옆 컬럼도
+   * 한 번 채워진다. 돌아올 탭은 그때 다시 찾는다. 탭 목록이 그 사이 다시 그려지면
+   * 미리 잡아둔 요소는 문서에서 떨어져 나가 눌러도 아무 일이 없다.
    */
   function manualRefresh(): void {
-    lastForcedRefreshAt = Date.now()
+    const now = Date.now()
+    lastForcedRefreshAt = now
 
     const pill = findRefreshPill()
     if (pill) {
       simulateClick(pill.element)
-      lastPillClickAt = lastForcedRefreshAt
+      lastPillClickAt = now
       return
     }
 
-    const tab = findTab(target())
-    if (tab) simulateClick(tab)
-    pressLoadNewPostsShortcut()
+    const wanted = target()
+    const other = TIMELINE_KINDS.find((kind) => kind !== wanted)
+    const away = other ? findTab(other) : null
+
+    if (!away) {
+      const tab = findTab(wanted)
+      if (tab) simulateClick(tab)
+      pressLoadNewPostsShortcut()
+      return
+    }
+
+    // tick 이 그 사이에 끼어들어 탭을 되돌리지 않도록 확인 시계를 미뤄둔다.
+    lastTabAssertAt = now
+    simulateClick(away)
+    window.setTimeout(() => {
+      const back = findTab(wanted)
+      if (back) simulateClick(back)
+    }, TAB_BOUNCE_MS)
   }
 
   /** 대타 방문을 끝내고 담당 탭으로 돌아온다. */
