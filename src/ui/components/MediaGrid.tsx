@@ -34,7 +34,9 @@ function MediaItem({
 }) {
   const [failed, setFailed] = useState(false)
   const [hovered, setHovered] = useState(false)
-  /** 화면 가운데 들어와 저절로 돌고 있는 상태. */
+  /** 이 영상이 실린 카드를 지금 가리키고 있거나 그 안에 포커스가 있는지. */
+  const [cardActive, setCardActive] = useState(false)
+  /** 겨룸에서 이겨 저절로 돌고 있는 상태. */
   const [centered, setCentered] = useState(false)
   /** 사용자가 눌러 소리를 켠 상태. 한 번 켜면 화면을 벗어나도 계속 돈다. */
   const [engaged, setEngaged] = useState(false)
@@ -46,18 +48,48 @@ function MediaItem({
   const showVideo = playable && !failed && (engaged || (hoverPlay && (hovered || centered)))
 
   /**
-   * 화면에 들어오면 겨룸에 나선다. 이기면 저절로 돈다.
+   * 이 영상이 실린 카드를 지금 보고 있는지 지켜본다.
    *
-   * 자리로 자르지 않는 이유는 맨 위 영상 때문이다 — 목록 첫 글이 영상이면 화면
-   * 가운데까지 내려올 일이 없어 영영 안 돈다. 컬럼마다 가장 가운데에 가까운 하나를
-   * 고르면, 후보가 그것뿐일 때는 맨 위에 있어도 그게 돈다.
+   * 영상 자체가 아니라 카드 전체를 기준으로 삼는다 — 글을 읽으려고 카드 위에
+   * 마우스를 둔 것만으로도 그 글의 영상은 볼 뜻이 있는 것이고, 반대로 지나가는
+   * 카드의 영상까지 돌 이유는 없다. 키보드로 옮겨 다닐 때를 위해 포커스도 함께 본다.
+   */
+  useEffect(() => {
+    const node = hostRef.current
+    if (!hoverPlay || !playable || !node) return
+    const card = node.closest('article')
+    if (!card) return
+
+    const enter = () => setCardActive(true)
+    const leave = () => setCardActive(false)
+    card.addEventListener('mouseenter', enter)
+    card.addEventListener('mouseleave', leave)
+    card.addEventListener('focusin', enter)
+    card.addEventListener('focusout', leave)
+    return () => {
+      card.removeEventListener('mouseenter', enter)
+      card.removeEventListener('mouseleave', leave)
+      card.removeEventListener('focusin', enter)
+      card.removeEventListener('focusout', leave)
+    }
+  }, [hoverPlay, playable])
+
+  /**
+   * 보고 있는 카드 안에서 겨룸에 나선다. 이기면 저절로 돈다.
+   *
+   * 카드 안에 영상이 여럿이면 화면 가운데에 가장 가까운 하나만 돈다. 자리로만
+   * 자르지 않는 것은 맨 위 영상 때문이다 — 목록 첫 글이 영상이면 화면 가운데까지
+   * 내려올 일이 없어 영영 안 돈다. 후보가 하나뿐이면 어디에 있든 그것이 돈다.
    *
    * 관찰자는 조상의 잘림까지 셈에 넣으므로 컬럼 밖으로 밀려난 카드는 저절로 빠진다.
    * 문턱을 촘촘히 두는 것은 스크롤 도중에도 승자가 따라 바뀌게 하기 위해서다.
    */
   useEffect(() => {
     const node = hostRef.current
-    if (!hoverPlay || !playable || !node) return
+    if (!hoverPlay || !playable || !cardActive || !node) {
+      setCentered(false)
+      return
+    }
 
     const token = {}
     const group = node.closest('.scroll-thin')
@@ -81,8 +113,9 @@ function MediaItem({
     return () => {
       observer.disconnect()
       reportCandidate(token, null)
+      setCentered(false)
     }
-  }, [hoverPlay, playable])
+  }, [hoverPlay, playable, cardActive])
 
   /**
    * 소리는 요소를 바꾸지 않고 켠다. 눌렀다고 새 영상을 갈아 끼우면 보던 위치가
