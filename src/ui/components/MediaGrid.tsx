@@ -113,10 +113,16 @@ function MediaItem({
       ref={hostRef}
       type="button"
       onClick={(event) => {
-        event.preventDefault()
         event.stopPropagation()
-        if (playable) setEngaged(true)
-        else onOpen()
+        if (!playable) {
+          event.preventDefault()
+          onOpen()
+          return
+        }
+        // 영상이 이미 떠 있으면 기본 동작을 막지 않는다. 눌러서 재생·정지하는 것은
+        // 브라우저가 해주는 일인데, 여기서 막으면 재생 버튼 위에서만 듣게 된다.
+        if (!showVideo) event.preventDefault()
+        setEngaged(true)
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
