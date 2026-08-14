@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DeckLayout } from '@core/settings'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import { CollectorFrame } from './components/CollectorFrame'
@@ -25,10 +25,13 @@ const ROOM_SIDE_BY_SIDE = '(min-width: 900px)'
 const ROOM_STACKED = '(min-height: 700px)'
 
 /**
- * 내 게시·반응이 끝난 뒤 팔로잉을 다시 받기까지 두는 틈.
- * 곧바로 요청하면 방금 올린 글이 아직 타임라인에 실리지 않아 헛걸음이 된다.
+ * 내 게시·반응이 끝난 뒤 팔로잉을 다시 받아보는 시각들.
+ *
+ * 한 번만 받으면 놓친다. 곧바로 요청하면 방금 올린 글이 아직 타임라인에 실리지
+ * 않았고, 늦게 한 번만 요청하면 그때까지 화면이 비어 있다. 몇 번에 나눠 확인해야
+ * 빨리 실린 경우와 늦게 실린 경우를 모두 잡는다.
  */
-const AFTER_ACTION_DELAY_MS = 1_500
+const AFTER_ACTION_TRIES_MS = [1_500, 5_000, 12_000]
 
 export interface AppProps {
   /** 이 문서가 직접 수집하는 컬럼. 나머지는 숨은 프레임이 맡는다. */
@@ -101,10 +104,17 @@ export function App({ hostKind, onPassthrough }: AppProps) {
    */
   const { refresh } = collector
   const showsFollowing = settings.columns.includes('following')
+  const actedTimers = useRef<number[]>([])
   const handleActed = useCallback(() => {
     if (!showsFollowing) return
-    window.setTimeout(() => refresh('following', { quiet: true }), AFTER_ACTION_DELAY_MS)
+    // 앞서 잡아둔 확인이 남아 있으면 겹치지 않게 걷어낸다.
+    actedTimers.current.forEach(window.clearTimeout)
+    actedTimers.current = AFTER_ACTION_TRIES_MS.map((delay) =>
+      window.setTimeout(() => refresh('following', { quiet: true }), delay),
+    )
   }, [refresh, showsFollowing])
+
+  useEffect(() => () => actedTimers.current.forEach(window.clearTimeout), [])
 
   const handleLoadMore = useCallback(
     (kind: TimelineKind) => {
