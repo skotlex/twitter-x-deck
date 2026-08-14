@@ -61,6 +61,14 @@ export const RepostIcon = (props: IconProps) => (
   </Icon>
 )
 
+/** 인용. 한마디 붙여 다시 올린다는 뜻으로 상자 위의 연필을 쓴다. */
+export const QuoteIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M18 2.5 21.5 6 12 15.5l-4.4 1.4 1.4-4.4L18 2.5Z" />
+    <path d="M20 13.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.5" />
+  </Icon>
+)
+
 export const LikeIcon = (props: IconProps) => (
   <Icon {...props}>
     <path d="M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 22l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z" />

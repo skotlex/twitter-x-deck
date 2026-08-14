@@ -6,13 +6,13 @@ import {
   type MediaSize,
   type Settings,
 } from '@core/settings'
-import { runTweetAction, type TweetAction } from '../../content/actions'
+import { runTweetAction, type ComposeMode, type TweetAction } from '../../content/actions'
 import { formatCount, formatRelative, formatStamp } from '../lib/format'
 import { Lightbox } from './Lightbox'
 import { MediaGrid } from './MediaGrid'
-import { ReplyComposer } from './ReplyComposer'
+import { PostComposer } from './PostComposer'
 import { RichText } from './RichText'
-import { LikeIcon, ReplyIcon, RepostIcon, VerifiedIcon, ViewsIcon } from './icons'
+import { LikeIcon, QuoteIcon, ReplyIcon, RepostIcon, VerifiedIcon, ViewsIcon } from './icons'
 
 /**
  * 밀도별 치수를 한곳에 모아둔다.
@@ -266,10 +266,39 @@ function LinkAction({
 }
 
 /**
- * 켜고 끌 수 있는 동작 (하트·리포스트).
+ * 켜고 끌 수 있는 동작의 공통 상태 (하트·리포스트).
  * 화면은 즉시 바꾸고, 실제 반영은 보이지 않는 x.com 페이지에서 진행한다.
- * 실패하면 표시를 되돌리고 이유를 툴팁에 남긴다.
+ * 실패하면 표시를 되돌리고 이유를 남긴다.
  */
+function useToggleAction(initial: boolean, tweetUrl: string, on: TweetAction, off: TweetAction) {
+  const [active, setActive] = useState(initial)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const toggle = async () => {
+    if (busy) return
+    const next = !active
+    setActive(next)
+    setBusy(true)
+    setError(null)
+    try {
+      await runTweetAction(tweetUrl, next ? on : off)
+    } catch (cause) {
+      setActive(!next)
+      setError(cause instanceof Error ? cause.message : '실패했다')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return { active, busy, error, toggle }
+}
+
+/** 낙관적 표시. 서버 개수는 다음 수집분에서 따라온다. */
+const shownCount = (value: number, initial: boolean, active: boolean): number =>
+  value + (active === initial ? 0 : active ? 1 : -1)
+
+/** 누르면 바로 켜고 끄는 동작 (하트). */
 function ToggleAction({
   icon,
   value,
@@ -291,28 +320,8 @@ function ToggleAction({
   on: TweetAction
   off: TweetAction
 }) {
-  const [active, setActive] = useState(initial)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  // 낙관적 표시. 서버 개수는 다음 수집분에서 따라온다.
-  const shown = value + (active === initial ? 0 : active ? 1 : -1)
-
-  const press = async () => {
-    if (busy) return
-    const next = !active
-    setActive(next)
-    setBusy(true)
-    setError(null)
-    try {
-      await runTweetAction(tweetUrl, next ? on : off)
-    } catch (cause) {
-      setActive(!next)
-      setError(cause instanceof Error ? cause.message : '실패했다')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { active, busy, error, toggle } = useToggleAction(initial, tweetUrl, on, off)
+  const shown = shownCount(value, initial, active)
 
   return (
     <button
@@ -323,7 +332,7 @@ function ToggleAction({
       aria-label={`${label} (${shown.toLocaleString('ko-KR')})`}
       onClick={(event) => {
         event.stopPropagation()
-        void press()
+        void toggle()
       }}
       className={`${ACTION_BASE} ${tone} ${
         error ? 'text-danger' : active ? activeClass : 'text-faint'
@@ -332,6 +341,107 @@ function ToggleAction({
       {icon}
       {formatCount(shown)}
     </button>
+  )
+}
+
+function MenuItem({
+  icon,
+  label,
+  onSelect,
+}: {
+  icon: React.ReactNode
+  label: string
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={(event) => {
+        event.stopPropagation()
+        onSelect()
+      }}
+      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-text transition-colors hover:bg-surface-2"
+    >
+      {icon}
+      {label}
+    </button>
+  )
+}
+
+/**
+ * 리포스트. x.com 과 마찬가지로 누르면 먼저 고르게 한다 —
+ * 그대로 올릴지, 한마디 붙여 인용할지.
+ */
+function RepostAction({
+  value,
+  initial,
+  tweetUrl,
+  onQuote,
+}: {
+  value: number
+  initial: boolean
+  tweetUrl: string
+  onQuote: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const { active, busy, error, toggle } = useToggleAction(initial, tweetUrl, 'repost', 'unrepost')
+  const shown = shownCount(value, initial, active)
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        disabled={busy}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={error ? `리포스트 실패 — ${error}` : '리포스트'}
+        aria-label={`리포스트 (${shown.toLocaleString('ko-KR')})`}
+        onClick={(event) => {
+          event.stopPropagation()
+          setOpen((prev) => !prev)
+        }}
+        className={`${ACTION_BASE} hover:bg-success/12 hover:text-success ${
+          error ? 'text-danger' : active ? 'text-success' : 'text-faint'
+        } ${busy ? 'opacity-60' : ''}`}
+      >
+        <RepostIcon className="h-3.5 w-3.5" />
+        {formatCount(shown)}
+      </button>
+
+      {open && (
+        <>
+          {/* 바깥을 눌러 닫는 길. 문서 리스너는 오버레이가 끊으므로 화면을 덮어서 받는다. */}
+          <button
+            type="button"
+            aria-label="메뉴 닫기"
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-40 cursor-default"
+          />
+          <div
+            role="menu"
+            className="animate-fade absolute bottom-full left-0 z-50 mb-1.5 w-36 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-lg shadow-black/30"
+          >
+            <MenuItem
+              icon={<RepostIcon className="h-4 w-4 text-faint" />}
+              label={active ? '리포스트 취소' : '리포스트'}
+              onSelect={() => {
+                setOpen(false)
+                void toggle()
+              }}
+            />
+            <MenuItem
+              icon={<QuoteIcon className="h-4 w-4 text-faint" />}
+              label="인용"
+              onSelect={() => {
+                setOpen(false)
+                onQuote()
+              }}
+            />
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -353,7 +463,7 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
   const metrics = METRICS[settings.density]
   const mediaSize = metrics.shrinkMedia ? smallerMediaSize(settings.mediaSize) : settings.mediaSize
   const [lightbox, setLightbox] = useState<LightboxTarget | null>(null)
-  const [replying, setReplying] = useState(false)
+  const [composer, setComposer] = useState<ComposeMode | null>(null)
   const quoted = tweet.quoted
 
   return (
@@ -423,18 +533,13 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
               value={tweet.stats.replies}
               label="답글 달기"
               tone="hover:bg-accent-soft hover:text-accent"
-              onPress={() => setReplying(true)}
+              onPress={() => setComposer('reply')}
             />
-            <ToggleAction
-              icon={<RepostIcon className="h-3.5 w-3.5" />}
+            <RepostAction
               value={tweet.stats.reposts}
-              label="리포스트"
-              tone="hover:bg-success/12 hover:text-success"
-              activeClass="text-success"
               initial={Boolean(tweet.viewer?.reposted)}
               tweetUrl={tweet.url}
-              on="repost"
-              off="unrepost"
+              onQuote={() => setComposer('quote')}
             />
             <ToggleAction
               icon={<LikeIcon className="h-3.5 w-3.5" />}
@@ -459,11 +564,12 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
         </div>
       </div>
 
-      {replying && (
-        <ReplyComposer
-          tweetId={tweet.id}
+      {composer && (
+        <PostComposer
+          mode={composer}
+          target={{ id: tweet.id, url: tweet.url }}
           handle={tweet.author.handle}
-          onClose={() => setReplying(false)}
+          onClose={() => setComposer(null)}
         />
       )}
 
