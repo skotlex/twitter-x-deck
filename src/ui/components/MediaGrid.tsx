@@ -23,6 +23,7 @@ function MediaItem({
   fit,
   sourceUrl,
   hoverPlay,
+  siblings,
   onOpen,
 }: {
   media: TweetMedia
@@ -30,6 +31,8 @@ function MediaItem({
   fit: 'cover' | 'contain'
   sourceUrl: string
   hoverPlay: boolean
+  /** 같은 카드에 붙은 미디어 수. 하나뿐이면 누가 도는지 겨룰 것도 없다. */
+  siblings: number
   onOpen: () => void
 }) {
   const [failed, setFailed] = useState(false)
@@ -45,7 +48,21 @@ function MediaItem({
 
   const playable = media.kind !== 'photo' && Boolean(media.playbackUrl)
   const silent = media.kind === 'animated_gif'
-  const showVideo = playable && !failed && (engaged || (hoverPlay && (hovered || centered)))
+  /** 같은 카드에 미디어가 여럿일 때만 누가 돌지 겨룬다. */
+  const contested = siblings > 1
+
+  /**
+   * 돌아야 하는지.
+   *
+   *   1순위 — 이 영상을 직접 가리켰다.
+   *   2순위 — 이 영상이 실린 카드를 가리켰거나 그 안에 포커스가 있다.
+   *           카드에 미디어가 여럿이면 그중 화면 가운데에 가장 가까운 하나만.
+   *   그리고 한 번 소리를 켠 영상은 조건과 무관하게 계속 돈다.
+   */
+  const showVideo =
+    playable &&
+    !failed &&
+    (engaged || (hoverPlay && (hovered || (cardActive && (!contested || centered)))))
 
   /**
    * 이 영상이 실린 카드를 지금 보고 있는지 지켜본다.
@@ -75,18 +92,18 @@ function MediaItem({
   }, [hoverPlay, playable])
 
   /**
-   * 보고 있는 카드 안에서 겨룸에 나선다. 이기면 저절로 돈다.
+   * 미디어가 여럿인 카드에서 누가 돌지 겨룬다. 화면 가운데에 가장 가까운 하나가 이긴다.
    *
-   * 카드 안에 영상이 여럿이면 화면 가운데에 가장 가까운 하나만 돈다. 자리로만
-   * 자르지 않는 것은 맨 위 영상 때문이다 — 목록 첫 글이 영상이면 화면 가운데까지
-   * 내려올 일이 없어 영영 안 돈다. 후보가 하나뿐이면 어디에 있든 그것이 돈다.
+   * 하나뿐인 카드는 여기까지 오지 않는다 — 겨룰 상대가 없는데 관찰자를 붙이면
+   * 그 응답을 기다리는 만큼 재생이 늦고, 그 경로가 어긋나면 카드를 가리켜도 영영
+   * 돌지 않는다. 목록에 깔리는 관찰자 수도 그만큼 줄어든다.
    *
    * 관찰자는 조상의 잘림까지 셈에 넣으므로 컬럼 밖으로 밀려난 카드는 저절로 빠진다.
    * 문턱을 촘촘히 두는 것은 스크롤 도중에도 승자가 따라 바뀌게 하기 위해서다.
    */
   useEffect(() => {
     const node = hostRef.current
-    if (!hoverPlay || !playable || !cardActive || !node) {
+    if (!hoverPlay || !playable || !contested || !cardActive || !node) {
       setCentered(false)
       return
     }
@@ -115,7 +132,7 @@ function MediaItem({
       reportCandidate(token, null)
       setCentered(false)
     }
-  }, [hoverPlay, playable, cardActive])
+  }, [hoverPlay, playable, contested, cardActive])
 
   /**
    * 소리는 요소를 바꾸지 않고 켠다. 눌렀다고 새 영상을 갈아 끼우면 보던 위치가
@@ -319,6 +336,7 @@ export function MediaGrid({ media, size, sourceUrl, hoverPlay, onOpen }: MediaGr
             fit={fit}
             sourceUrl={sourceUrl}
             hoverPlay={hoverPlay}
+            siblings={media.length}
             onOpen={() => onOpen?.(index)}
           />
         </div>
