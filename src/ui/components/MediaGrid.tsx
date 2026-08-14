@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MEDIA_MAX_HEIGHT, type MediaMode, type MediaSize } from '@core/settings'
 import type { TweetMedia } from '@core/types'
+import { distanceFromCenter, reportCandidate } from '../lib/autoplay'
 import { aspectRatio } from '../lib/format'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { ImageIcon, PlayIcon } from './icons'
@@ -45,21 +46,42 @@ function MediaItem({
   const showVideo = playable && !failed && (engaged || (hoverPlay && (hovered || centered)))
 
   /**
-   * 화면 가운데 들어오면 저절로 돈다.
+   * 화면에 들어오면 겨룸에 나선다. 이기면 저절로 돈다.
    *
-   * 위아래를 35% 씩 깎아 가운데 띠만 남긴다 — 목록에 보이기만 해도 전부 돌면
-   * 한 화면에서 여러 개가 동시에 도는 꼴이 된다. 관찰자는 조상의 잘림까지 셈에
-   * 넣으므로 컬럼 밖으로 밀려난 카드는 저절로 빠진다.
+   * 자리로 자르지 않는 이유는 맨 위 영상 때문이다 — 목록 첫 글이 영상이면 화면
+   * 가운데까지 내려올 일이 없어 영영 안 돈다. 컬럼마다 가장 가운데에 가까운 하나를
+   * 고르면, 후보가 그것뿐일 때는 맨 위에 있어도 그게 돈다.
+   *
+   * 관찰자는 조상의 잘림까지 셈에 넣으므로 컬럼 밖으로 밀려난 카드는 저절로 빠진다.
+   * 문턱을 촘촘히 두는 것은 스크롤 도중에도 승자가 따라 바뀌게 하기 위해서다.
    */
   useEffect(() => {
     const node = hostRef.current
     if (!hoverPlay || !playable || !node) return
+
+    const token = {}
+    const group = node.closest('.scroll-thin')
     const observer = new IntersectionObserver(
-      ([entry]) => setCentered(Boolean(entry?.isIntersecting)),
-      { rootMargin: '-35% 0px -35% 0px' },
+      ([entry]) => {
+        if (!entry?.isIntersecting) {
+          reportCandidate(token, null)
+          setCentered(false)
+          return
+        }
+        reportCandidate(token, {
+          group,
+          distance: distanceFromCenter(entry.boundingClientRect),
+          visible: entry.intersectionRatio,
+          play: setCentered,
+        })
+      },
+      { threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1] },
     )
     observer.observe(node)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      reportCandidate(token, null)
+    }
   }, [hoverPlay, playable])
 
   /**
