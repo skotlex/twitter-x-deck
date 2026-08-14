@@ -65,6 +65,7 @@ export function App() {
             onHold={collector.setHold}
             onRefresh={collector.refresh}
             onLoadMore={handleLoadMore}
+            onSwitchToTabMode={collector.switchToTabMode}
           />
         ))}
       </main>

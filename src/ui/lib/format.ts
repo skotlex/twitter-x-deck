@@ -9,10 +9,25 @@ const fullStamp = new Intl.DateTimeFormat('ko-KR', {
   minute: '2-digit',
 })
 
-/** 통계 숫자를 짧게. 0 은 빈 문자열로 돌려 카드에서 숨긴다. */
+/** 통계 숫자를 짧게. 0 도 그대로 보여준다 — 반응이 없다는 것도 정보다. */
 export function formatCount(value: number | undefined): string {
-  if (!value) return ''
+  if (!value) return '0'
   return value < 1000 ? String(value) : compact.format(value)
+}
+
+/**
+ * 미리보기용으로 축소된 이미지 URL 을 원본 크기로 되돌린다.
+ * pbs.twimg.com 은 `name` 파라미터로 크기를 정한다.
+ */
+export function originalMediaUrl(url: string): string {
+  if (!url.includes('pbs.twimg.com')) return url
+  try {
+    const parsed = new URL(url)
+    parsed.searchParams.set('name', 'orig')
+    return parsed.href
+  } catch {
+    return url
+  }
 }
 
 /** 타임라인용 상대 시각. 하루가 넘으면 날짜로 바꾼다. */

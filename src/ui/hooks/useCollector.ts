@@ -72,6 +72,8 @@ export interface Collector {
   setHold: (kind: TimelineKind, hold: boolean) => void
   /** 해당 컬럼을 강제로 새로 받아온다. */
   refresh: (kind: TimelineKind) => void
+  /** 임베드가 막혔을 때 사용자가 직접 고정 탭 모드로 넘어간다. */
+  switchToTabMode: (kind: TimelineKind) => void
   /** 과거 글을 한 페이지 더 읽어온다. */
   loadMore: (kind: TimelineKind) => Promise<void>
 }
@@ -204,17 +206,31 @@ export function useCollector(settings: Settings): Collector {
     }
   }, [])
 
-  // 임베드가 막히면 조용히 실패하는 게 아니라 탭 모드로 넘어간다.
+  /**
+   * 임베드가 막혔다고 판단되면 상태만 'blocked' 로 올린다.
+   * 예전에는 여기서 곧바로 고정 탭을 열었지만, 확장을 켰다는 이유로 탭이 두 개 튀어나오는 건
+   * 사용자가 원한 동작이 아니다. 전환은 컬럼 배너의 버튼으로만 일어난다.
+   */
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      for (const kind of TIMELINE_KINDS) {
-        // 여태 'idle' 이면 브리지가 한 번도 말을 걸지 않은 것 — 프레임이 뜨지 못했다는 뜻.
-        if (columnsRef.current[kind].status.state !== 'idle') continue
-        setMode((prev) => (prev[kind] === 'tab' ? prev : { ...prev, [kind]: 'tab' }))
-        void chrome.runtime
-          .sendMessage({ channel: CHANNEL, type: 'background', action: 'open-fallback-tab', role: kind })
-          .catch(() => {})
-      }
+      setColumns((prev) => {
+        let changed = false
+        const next = { ...prev }
+        for (const kind of TIMELINE_KINDS) {
+          // 여태 'idle' 이면 브리지가 한 번도 말을 걸지 않은 것 — 프레임이 뜨지 못했다는 뜻.
+          if (prev[kind].status.state !== 'idle') continue
+          next[kind] = {
+            ...prev[kind],
+            status: {
+              ...prev[kind].status,
+              state: 'blocked',
+              message: 'x.com 임베드가 차단됐다.',
+            },
+          }
+          changed = true
+        }
+        return changed ? next : prev
+      })
     }, FRAME_TIMEOUT_MS)
     return () => window.clearTimeout(timer)
   }, [])
@@ -251,6 +267,17 @@ export function useCollector(settings: Settings): Collector {
     [sendCommand],
   )
 
+  const switchToTabMode = useCallback((kind: TimelineKind) => {
+    setMode((prev) => ({ ...prev, [kind]: 'tab' }))
+    setColumns((prev) => ({
+      ...prev,
+      [kind]: { ...prev[kind], status: { ...prev[kind].status, state: 'loading', message: undefined } },
+    }))
+    void chrome.runtime
+      .sendMessage({ channel: CHANNEL, type: 'background', action: 'open-fallback-tab', role: kind })
+      .catch(() => {})
+  }, [])
+
   const loadMore = useCallback(async (kind: TimelineKind) => {
     if (loadingMore.current[kind]) return
     loadingMore.current[kind] = true
@@ -280,5 +307,5 @@ export function useCollector(settings: Settings): Collector {
     [columns],
   )
 
-  return { columns, mode, loginNeededFor, registerFrame, flush, setHold, refresh, loadMore }
+  return { columns, mode, loginNeededFor, registerFrame, flush, setHold, refresh, switchToTabMode, loadMore }
 }

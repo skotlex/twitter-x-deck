@@ -36,6 +36,7 @@ export interface DeckColumnProps {
   onHold: (kind: TimelineKind, hold: boolean) => void
   onRefresh: (kind: TimelineKind) => void
   onLoadMore: (kind: TimelineKind) => void
+  onSwitchToTabMode: (kind: TimelineKind) => void
 }
 
 export function DeckColumn({
@@ -46,6 +47,7 @@ export function DeckColumn({
   onHold,
   onRefresh,
   onLoadMore,
+  onSwitchToTabMode,
 }: DeckColumnProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [atTop, setAtTop] = useState(true)
@@ -118,6 +120,23 @@ export function DeckColumn({
         </button>
       </header>
 
+      {state === 'blocked' && (
+        <div className="border-b border-line bg-surface-2 px-4 py-3">
+          <p className="text-[13px] font-medium text-text">x.com 임베드가 차단됐다</p>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+            덱 안에 숨겨 띄우는 방식이 막혔다. 이 페이지의 개발자 도구 콘솔에 남은 오류가 원인을
+            말해준다. 당장 쓰려면 고정 탭으로 바꾼다 — x.com 탭이 하나 생긴다.
+          </p>
+          <button
+            type="button"
+            onClick={() => onSwitchToTabMode(kind)}
+            className="mt-2 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-accent-strong"
+          >
+            고정 탭으로 전환
+          </button>
+        </div>
+      )}
+
       <div className="relative min-h-0 flex-1">
         {buffered > 0 && (
           <button
@@ -156,9 +175,11 @@ function EmptyState({ state }: { state: CollectorState }) {
   const copy =
     state === 'login-required'
       ? 'x.com 로그인이 필요하다.'
-      : state === 'streaming'
-        ? '새 게시물을 기다리는 중.'
-        : 'x.com 타임라인을 준비하는 중.'
+      : state === 'blocked'
+        ? '수집기를 띄우지 못했다.'
+        : state === 'streaming'
+          ? '새 게시물을 기다리는 중.'
+          : 'x.com 타임라인을 준비하는 중.'
 
   return (
     <div className="grid h-full place-items-center px-8 py-16 text-center">

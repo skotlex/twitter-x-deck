@@ -1,10 +1,24 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import type { Tweet } from '@core/types'
 import type { Settings } from '@core/settings'
 import { formatCount, formatRelative, formatStamp } from '../lib/format'
+import { Lightbox } from './Lightbox'
 import { MediaGrid } from './MediaGrid'
 import { RichText } from './RichText'
 import { LikeIcon, ReplyIcon, RepostIcon, VerifiedIcon, ViewsIcon } from './icons'
+
+/**
+ * 답글·리포스트·마음에 들어요는 x.com 공식 intent 페이지로 넘긴다.
+ *
+ * 내부 GraphQL 뮤테이션을 직접 호출하면 덱 안에서 처리할 수는 있지만, 그건 읽기만 하던
+ * 확장이 사용자 계정으로 쓰기를 하는 것이고 계정 잠금 위험을 진다.
+ * intent 페이지는 x.com 이 공개한 경로이고 최종 확인도 x.com 화면에서 이뤄진다.
+ */
+const INTENT = {
+  reply: (id: string) => `https://x.com/intent/post?in_reply_to=${id}`,
+  repost: (id: string) => `https://x.com/intent/retweet?tweet_id=${id}`,
+  like: (id: string) => `https://x.com/intent/like?tweet_id=${id}`,
+}
 
 function Avatar({ src, name, size = 'md' }: { src: string; name: string; size?: 'md' | 'sm' }) {
   const dimension = size === 'md' ? 'h-10 w-10' : 'h-5 w-5'
@@ -73,8 +87,16 @@ function QuotedTweet({ tweet, showMedia }: { tweet: Tweet; showMedia: boolean })
 }
 
 function LinkCard({ card }: { card: NonNullable<Tweet['card']> }) {
+  const Wrapper = card.url ? 'a' : 'div'
   return (
-    <div className="mt-2.5 overflow-hidden rounded-xl border border-line">
+    <Wrapper
+      {...(card.url
+        ? { href: card.url, target: '_blank', rel: 'noreferrer noopener' as const }
+        : {})}
+      className={`mt-2.5 block overflow-hidden rounded-xl border border-line transition-colors ${
+        card.url ? 'hover:bg-surface-2' : ''
+      }`}
+    >
       {card.imageUrl && (
         <img
           src={card.imageUrl}
@@ -89,25 +111,37 @@ function LinkCard({ card }: { card: NonNullable<Tweet['card']> }) {
         <p className="mt-0.5 line-clamp-2 text-[14px] font-medium text-text">{card.title}</p>
         {card.description && <p className="mt-1 line-clamp-2 text-[13px] text-muted">{card.description}</p>}
       </div>
-    </div>
+    </Wrapper>
   )
 }
 
-function StatItem({
+/** 통계이면서 동시에 동작 버튼. 누르면 x.com intent 페이지가 새 탭으로 열린다. */
+function StatAction({
   icon,
   value,
   label,
+  href,
+  tone,
 }: {
   icon: React.ReactNode
   value: number
   label: string
+  href: string
+  tone: string
 }) {
-  const text = formatCount(value)
   return (
-    <span className="flex items-center gap-1.5 text-[12.5px] text-faint" title={label}>
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      title={label}
+      aria-label={`${label} (${value.toLocaleString('ko-KR')})`}
+      onClick={(event) => event.stopPropagation()}
+      className={`-mx-1.5 flex items-center gap-1.5 rounded-full px-1.5 py-1 text-[12.5px] tabular-nums text-faint transition-colors ${tone}`}
+    >
       {icon}
-      {text || '—'}
-    </span>
+      {formatCount(value)}
+    </a>
   )
 }
 
@@ -121,6 +155,7 @@ export interface TweetCardProps {
 function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
   const compact = settings.density === 'compact'
   const padding = compact ? 'px-3.5 py-2.5' : 'px-4 py-3.5'
+  const [lightboxAt, setLightboxAt] = useState<number | null>(null)
 
   return (
     <article
@@ -159,14 +194,32 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
             <RichText text={tweet.text} />
           </div>
 
-          {settings.showMedia && <MediaGrid media={tweet.media} />}
+          {settings.showMedia && <MediaGrid media={tweet.media} onOpen={setLightboxAt} />}
           {tweet.card && !tweet.media.length && settings.showMedia && <LinkCard card={tweet.card} />}
           {tweet.quoted && <QuotedTweet tweet={tweet.quoted} showMedia={settings.showMedia} />}
 
-          <div className={`flex items-center gap-5 ${compact ? 'mt-1.5' : 'mt-2.5'}`}>
-            <StatItem icon={<ReplyIcon className="h-3.5 w-3.5" />} value={tweet.stats.replies} label="답글" />
-            <StatItem icon={<RepostIcon className="h-3.5 w-3.5" />} value={tweet.stats.reposts} label="리포스트" />
-            <StatItem icon={<LikeIcon className="h-3.5 w-3.5" />} value={tweet.stats.likes} label="마음에 들어요" />
+          <div className={`flex items-center gap-4 ${compact ? 'mt-1.5' : 'mt-2.5'}`}>
+            <StatAction
+              icon={<ReplyIcon className="h-3.5 w-3.5" />}
+              value={tweet.stats.replies}
+              label="답글 달기"
+              href={INTENT.reply(tweet.id)}
+              tone="hover:bg-accent-soft hover:text-accent"
+            />
+            <StatAction
+              icon={<RepostIcon className="h-3.5 w-3.5" />}
+              value={tweet.stats.reposts}
+              label="리포스트"
+              href={INTENT.repost(tweet.id)}
+              tone="hover:bg-success/12 hover:text-success"
+            />
+            <StatAction
+              icon={<LikeIcon className="h-3.5 w-3.5" />}
+              value={tweet.stats.likes}
+              label="마음에 들어요"
+              href={INTENT.like(tweet.id)}
+              tone="hover:bg-danger/12 hover:text-danger"
+            />
             <a
               href={tweet.url}
               target="_blank"
@@ -178,6 +231,15 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
           </div>
         </div>
       </div>
+
+      {lightboxAt !== null && (
+        <Lightbox
+          media={tweet.media}
+          startIndex={lightboxAt}
+          sourceUrl={tweet.url}
+          onClose={() => setLightboxAt(null)}
+        />
+      )}
     </article>
   )
 }

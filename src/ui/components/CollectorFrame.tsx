@@ -11,11 +11,11 @@ import type { CollectorMode } from '../hooks/useCollector'
  * 멈추거나 스로틀링돼서 타임라인이 갱신되지 않는다. 투명하게만 두면 문서는 정상적으로
  * 그려지고 우리 눈에만 안 보인다.
  *
- * `sandbox` 에 allow-top-navigation 을 주지 않아 x.com 이 프레임을 탈출하지 못하게 막는다.
+ * `sandbox` 는 걸지 않는다. 로그인 플로우가 팝업·스토리지 접근을 쓰기 때문에 sandbox 아래에서는
+ * 로그인 자체가 막힌다. 프레임 탈출은 x.com 이 시도하지 않으므로 감수할 만한 교환이다.
+ *
  * `name` 은 프레임 안 SPA 이동과 로그인 리다이렉트를 거쳐도 남아 역할 판별의 기준이 된다.
  */
-const SANDBOX = 'allow-same-origin allow-scripts allow-forms allow-popups allow-modals'
-
 const HIDDEN_CLASS =
   'pointer-events-none fixed left-0 top-0 -z-10 h-screen w-[560px] border-0 opacity-0'
 
@@ -47,7 +47,6 @@ export function CollectorFrame({ kind, mode, expanded, register }: CollectorFram
       title={`${TIMELINE_LABEL[kind]} 수집기`}
       name={`${FRAME_NAME_PREFIX}${kind}`}
       src={`https://x.com/home?${ROLE_PARAM}=${kind}`}
-      sandbox={SANDBOX}
       referrerPolicy="no-referrer-when-downgrade"
       className={expanded ? EXPANDED_CLASS : HIDDEN_CLASS}
       aria-hidden={expanded ? undefined : true}

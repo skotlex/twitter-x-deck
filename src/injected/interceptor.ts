@@ -94,6 +94,38 @@ function installXhrHook(): void {
   } as typeof XMLHttpRequest.prototype.send
 }
 
+/**
+ * 이 문서를 항상 '보이는 상태' 로 위장한다.
+ *
+ * x.com 은 `document.hidden` 이면 새 게시물 폴링을 멈춘다. 우리 프레임은 투명하게 감춰져
+ * 있거나 백그라운드 탭에 있어서 그대로 두면 알림이 영영 뜨지 않는다.
+ * 사용자가 보는 x.com 탭에는 적용되지 않는다 (역할이 있는 프레임에서만 돈다).
+ */
+function spoofVisibility(): void {
+  const alwaysVisible = { get: () => 'visible' as DocumentVisibilityState, configurable: true }
+  const neverHidden = { get: () => false, configurable: true }
+
+  try {
+    Object.defineProperty(Document.prototype, 'visibilityState', alwaysVisible)
+    Object.defineProperty(Document.prototype, 'hidden', neverHidden)
+    Object.defineProperty(Document.prototype, 'webkitVisibilityState', alwaysVisible)
+    Object.defineProperty(Document.prototype, 'webkitHidden', neverHidden)
+  } catch {
+    // 재정의가 막힌 환경이면 폴링이 느려질 뿐, 강제 갱신 사다리가 대신 받쳐준다.
+  }
+
+  document.hasFocus = () => true
+
+  // 이미 걸려 있는 리스너보다 먼저 잡아 이벤트 자체를 없앤다.
+  const swallow = (event: Event) => {
+    event.stopImmediatePropagation()
+  }
+  for (const type of ['visibilitychange', 'webkitvisibilitychange', 'blur', 'pagehide']) {
+    window.addEventListener(type, swallow, true)
+    document.addEventListener(type, swallow, true)
+  }
+}
+
 function main(): void {
   const globals = window as unknown as Record<string, unknown>
   if (globals[GUARD]) return
@@ -101,6 +133,7 @@ function main(): void {
   if (!readFrameRole()) return
   globals[GUARD] = true
 
+  spoofVisibility()
   installFetchHook()
   installXhrHook()
 }

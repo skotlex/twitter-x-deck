@@ -69,6 +69,34 @@ export function isTabSelected(tab: HTMLElement): boolean {
   return tab.getAttribute('aria-selected') === 'true'
 }
 
+/**
+ * 사이드바의 홈 링크. 이미 홈에 있을 때 누르면 타임라인을 맨 위로 올리며 새로 받아온다.
+ * 탭 재클릭이 안 먹을 때의 두 번째 카드.
+ */
+export function findHomeNavLink(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(
+    '[data-testid="AppTabBar_Home_Link"], nav a[href="/home"]',
+  )
+}
+
+/**
+ * x.com 의 '새 게시물 불러오기' 단축키(`.`) 를 눌러준다.
+ * DOM 선택자에 전혀 기대지 않는 경로라 UI 개편에 가장 강하다.
+ */
+export function pressLoadNewPostsShortcut(): void {
+  const init: KeyboardEventInit = {
+    key: '.',
+    code: 'Period',
+    keyCode: 190,
+    which: 190,
+    bubbles: true,
+    cancelable: true,
+  } as KeyboardEventInit
+  document.body?.focus()
+  document.dispatchEvent(new KeyboardEvent('keydown', init))
+  document.dispatchEvent(new KeyboardEvent('keyup', init))
+}
+
 export interface PillHit {
   element: HTMLElement
   /** 라벨에서 읽어낸 새 게시물 수. 못 읽으면 null. */

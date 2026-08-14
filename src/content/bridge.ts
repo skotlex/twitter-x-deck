@@ -18,7 +18,16 @@ import {
 import { readFrameRole } from '@core/role'
 import { DEFAULT_SETTINGS, loadSettings, watchSettings, type Settings } from '@core/settings'
 import type { CollectorState, TimelineKind } from '@core/types'
-import { findRefreshPill, findTab, hasTimeline, isLoggedOut, isTabSelected, simulateClick } from './selectors'
+import {
+  findHomeNavLink,
+  findRefreshPill,
+  findTab,
+  hasTimeline,
+  isLoggedOut,
+  isTabSelected,
+  pressLoadNewPostsShortcut,
+  simulateClick,
+} from './selectors'
 
 /** 상태 점검 주기. */
 const TICK_MS = 1_000
@@ -41,6 +50,8 @@ function start(kind: TimelineKind): void {
   let lastPillClickAt = 0
   let lastTabAssertAt = 0
   let lastForcedRefreshAt = Date.now()
+  /** 강제 갱신 사다리의 현재 칸. 새 응답이 들어오면 0 으로 되돌린다. */
+  let escalation = 0
 
   function post(message: FrameMessage): void {
     if (isFramed) {
@@ -63,25 +74,57 @@ function start(kind: TimelineKind): void {
     post({ channel: CHANNEL, type: 'pending', role: kind, count: next })
   }
 
+  /**
+   * 새 타임라인을 강제로 받아온다.
+   *
+   * 한 가지 방법에 기대지 않고 사다리를 오른다 — 앞 칸이 통했으면 응답이 들어오면서
+   * `escalation` 이 0 으로 되돌아가고, 통하지 않았으면 다음 칸으로 넘어간다.
+   * 마지막 칸은 프레임 새로고침이라 어떤 경우에도 결국 복구된다.
+   */
+  function forceRefresh(): void {
+    lastForcedRefreshAt = Date.now()
+
+    const pill = findRefreshPill()
+    if (pill) {
+      simulateClick(pill.element)
+      lastPillClickAt = lastForcedRefreshAt
+      return
+    }
+
+    switch (escalation) {
+      case 0: {
+        // 홈 링크 재클릭 — 이미 홈에 있으면 맨 위로 올리며 타임라인을 새로 받는다.
+        const home = findHomeNavLink()
+        if (home) simulateClick(home)
+        break
+      }
+      case 1: {
+        const tab = findTab(kind)
+        if (tab) simulateClick(tab)
+        break
+      }
+      case 2:
+        pressLoadNewPostsShortcut()
+        break
+      default:
+        window.location.reload()
+        return
+    }
+
+    escalation = Math.min(escalation + 1, 3)
+  }
+
   function handleCommand(command: DeckCommand['command']): void {
-    const tab = findTab(kind)
     if (command === 'ping') {
       post({ channel: CHANNEL, type: 'status', role: kind, state })
       return
     }
     if (command === 'select-tab') {
+      const tab = findTab(kind)
       if (tab) simulateClick(tab)
       return
     }
-    // refresh: 알림이 있으면 그걸 누르고, 없으면 선택된 탭을 다시 눌러 새로 받아온다.
-    const pill = findRefreshPill()
-    if (pill) {
-      simulateClick(pill.element)
-      lastPillClickAt = Date.now()
-    } else if (tab) {
-      simulateClick(tab)
-    }
-    lastForcedRefreshAt = Date.now()
+    forceRefresh()
   }
 
   window.addEventListener('message', (event: MessageEvent) => {
@@ -89,6 +132,8 @@ function start(kind: TimelineKind): void {
     if (event.source === window && isCapturedPayload(event.data)) {
       lastCaptureAt = Date.now()
       lastForcedRefreshAt = lastCaptureAt
+      // 직전 시도가 통했다는 뜻이므로 사다리를 맨 아래로 되돌린다.
+      escalation = 0
       post({
         channel: CHANNEL,
         type: 'timeline',
@@ -143,7 +188,8 @@ function start(kind: TimelineKind): void {
       return
     }
 
-    if (!hasTimeline()) {
+    // 응답을 한 번이라도 받았으면 DOM 선택자가 어긋나도 수신 중으로 본다.
+    if (!hasTimeline() && lastCaptureAt === 0) {
       setState('loading')
       return
     }
@@ -162,11 +208,10 @@ function start(kind: TimelineKind): void {
 
     setPending(null)
 
-    // 알림이 한동안 안 뜨면 선택된 탭을 다시 눌러 강제로 새 타임라인을 받아온다.
+    // 알림이 한동안 안 뜨면 사다리를 한 칸 올라 직접 새 타임라인을 받아온다.
     const idleFor = now - Math.max(lastCaptureAt, lastForcedRefreshAt)
     if (settings.idleRefreshMs > 0 && idleFor > settings.idleRefreshMs) {
-      simulateClick(tab)
-      lastForcedRefreshAt = now
+      forceRefresh()
     }
   }
 

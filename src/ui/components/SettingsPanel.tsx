@@ -31,14 +31,14 @@ function Toggle({
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange(!checked)}
-      className={`relative h-6 w-11 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${
+      className={`inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
         checked ? 'bg-accent' : 'bg-surface-3'
       }`}
     >
+      {/* 손잡이 위치는 인라인 스타일로 못박는다. 유틸리티 조합에 기대면 빌드 설정에 따라 어긋난다. */}
       <span
-        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-          checked ? 'translate-x-[22px]' : 'translate-x-0.5'
-        }`}
+        className="h-5 w-5 rounded-full bg-white shadow-sm"
+        style={{ transform: `translateX(${checked ? 22 : 2}px)`, transition: 'transform 160ms ease' }}
       />
     </button>
   )

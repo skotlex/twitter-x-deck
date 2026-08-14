@@ -80,7 +80,8 @@ function parseMedia(legacy: Raw): TweetMedia[] {
   })
 }
 
-function parseCard(card: Raw): TweetCard | undefined {
+function parseCard(tweet: Raw): TweetCard | undefined {
+  const card = tweet?.card
   const bindings: Raw[] = card?.legacy?.binding_values ?? []
   if (!bindings.length) return undefined
   const pick = (key: string): Raw =>
@@ -94,12 +95,22 @@ function parseCard(card: Raw): TweetCard | undefined {
     pick('thumbnail_image_large')?.image_value?.url ??
     pick('summary_photo_image_large')?.image_value?.url
 
+  // 카드가 가리키는 실제 주소. 카드 자체에는 t.co 만 있으므로 entity 에서 원래 주소를 찾는다.
+  const entityUrls: Raw[] = tweet?.legacy?.entities?.urls ?? []
+  const shortUrl: string | undefined = card?.legacy?.url
+  const target =
+    entityUrls.find((u) => u?.url === shortUrl)?.expanded_url ??
+    pick('card_url')?.string_value ??
+    entityUrls.at(-1)?.expanded_url ??
+    (typeof shortUrl === 'string' && shortUrl.startsWith('http') ? shortUrl : undefined)
+
   const result: TweetCard = { title }
   const description = pick('description')?.string_value
   if (description) result.description = description
   const domain = pick('domain')?.string_value
   if (domain) result.domain = domain
   if (image) result.imageUrl = image
+  if (target) result.url = target
   return result
 }
 
@@ -167,12 +178,13 @@ function normalize(
     text: parseText(tweet),
     author,
     media: parseMedia(legacy),
+    // 통계는 legacy 아래가 정석이지만, 스키마 이행 중에는 tweet 바로 아래에도 실려 온다.
     stats: {
-      replies: toNumber(legacy.reply_count),
-      reposts: toNumber(legacy.retweet_count),
-      likes: toNumber(legacy.favorite_count),
-      quotes: toNumber(legacy.quote_count),
-      bookmarks: toNumber(legacy.bookmark_count),
+      replies: toNumber(legacy.reply_count ?? tweet.reply_count),
+      reposts: toNumber(legacy.retweet_count ?? tweet.retweet_count),
+      likes: toNumber(legacy.favorite_count ?? tweet.favorite_count),
+      quotes: toNumber(legacy.quote_count ?? tweet.quote_count),
+      bookmarks: toNumber(legacy.bookmark_count ?? tweet.bookmark_count),
     },
     url: `https://x.com/${author.handle || 'i'}/status/${id}`,
     source,
@@ -183,7 +195,7 @@ function normalize(
   if (tweet.views?.count) result.stats.views = toNumber(tweet.views.count)
   if (legacy.in_reply_to_screen_name) result.replyToHandle = legacy.in_reply_to_screen_name
 
-  const card = parseCard(tweet.card)
+  const card = parseCard(tweet)
   if (card) result.card = card
 
   if (depth < 1) {

@@ -15,7 +15,15 @@ function itemClass(count: number, index: number): string {
   return count === 3 && index === 0 ? 'row-span-2' : ''
 }
 
-function MediaItem({ media, single }: { media: TweetMedia; single: boolean }) {
+function MediaItem({
+  media,
+  single,
+  onOpen,
+}: {
+  media: TweetMedia
+  single: boolean
+  onOpen: () => void
+}) {
   const [playing, setPlaying] = useState(false)
   const playable = media.kind !== 'photo' && Boolean(media.playbackUrl)
 
@@ -39,9 +47,10 @@ function MediaItem({ media, single }: { media: TweetMedia; single: boolean }) {
       onClick={(event) => {
         event.stopPropagation()
         if (playable) setPlaying(true)
+        else onOpen()
       }}
-      className="group relative block h-full w-full cursor-pointer overflow-hidden bg-surface-2"
-      aria-label={media.altText ?? (playable ? '동영상 재생' : '이미지')}
+      className="group relative block h-full w-full cursor-zoom-in overflow-hidden bg-surface-2"
+      aria-label={media.altText ?? (playable ? '동영상 재생' : '이미지 원본 보기')}
     >
       <img
         src={media.previewUrl}
@@ -68,7 +77,13 @@ function MediaItem({ media, single }: { media: TweetMedia; single: boolean }) {
   )
 }
 
-export function MediaGrid({ media }: { media: TweetMedia[] }) {
+export interface MediaGridProps {
+  media: TweetMedia[]
+  /** 사진을 눌렀을 때 원본 보기를 띄운다. */
+  onOpen?: (index: number) => void
+}
+
+export function MediaGrid({ media, onOpen }: MediaGridProps) {
   if (media.length === 0) return null
 
   const single = media.length === 1
@@ -82,7 +97,7 @@ export function MediaGrid({ media }: { media: TweetMedia[] }) {
     >
       {media.slice(0, 4).map((item, index) => (
         <div key={`${item.previewUrl}-${index}`} className={`min-h-0 ${itemClass(media.length, index)}`}>
-          <MediaItem media={item} single={single} />
+          <MediaItem media={item} single={single} onOpen={() => onOpen?.(index)} />
         </div>
       ))}
     </div>
