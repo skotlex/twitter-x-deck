@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MEDIA_MAX_HEIGHT, type MediaMode, type MediaSize } from '@core/settings'
 import type { TweetMedia } from '@core/types'
 import { aspectRatio } from '../lib/format'
@@ -31,32 +31,47 @@ function MediaItem({
   hoverPlay: boolean
   onOpen: () => void
 }) {
-  const [playing, setPlaying] = useState(false)
   const [failed, setFailed] = useState(false)
-  // 마우스를 올려둔 동안만 도는 미리보기. 누르기 전까지는 소리 없이 돈다.
-  const [previewing, setPreviewing] = useState(false)
-  const playable = media.kind !== 'photo' && Boolean(media.playbackUrl)
+  const [hovered, setHovered] = useState(false)
+  /** 화면 가운데 들어와 저절로 돌고 있는 상태. */
+  const [centered, setCentered] = useState(false)
+  /** 사용자가 눌러 소리를 켠 상태. 한 번 켜면 화면을 벗어나도 계속 돈다. */
+  const [engaged, setEngaged] = useState(false)
+  const hostRef = useRef<HTMLButtonElement | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
 
-  if (playing && media.playbackUrl && !failed) {
-    const silent = media.kind === 'animated_gif'
-    return (
-      <video
-        src={media.playbackUrl}
-        poster={media.previewUrl}
-        controls
-        autoPlay
-        playsInline
-        preload="metadata"
-        // GIF 는 소리가 없다. 나머지 영상만 덱이 함께 쓰는 소리 크기를 따른다.
-        {...(silent
-          ? { loop: true, muted: true }
-          : { ref: applyVolume, onVolumeChange: (event) => rememberVolume(event.currentTarget) })}
-        // 재생이 막히면 원문으로 넘기는 길을 열어준다.
-        onError={() => setFailed(true)}
-        className="h-full w-full bg-black object-contain"
-      />
+  const playable = media.kind !== 'photo' && Boolean(media.playbackUrl)
+  const silent = media.kind === 'animated_gif'
+  const showVideo = playable && !failed && (engaged || (hoverPlay && (hovered || centered)))
+
+  /**
+   * 화면 가운데 들어오면 저절로 돈다.
+   *
+   * 위아래를 35% 씩 깎아 가운데 띠만 남긴다 — 목록에 보이기만 해도 전부 돌면
+   * 한 화면에서 여러 개가 동시에 도는 꼴이 된다. 관찰자는 조상의 잘림까지 셈에
+   * 넣으므로 컬럼 밖으로 밀려난 카드는 저절로 빠진다.
+   */
+  useEffect(() => {
+    const node = hostRef.current
+    if (!hoverPlay || !playable || !node) return
+    const observer = new IntersectionObserver(
+      ([entry]) => setCentered(Boolean(entry?.isIntersecting)),
+      { rootMargin: '-35% 0px -35% 0px' },
     )
-  }
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [hoverPlay, playable])
+
+  /**
+   * 소리는 요소를 바꾸지 않고 켠다. 눌렀다고 새 영상을 갈아 끼우면 보던 위치가
+   * 처음으로 돌아간다 — 재생바를 잡아 옮기던 중이었다면 더 그렇다.
+   */
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    if (engaged && !silent) applyVolume(video)
+    else video.muted = true
+  }, [engaged, silent, showVideo])
 
   if (failed) {
     return (
@@ -73,16 +88,16 @@ function MediaItem({
 
   return (
     <button
+      ref={hostRef}
       type="button"
       onClick={(event) => {
         event.preventDefault()
         event.stopPropagation()
-        if (playable) setPlaying(true)
+        if (playable) setEngaged(true)
         else onOpen()
       }}
-      // x.com 처럼 올려두기만 해도 돌려준다. 소리를 켜고 조작하려면 누르면 된다.
-      onMouseEnter={() => hoverPlay && playable && setPreviewing(true)}
-      onMouseLeave={() => setPreviewing(false)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       // 눌렀을 때 할 일이 다르면 커서도 달라야 한다. 동영상·GIF 는 그 자리에서
       // 재생되고, 사진만 원본 보기로 확대된다.
       className={`group/media relative block h-full w-full overflow-hidden bg-surface-2 ${
@@ -91,17 +106,23 @@ function MediaItem({
       aria-label={media.altText ?? (playable ? '동영상 재생' : '이미지 원본 보기')}
     >
       {/* 확대 효과는 두지 않는다. 카드 어디에 마우스를 올려도 섬네일이 들썩여 읽기를 방해한다. */}
-      {previewing && media.playbackUrl ? (
+      {showVideo && media.playbackUrl ? (
         <video
+          ref={videoRef}
           src={media.playbackUrl}
           poster={media.previewUrl}
-          // 소리는 켜지 않는다. 브라우저가 사용자 조작 없는 소리 재생을 막기도 하고,
-          // 목록을 훑기만 해도 소리가 나면 그게 더 성가시다.
-          muted
+          // 재생바는 마우스를 올렸을 때만 띄운다. 저절로 도는 동안에도 늘 떠 있으면
+          // 목록이 조작 장치로 뒤덮인다.
+          controls={hovered || engaged}
           autoPlay
-          loop
           playsInline
           preload="metadata"
+          // 소리를 켜기 전까지는 되돌아 돈다. 소리를 켠 영상은 끝나면 멈춘다.
+          loop={silent || !engaged}
+          muted
+          onVolumeChange={(event) => {
+            if (engaged && !silent) rememberVolume(event.currentTarget)
+          }}
           onError={() => setFailed(true)}
           className={`h-full w-full bg-black ${fit === 'cover' ? 'object-cover' : 'object-contain'}`}
         />
@@ -114,7 +135,7 @@ function MediaItem({
           className={`h-full w-full ${fit === 'cover' ? 'object-cover' : 'object-contain'}`}
         />
       )}
-      {playable && !previewing && (
+      {playable && !showVideo && (
         <span className="absolute inset-0 grid place-items-center">
           <span className="grid h-12 w-12 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm transition group-hover/media:bg-black/70">
             <PlayIcon className="h-5 w-5 translate-x-[1px]" />
