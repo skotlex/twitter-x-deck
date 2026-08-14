@@ -15,14 +15,25 @@ import { useSettings } from './hooks/useSettings'
 import { useViewer } from './hooks/useViewer'
 
 /**
- * 두 컬럼을 늘어놓을 자리가 있는지 재는 두 자.
+ * 컬럼 하나가 제구실을 하는 최소 크기와, 컬럼 바깥에서 먹는 자리.
  *
- * 좌우로 놓으려면 폭이, 위아래로 쌓으려면 높이가 있어야 한다. 둘 중 하나만
- * 충분해도 두 컬럼을 다 띄울 수 있다 — 세로로 긴 창에서 탭으로 가르던 것이
- * 폭만 보고 판단한 탓이었다.
+ * 자리가 되는지는 컬럼 개수에 따라 재야 한다. 고정된 잣대 하나로 재면 넷을
+ * 늘어놓을 수 있는 창에서도 둘을 못 늘어놓는 일이 생긴다 — 둘일 때 요구하던
+ * 폭이 넷일 때 컬럼 하나에 돌아가는 폭보다 넓었던 탓이다.
  */
-const ROOM_SIDE_BY_SIDE = '(min-width: 900px)'
-const ROOM_STACKED = '(min-height: 700px)'
+const MIN_COLUMN_WIDTH = 340
+const MIN_COLUMN_HEIGHT = 300
+/** 컬럼 사이 간격(gap-3)과 덱 좌우 여백(p-3), 그리고 위쪽 막대가 먹는 높이. */
+const DECK_GAP = 12
+const DECK_INSET = 24
+const TOP_BAR_HEIGHT = 56
+
+/** 컬럼 개수만큼 늘어놓을 자리가 있는지 재는 자. */
+function roomFor(axis: 'width' | 'height', count: number): string {
+  const min = axis === 'width' ? MIN_COLUMN_WIDTH : MIN_COLUMN_HEIGHT
+  const chrome = axis === 'width' ? 0 : TOP_BAR_HEIGHT
+  return `(min-${axis}: ${count * min + (count - 1) * DECK_GAP + DECK_INSET + chrome}px)`
+}
 
 /**
  * 내 게시·반응이 끝난 뒤 팔로잉을 다시 받아보는 시각들.
@@ -44,8 +55,10 @@ export function App({ hostKind, onPassthrough }: AppProps) {
   const { settings, update } = useSettings()
   const collector = useCollector(settings, hostKind)
   const viewer = useViewer()
-  const canSideBySide = useMediaQuery(ROOM_SIDE_BY_SIDE)
-  const canStack = useMediaQuery(ROOM_STACKED)
+  // 늘어놓을 컬럼 수가 곧 필요한 자리다. 컬럼을 줄이면 좁은 창에서도 덱이 유지된다.
+  const columnCount = settings.columns.length
+  const canSideBySide = useMediaQuery(roomFor('width', columnCount))
+  const canStack = useMediaQuery(roomFor('height', columnCount))
 
   /**
    * 실제로 그릴 배치.
