@@ -142,6 +142,12 @@ function MediaItem({
           // 소리를 켜기 전까지는 되돌아 돈다. 소리를 켠 영상은 끝나면 멈춘다.
           loop={silent || !engaged}
           muted
+          // 재생바를 잡아 옮겼다는 것은 이미 이 영상을 보기로 한 것이다. 누른 것과
+          // 똑같이 다뤄 소리를 켠다. 되돌아 도느라 처음으로 돌아가는 것은 사용자가
+          // 한 일이 아니므로 시작점 근처는 셈에서 뺀다.
+          onSeeking={(event) => {
+            if (event.currentTarget.currentTime > 0.05) setEngaged(true)
+          }}
           onVolumeChange={(event) => {
             if (engaged && !silent) rememberVolume(event.currentTarget)
           }}
