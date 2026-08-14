@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { clearAll } from '@core/db'
 import type { Settings } from '@core/settings'
+import { TIMELINE_KINDS, TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import { COMMON_FONTS, fontStack, loadLocalFontFamilies } from '../lib/fonts'
 import { CloseIcon } from './icons'
 
@@ -88,6 +89,56 @@ function Select<T extends string | number>({
         </option>
       ))}
     </select>
+  )
+}
+
+/**
+ * 띄울 컬럼 고르기.
+ *
+ * 순서는 건드리지 않는다 — 켤 때 뒤에 붙이고, 끌 때 그 자리만 뺀다.
+ * 좌우 순서는 컬럼 머리글을 끌어 옮기는 쪽이 훨씬 직관적이라 거기에 맡긴다.
+ * 마지막 하나는 끄지 못하게 막는다. 컬럼이 하나도 없는 덱은 빈 화면이다.
+ */
+function ColumnPicker({
+  columns,
+  onChange,
+}: {
+  columns: TimelineKind[]
+  onChange: (next: TimelineKind[]) => void
+}) {
+  return (
+    <div className="py-3.5">
+      <p className="text-[14px] font-medium text-text">띄울 컬럼</p>
+      <p className="mt-0.5 text-[12.5px] leading-relaxed text-faint">
+        켠 컬럼마다 x.com 화면을 하나씩 열어 수집합니다. 많이 켤수록 느려집니다.
+      </p>
+
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {TIMELINE_KINDS.map((kind) => {
+          const on = columns.includes(kind)
+          const last = on && columns.length === 1
+          return (
+            <button
+              key={kind}
+              type="button"
+              disabled={last}
+              aria-pressed={on}
+              title={last ? '컬럼은 최소 하나 남겨야 합니다' : TIMELINE_LABEL[kind]}
+              onClick={() =>
+                onChange(on ? columns.filter((item) => item !== kind) : [...columns, kind])
+              }
+              className={`rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors disabled:cursor-not-allowed ${
+                on
+                  ? 'border-transparent bg-button text-button-text'
+                  : 'border-line text-muted hover:text-text'
+              }`}
+            >
+              {TIMELINE_LABEL[kind]}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -282,6 +333,10 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
 
           {tab === 'display' && (
             <div className="divide-y divide-line-soft">
+              <ColumnPicker
+                columns={settings.columns}
+                onChange={(next) => onUpdate({ columns: next })}
+              />
               <Row
                 label="x.com 열면 덱으로"
                 hint="끄면 확장 아이콘을 눌러야 덱이 뜹니다. 게시물·프로필 주소는 어느 쪽이든 원본 그대로입니다."

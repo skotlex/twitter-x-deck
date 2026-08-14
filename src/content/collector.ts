@@ -194,9 +194,12 @@ export function startCollector(
       return
     }
 
+    // 같은 화면에 실제로 떠 있는 다른 탭을 고른다. 홈과 알림은 탭 목록이 따로라
+    // 이름만 보고 고르면 이 문서에 없는 탭을 집는다.
     const wanted = target()
-    const other = TIMELINE_KINDS.find((kind) => kind !== wanted)
-    const away = other ? findTab(other) : null
+    const away = TIMELINE_KINDS.filter((kind) => kind !== wanted)
+      .map((kind) => findTab(kind))
+      .find((tab) => tab !== null)
 
     if (!away) {
       const tab = findTab(wanted)

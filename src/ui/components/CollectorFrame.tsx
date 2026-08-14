@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react'
 import { ROLE_PARAM } from '@core/messages'
 import { FRAME_NAME_PREFIX } from '@core/role'
-import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
+import { TIMELINE_LABEL, TIMELINE_PATH, type TimelineKind } from '@core/types'
 import { describeFrameBlock, refreshRuleReport } from '../../content/frameBlock'
 
 /**
@@ -59,7 +59,7 @@ export function CollectorFrame({ kind, register, onReport }: CollectorFrameProps
       ref={ref}
       title={`${TIMELINE_LABEL[kind]} 수집기`}
       name={`${FRAME_NAME_PREFIX}${kind}`}
-      src={`https://x.com/home?${ROLE_PARAM}=${kind}`}
+      src={`https://x.com${TIMELINE_PATH[kind]}?${ROLE_PARAM}=${kind}`}
       onLoad={handleLoad}
       aria-hidden="true"
       className="pointer-events-none fixed left-0 top-0 -z-10 h-screen w-[560px] border-0 opacity-0"

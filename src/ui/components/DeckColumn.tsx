@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Settings } from '@core/settings'
-import { TIMELINE_LABEL, type CollectorState, type TimelineKind } from '@core/types'
+import { isNotification, TIMELINE_LABEL, type CollectorState, type TimelineKind } from '@core/types'
 import type { ColumnState } from '../hooks/useCollector'
+import { NotificationCard } from './NotificationCard'
 import { TweetCard } from './TweetCard'
 import { ArrowUpIcon, RefreshIcon } from './icons'
 
@@ -237,15 +238,24 @@ export function DeckColumn({
           {column.tweets.length === 0 ? (
             <EmptyState state={state} />
           ) : (
-            column.tweets.map((tweet, index) => (
-              <TweetCard
-                key={tweet.key}
-                tweet={tweet}
-                settings={settings}
-                animate={settledRef.current && atTop && index < 12}
-                onActed={onActed}
-              />
-            ))
+            column.tweets.map((item, index) =>
+              isNotification(item) ? (
+                <NotificationCard
+                  key={item.key}
+                  notification={item}
+                  settings={settings}
+                  animate={settledRef.current && atTop && index < 12}
+                />
+              ) : (
+                <TweetCard
+                  key={item.key}
+                  tweet={item}
+                  settings={settings}
+                  animate={settledRef.current && atTop && index < 12}
+                  onActed={onActed}
+                />
+              ),
+            )
           )}
 
           {column.tweets.length > 0 && !column.hasMore && (

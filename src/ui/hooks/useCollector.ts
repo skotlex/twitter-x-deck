@@ -6,11 +6,16 @@
  * x.com DOM 을 아는 코드는 여기에 한 줄도 없다 — 전부 content script 쪽에 있다.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { loadRecent, pruneTweets, saveTweets, type StoredTweet } from '@core/db'
+import { loadRecent, pruneTweets, saveTweets, type StoredItem } from '@core/db'
 import { CHANNEL, isFrameMessage, type DeckCommand, type FrameMessage } from '@core/messages'
 import { parseTimelinePayload } from '@core/parser'
 import type { Settings } from '@core/settings'
-import { TIMELINE_KINDS, type CollectorStatus, type TimelineKind } from '@core/types'
+import {
+  isNotificationKind,
+  TIMELINE_KINDS,
+  type CollectorStatus,
+  type TimelineKind,
+} from '@core/types'
 import { commandHostCollector, hostOwns, primeHostCollector, setHostKinds } from '../hostCollector'
 
 /** 한 컬럼이 DOM 에 유지하는 최대 카드 수. 넘으면 오래된 쪽을 잘라낸다. */
@@ -36,10 +41,10 @@ const PRUNE_INTERVAL_MS = 10 * 60_000
 
 export interface ColumnState {
   status: CollectorStatus
-  /** 화면에 그려지는 목록. 최신이 앞. */
-  tweets: StoredTweet[]
-  /** 목록을 위로 올려둔 동안 대기시킨 새 글. */
-  buffered: StoredTweet[]
+  /** 화면에 그려지는 목록. 최신이 앞. 알림 컬럼에는 게시물과 알림이 섞인다. */
+  tweets: StoredItem[]
+  /** 목록을 위로 올려둔 동안 대기시킨 새 항목. */
+  buffered: StoredItem[]
   /** 더 불러올 과거 글이 남았는지. */
   hasMore: boolean
   /** 파싱이 폴백 경로로 떨어졌는지. 진단용. */
@@ -62,13 +67,18 @@ const emptyColumn = (kind: TimelineKind): ColumnState => ({
   note: null,
 })
 
-const initialColumns = (): ColumnMap => ({
-  foryou: emptyColumn('foryou'),
-  following: emptyColumn('following'),
-})
+/** 컬럼 종류마다 같은 값을 채운 표. 종류가 늘어도 빠뜨리는 자리가 없다. */
+function byKind<T>(make: (kind: TimelineKind) => T): Record<TimelineKind, T> {
+  return Object.fromEntries(TIMELINE_KINDS.map((kind) => [kind, make(kind)])) as Record<
+    TimelineKind,
+    T
+  >
+}
 
-/** id 중복 없이 새 글을 앞에 붙이고 렌더 상한까지 자른다. */
-function prepend(incoming: StoredTweet[], current: StoredTweet[]): StoredTweet[] {
+const initialColumns = (): ColumnMap => byKind(emptyColumn)
+
+/** id 중복 없이 새 항목을 앞에 붙이고 렌더 상한까지 자른다. */
+function prepend(incoming: StoredItem[], current: StoredItem[]): StoredItem[] {
   if (incoming.length === 0) return current
   const known = new Set(current.map((t) => t.key))
   const fresh = incoming.filter((t) => !known.has(t.key))
@@ -105,12 +115,12 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
   const frames = useRef(new Map<TimelineKind, HTMLIFrameElement>())
   const refreshTimers = useRef<Partial<Record<TimelineKind, number>>>({})
   const noteTimers = useRef<Partial<Record<TimelineKind, number>>>({})
-  const holds = useRef<Record<TimelineKind, boolean>>({ foryou: false, following: false })
-  const loadingMore = useRef<Record<TimelineKind, boolean>>({ foryou: false, following: false })
+  const holds = useRef<Record<TimelineKind, boolean>>(byKind(() => false))
+  const loadingMore = useRef<Record<TimelineKind, boolean>>(byKind(() => false))
   const settingsRef = useRef(settings)
   settingsRef.current = settings
   /** 각 컬럼의 담당 프레임이 마지막으로 타임라인을 내놓은 시각. 프레임 생사의 유일한 근거다. */
-  const frameSeen = useRef<Record<TimelineKind, number | null>>({ foryou: null, following: null })
+  const frameSeen = useRef<Record<TimelineKind, number | null>>(byKind(() => null))
   // 콜백에서 최신 컬럼 상태를 읽되 의존성으로 끌어들이지 않기 위한 거울.
   const columnsRef = useRef(columns)
   columnsRef.current = columns
@@ -177,14 +187,14 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
 
     // timeline: 파싱 → 저장 → 새로 들어온 것만 화면에 반영
     const capturedAt = Date.now()
-    const { tweets, degraded } = parseTimelinePayload(message.body, kind, capturedAt)
-    // 게시물이 하나도 없는 응답은 파싱 상태의 근거가 못 된다 — 판정을 그대로 유지한다.
-    if (tweets.length === 0) {
+    const { items, degraded } = parseTimelinePayload(message.body, kind, capturedAt)
+    // 건진 게 하나도 없는 응답은 파싱 상태의 근거가 못 된다 — 판정을 그대로 유지한다.
+    if (items.length === 0) {
       if (columnsRef.current[kind].refreshing) settleRefresh(kind, '새 글 없음')
       return
     }
 
-    void saveTweets(tweets).then((inserted) => {
+    void saveTweets(items).then((inserted) => {
       if (columnsRef.current[kind].refreshing) {
         settleRefresh(kind, inserted.length > 0 ? null : '새 글 없음')
       }
@@ -256,13 +266,16 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
    */
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const stalled = TIMELINE_KINDS.filter(
+      // 교대 수집은 최상위 문서가 자기 화면의 탭을 오가는 것이다. 알림 컬럼은
+      // 다른 주소에 있어 이 문서가 대신해줄 수 없으므로 셈에서 뺀다.
+      const canServe = settingsRef.current.columns.filter((kind) => !isNotificationKind(kind))
+      const stalled = canServe.filter(
         (kind) => !hostOwns(kind) && columnsRef.current[kind].status.state === 'idle',
       )
       if (stalled.length === 0) return
 
       setRotating(true)
-      setHostKinds([...settingsRef.current.columns])
+      setHostKinds(canServe)
       setColumns((prev) => {
         const next = { ...prev }
         for (const kind of stalled) {

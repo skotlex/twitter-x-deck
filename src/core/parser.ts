@@ -6,7 +6,17 @@
  *   2) 1) 이 하나도 못 건지면 payload 전체를 훑어 tweet 객체를 긁고,
  *      인용·리포스트 원본으로 이미 소비된 id 는 제외해 중복을 막는다.
  */
-import type { MediaKind, Tweet, TweetAuthor, TweetCard, TweetMedia, TimelineKind } from './types'
+import type {
+  DeckItem,
+  DeckNotification,
+  MediaKind,
+  NotificationIcon,
+  TimelineKind,
+  Tweet,
+  TweetAuthor,
+  TweetCard,
+  TweetMedia,
+} from './types'
 
 // 외부 스키마라 정적 타입을 신뢰할 수 없다. 접근은 전부 옵셔널 체이닝으로 한다.
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -214,6 +224,69 @@ function normalize(
   return result
 }
 
+/** x.com 이 붙이는 아이콘 이름을 우리 종류로 옮긴다. 모르는 이름은 기타로 둔다. */
+function notificationIcon(name: unknown): NotificationIcon {
+  const id = typeof name === 'string' ? name : ''
+  if (id.includes('heart')) return 'like'
+  if (id.includes('retweet') || id.includes('repost')) return 'repost'
+  if (id.includes('person') || id.includes('user')) return 'follow'
+  if (id.includes('mention') || id.includes('reply')) return 'mention'
+  return 'other'
+}
+
+/** 객체 안 어디에 있든 `user_results.result` 를 모은다. 템플릿 모양이 여러 가지다. */
+function collectUsers(node: Raw, out: Raw[] = [], depth = 0): Raw[] {
+  if (depth > 6 || !node || typeof node !== 'object') return out
+  if (Array.isArray(node)) {
+    for (const child of node) collectUsers(child, out, depth + 1)
+    return out
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'user_results' && (value as Raw)?.result) out.push((value as Raw).result)
+    else collectUsers(value, out, depth + 1)
+  }
+  return out
+}
+
+/** 알림 항목 하나를 정규화한다. 문구는 x.com 이 준 문장을 그대로 쓴다. */
+function normalizeNotification(
+  item: Raw,
+  entryId: string,
+  source: TimelineKind,
+  capturedAt: number,
+): DeckNotification | null {
+  const id: string = item?.id ?? entryId
+  if (!id) return null
+
+  const actors = collectUsers(item?.template)
+    .map((user) => parseAuthor(user))
+    .filter((author) => author.handle)
+
+  const text: string = item?.rich_message?.text ?? item?.message?.text ?? ''
+  const icon = notificationIcon(item?.notification_icon)
+  // 문구가 비어 있으면 아무 것도 안 보이므로, 아는 것만으로 한 줄을 만든다.
+  const fallback = actors.length
+    ? `${actors[0]?.name ?? ''}님의 새 알림`
+    : '새 알림'
+
+  const timestamp = toNumber(item?.timestamp_ms)
+  const targetRaw = deepCollectTweets(item?.template)[0]
+  const target = targetRaw ? normalize(targetRaw, source, capturedAt) : null
+
+  const result: DeckNotification = {
+    kind: 'notification',
+    id,
+    createdAt: timestamp > 0 ? timestamp : capturedAt,
+    text: text || fallback,
+    icon,
+    actors,
+    source,
+    capturedAt,
+  }
+  if (target) result.target = target
+  return result
+}
+
 /** `entries[]` 중 게시물 항목에서 tweet 원본 객체만 순서대로 뽑는다. */
 function collectFromEntries(entries: Raw[]): Raw[] {
   const found: Raw[] = []
@@ -238,6 +311,23 @@ function collectFromEntries(entries: Raw[]): Raw[] {
         }
       }
     }
+  }
+  return found
+}
+
+/** `entries[]` 중 알림 항목을 뽑는다. 게시물 항목과 한 배열에 섞여 온다. */
+function collectNotifications(
+  entries: Raw[],
+  source: TimelineKind,
+  capturedAt: number,
+): DeckNotification[] {
+  const found: DeckNotification[] = []
+  for (const entry of entries ?? []) {
+    const item = entry?.content?.itemContent
+    const type = item?.itemType ?? item?.__typename
+    if (typeof type !== 'string' || !type.includes('Notification')) continue
+    const notification = normalizeNotification(item, entry?.entryId ?? '', source, capturedAt)
+    if (notification) found.push(notification)
   }
   return found
 }
@@ -269,13 +359,14 @@ function deepCollectTweets(node: Raw, out: Raw[] = [], depth = 0): Raw[] {
 }
 
 export interface ParseResult {
-  tweets: Tweet[]
+  /** 게시물과 알림이 섞여 들어온다. 알림 타임라인에는 둘 다 있다. */
+  items: DeckItem[]
   /** 정석 경로가 실패해 전체 훑기로 건진 결과인지. 진단 배지에 쓴다. */
   degraded: boolean
 }
 
 /**
- * GraphQL 응답 본문(JSON 문자열)에서 게시물을 뽑아낸다.
+ * GraphQL 응답 본문(JSON 문자열)에서 게시물과 알림을 뽑아낸다.
  * 파싱 자체가 실패해도 예외를 던지지 않고 빈 결과를 돌려준다 — 스트림이 끊기면 안 된다.
  */
 export function parseTimelinePayload(
@@ -287,13 +378,17 @@ export function parseTimelinePayload(
   try {
     payload = JSON.parse(body)
   } catch {
-    return { tweets: [], degraded: false }
+    return { items: [], degraded: false }
   }
 
   const instructions = findInstructions(payload)
   const rawTweets: Raw[] = []
+  const notifications: DeckNotification[] = []
   for (const instruction of instructions) {
-    if (Array.isArray(instruction?.entries)) rawTweets.push(...collectFromEntries(instruction.entries))
+    if (Array.isArray(instruction?.entries)) {
+      rawTweets.push(...collectFromEntries(instruction.entries))
+      notifications.push(...collectNotifications(instruction.entries, source, capturedAt))
+    }
     // TimelineAddToModule 은 entries 대신 moduleItems 로 온다.
     if (Array.isArray(instruction?.moduleItems)) {
       rawTweets.push(...collectFromEntries(instruction.moduleItems.map((item: Raw) => ({ content: item?.item }))))
@@ -305,7 +400,7 @@ export function parseTimelinePayload(
   // 그러지 않으면 새 글 없는 평범한 응답이 전부 폴백으로 표시된다.
   let degraded = false
   let candidates = rawTweets
-  if (candidates.length === 0) {
+  if (candidates.length === 0 && notifications.length === 0) {
     const scanned = deepCollectTweets(payload)
     if (scanned.length > 0) {
       degraded = true
@@ -327,5 +422,15 @@ export function parseTimelinePayload(
   }
 
   const filtered = degraded ? tweets.filter((t) => !nested.has(t.id)) : tweets
-  return { tweets: filtered, degraded }
+
+  // 알림이 가리키는 게시물은 알림 카드 안에 이미 실려 있다. 같은 글을 따로 또
+  // 세우지 않는다 — 알림 하나가 두 줄로 보이면 읽는 흐름이 끊긴다.
+  const inNotification = new Set(
+    notifications.map((notification) => notification.target?.id).filter(Boolean) as string[],
+  )
+  const items: DeckItem[] = [
+    ...notifications,
+    ...filtered.filter((tweet) => !inNotification.has(tweet.id)),
+  ]
+  return { items, degraded }
 }

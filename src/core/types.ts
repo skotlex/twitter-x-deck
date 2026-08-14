@@ -1,18 +1,41 @@
-/** 덱의 한 컬럼이 담당하는 타임라인 종류. x.com 홈의 두 탭에 각각 대응한다. */
-export type TimelineKind = 'foryou' | 'following'
+/** 덱의 한 컬럼이 담당하는 타임라인 종류. x.com 의 홈 두 탭과 알림 두 탭에 대응한다. */
+export type TimelineKind = 'foryou' | 'following' | 'mentions' | 'notifications'
 
-export const TIMELINE_KINDS: readonly TimelineKind[] = ['foryou', 'following']
+export const TIMELINE_KINDS: readonly TimelineKind[] = [
+  'foryou',
+  'following',
+  'mentions',
+  'notifications',
+]
 
 export const TIMELINE_LABEL: Record<TimelineKind, string> = {
   foryou: '추천',
   following: '팔로잉',
+  mentions: '멘션',
+  notifications: '알림',
 }
+
+/** 이 컬럼을 수집하려면 x.com 의 어느 주소에 앉아 있어야 하는지. */
+export const TIMELINE_PATH: Record<TimelineKind, string> = {
+  foryou: '/home',
+  following: '/home',
+  mentions: '/notifications/mentions',
+  notifications: '/notifications',
+}
+
+/** 알림 페이지에서 오는 컬럼. 홈과 화면 구조도 응답 모양도 다르다. */
+export const NOTIFICATION_KINDS: readonly TimelineKind[] = ['mentions', 'notifications']
+
+export const isNotificationKind = (kind: TimelineKind): boolean =>
+  NOTIFICATION_KINDS.includes(kind)
 
 /**
  * 각 타임라인을 만들어내는 GraphQL operation 이름.
  * 응답을 어느 컬럼에 넣을지 판별하는 1차 근거로 쓴다.
+ * 알림 쪽은 operation 이름이 확실하지 않아 여기에 두지 않는다 — 그 프레임은 담당이
+ * 하나뿐이라 무엇이 오든 자기 컬럼으로 귀속시키면 된다.
  */
-export const TIMELINE_OPERATION: Record<TimelineKind, string> = {
+export const TIMELINE_OPERATION: Record<string, string> = {
   foryou: 'HomeTimeline',
   following: 'HomeLatestTimeline',
 }
@@ -89,6 +112,37 @@ export interface Tweet {
   source: TimelineKind
   /** 우리 덱이 관측한 시각 (epoch ms). 정렬·정리 기준. */
   capturedAt: number
+}
+
+/** 알림의 종류. x.com 이 붙여주는 아이콘 이름에서 뽑는다. */
+export type NotificationIcon = 'like' | 'repost' | 'follow' | 'mention' | 'other'
+
+/**
+ * 게시물이 아닌 알림 한 건 (좋아요·팔로우·리포스트 등).
+ *
+ * 문구는 우리가 짓지 않고 x.com 이 만들어 준 문장을 그대로 쓴다 — 이미 지역화돼
+ * 있고, '외 3명' 같은 묶음 표현까지 저쪽이 계산해 준다.
+ */
+export interface DeckNotification {
+  /** 게시물과 구별하는 표시. 한 컬럼에 두 종류가 섞여 들어온다. */
+  kind: 'notification'
+  id: string
+  createdAt: number
+  text: string
+  icon: NotificationIcon
+  /** 이 알림을 만든 사람들. 앞의 몇 명만 얼굴로 보여준다. */
+  actors: TweetAuthor[]
+  /** 알림이 가리키는 게시물. 팔로우 알림처럼 없을 수도 있다. */
+  target?: Tweet
+  source: TimelineKind
+  capturedAt: number
+}
+
+/** 컬럼에 쌓이는 항목. 알림 컬럼에는 둘이 섞인다. */
+export type DeckItem = Tweet | DeckNotification
+
+export function isNotification(item: DeckItem): item is DeckNotification {
+  return (item as DeckNotification).kind === 'notification'
 }
 
 /** 수집 프레임의 상태. 상단 바 인디케이터에 그대로 노출한다. */

@@ -5,16 +5,31 @@
  * 수리할 때 다른 파일을 건드릴 일이 없도록 전부 이 모듈에만 둔다.
  * 각 함수는 선택자 여러 개를 순서대로 시도하고, 마지막에는 텍스트 기반으로 찾아낸다.
  */
-import type { TimelineKind } from '@core/types'
+import { isNotificationKind, type TimelineKind } from '@core/types'
 
 /** 탭 라벨 후보. 언어 설정이 무엇이든 걸리도록 주요 로케일을 넣어둔다. */
 const TAB_LABELS: Record<TimelineKind, string[]> = {
   foryou: ['for you', '추천', 'おすすめ', 'para ti', 'pour vous', 'für dich'],
   following: ['following', '팔로우 중', '팔로잉', 'フォロー中', 'siguiendo', 'abonnements', 'gefolgt'],
+  notifications: ['all', '전체', '모두', 'すべて', 'todas', 'toutes', 'alle'],
+  mentions: ['mentions', '멘션', '답글', 'メンション', 'menciones', 'erwähnungen'],
 }
 
-/** 탭 순서 폴백. x.com 홈은 항상 추천이 먼저다. */
-const TAB_FALLBACK_INDEX: Record<TimelineKind, number> = { foryou: 0, following: 1 }
+/**
+ * 탭 순서 폴백. 홈은 추천이 먼저고, 알림 페이지는 전체·인증됨·멘션 순이다.
+ * 라벨이 하나도 안 걸릴 때만 쓰므로 정확할 필요는 없고 크게 어긋나지만 않으면 된다.
+ */
+const TAB_FALLBACK_INDEX: Record<TimelineKind, number> = {
+  foryou: 0,
+  following: 1,
+  notifications: 0,
+  mentions: 2,
+}
+
+/** 지금 문서가 알림 페이지인지. 홈에서 알림 탭을 찾다 엉뚱한 탭을 집는 걸 막는다. */
+function onNotificationsPage(): boolean {
+  return window.location.pathname.startsWith('/notifications')
+}
 
 /** '3개의 게시물 보기' / 'Show 3 posts' 등에서 건수를 뽑는다. */
 const PILL_COUNT_RE = /(\d[\d,.\s]*)\s*(?:개(?:의)?\s*)?(?:new\s+)?(?:게시물|포스트|posts?|tweets?)/i
@@ -56,8 +71,15 @@ function homeTabs(): HTMLElement[] {
   return [...tablist.querySelectorAll<HTMLElement>('[role="tab"]')].filter(isVisible)
 }
 
-/** 원하는 타임라인의 탭 요소를 찾는다. 라벨 우선, 실패하면 위치로 잡는다. */
+/**
+ * 원하는 타임라인의 탭 요소를 찾는다. 라벨 우선, 실패하면 위치로 잡는다.
+ *
+ * 페이지가 맞는지부터 본다. 홈에서 알림 탭을 찾으면 위치 폴백이 추천 탭을 집어
+ * 엉뚱한 곳을 누르게 된다 — 서로 다른 화면의 탭 목록이라 섞이면 안 된다.
+ */
 export function findTab(kind: TimelineKind): HTMLElement | null {
+  if (isNotificationKind(kind) !== onNotificationsPage()) return null
+
   const tabs = homeTabs()
   if (tabs.length === 0) return null
 
@@ -227,7 +249,15 @@ export function isLoggedOut(): boolean {
   return false
 }
 
-/** 타임라인이 실제로 그려졌는지. 상태 표시를 '스트리밍' 으로 올릴 근거. */
+/**
+ * 타임라인이 실제로 그려졌는지. 상태 표시를 '스트리밍' 으로 올릴 근거.
+ * 알림 목록은 게시물이 아닌 줄이 섞여 있어 article 만으로는 못 잡는다 — 목록을
+ * 이루는 칸 자체도 근거로 삼는다.
+ */
 export function hasTimeline(): boolean {
-  return Boolean(document.querySelector('[data-testid="primaryColumn"] [data-testid="tweet"], article[role="article"]'))
+  return Boolean(
+    document.querySelector(
+      '[data-testid="primaryColumn"] [data-testid="tweet"], article[role="article"], [data-testid="primaryColumn"] [data-testid="cellInnerDiv"]',
+    ),
+  )
 }

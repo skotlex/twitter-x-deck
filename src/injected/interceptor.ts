@@ -7,11 +7,19 @@
  */
 import { CHANNEL, type CapturedPayload } from '@core/messages'
 import { isComposeFrame, readFrameRole } from '@core/role'
-import { CREATE_TWEET_OPERATION, TIMELINE_OPERATION } from '@core/types'
+import { CREATE_TWEET_OPERATION, isNotificationKind, TIMELINE_OPERATION } from '@core/types'
 
 const GUARD = '__xDeckInterceptorInstalled'
 const OPERATION_RE = /\/i\/api\/graphql\/[^/]+\/([A-Za-z0-9_]+)/
+/** 알림 목록을 실어오는 옛 경로. GraphQL 로 안 올 때가 있어 함께 본다. */
+const NOTIFICATION_REST_RE = /\/i\/api\/2\/notifications\//
 const WATCHED = new Set<string>(Object.values(TIMELINE_OPERATION))
+/**
+ * 이 문서에서는 감시 목록을 따지지 않고 타임라인처럼 생긴 응답을 전부 받는다.
+ * 알림 쪽은 operation 이름을 확신할 수 없는데, 그 프레임은 담당 컬럼이 하나뿐이라
+ * 무엇이 오든 자기 컬럼으로 귀속시키면 된다. 못 쓸 응답은 파서가 걸러낸다.
+ */
+let catchAll = false
 
 function operationOf(url: string): string | null {
   return OPERATION_RE.exec(url)?.[1] ?? null
@@ -28,10 +36,13 @@ function emit(operation: string, url: string, body: string): void {
   window.postMessage(payload, window.location.origin)
 }
 
-/** 감시 대상 operation 이면 operation 이름을, 아니면 null 을 준다. */
+/** 감시 대상이면 operation 이름을, 아니면 null 을 준다. */
 function watchedOperation(url: string): string | null {
   const operation = operationOf(url)
-  return operation && WATCHED.has(operation) ? operation : null
+  if (operation && WATCHED.has(operation)) return operation
+  if (!catchAll) return null
+  if (operation) return operation
+  return NOTIFICATION_REST_RE.test(url) ? 'NotificationsRest' : null
 }
 
 function installFetchHook(): void {
@@ -130,11 +141,14 @@ function main(): void {
   const globals = window as unknown as Record<string, unknown>
   if (globals[GUARD]) return
 
-  const collecting = readFrameRole() !== null
+  const role = readFrameRole()
   const composing = isComposeFrame()
   // 덱이 띄운 프레임/탭이 아니면 사용자의 x.com 을 건드리지 않는다.
-  if (!collecting && !composing) return
+  if (role === null && !composing) return
   globals[GUARD] = true
+
+  const collecting = role !== null
+  if (collecting && isNotificationKind(role)) catchAll = true
 
   // 작성창은 글이 올라간 순간만 알면 된다. 타임라인을 계속 받을 이유가 없다.
   if (composing) WATCHED.add(CREATE_TWEET_OPERATION)

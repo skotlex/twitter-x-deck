@@ -5,21 +5,28 @@
  * 컬럼별로 독립된 읽음 위치·정렬을 유지하기 위해서다.
  */
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
-import type { TimelineKind, Tweet } from './types'
+import { isNotification, type DeckItem, type TimelineKind } from './types'
 
 const DB_NAME = 'x-deck'
 const DB_VERSION = 1
 const STORE = 'tweets'
 
-export interface StoredTweet extends Tweet {
+/**
+ * 저장된 항목. 게시물과 알림이 한 창고를 쓴다.
+ * 정렬·보관 정책이 완전히 같고, 알림 컬럼에는 둘이 섞여 쌓이기 때문이다.
+ */
+export type StoredItem = DeckItem & {
   /** `${source}:${id}` */
   key: string
 }
 
+/** 예전 이름. 게시물만 다루던 자리에서 계속 쓴다. */
+export type StoredTweet = StoredItem
+
 interface DeckSchema extends DBSchema {
   [STORE]: {
     key: string
-    value: StoredTweet
+    value: StoredItem
     indexes: {
       'by-source-captured': [TimelineKind, number]
       'by-captured': number
@@ -47,26 +54,29 @@ const sourceRange = (source: TimelineKind) =>
   IDBKeyRange.bound([source, 0], [source, Number.MAX_SAFE_INTEGER])
 
 /**
- * 새 게시물만 저장하고 저장된 것들을 돌려준다.
+ * 새 항목만 저장하고 저장된 것들을 돌려준다.
  * 이미 있는 id 는 통계만 갱신하고 `capturedAt` 은 최초 관측 시각으로 보존한다 —
  * 그래야 스트림에서 이미 지나간 글이 다시 위로 튀어오르지 않는다.
+ * 알림은 갱신할 것이 없어 그대로 둔다.
  */
-export async function saveTweets(tweets: Tweet[]): Promise<StoredTweet[]> {
-  if (tweets.length === 0) return []
+export async function saveTweets(items: DeckItem[]): Promise<StoredItem[]> {
+  if (items.length === 0) return []
   const db = await getDb()
   const tx = db.transaction(STORE, 'readwrite')
   const store = tx.objectStore(STORE)
-  const inserted: StoredTweet[] = []
+  const inserted: StoredItem[] = []
 
   await Promise.all(
-    tweets.map(async (tweet) => {
-      const key = storageKey(tweet.source, tweet.id)
+    items.map(async (item) => {
+      const key = storageKey(item.source, item.id)
       const existing = await store.get(key)
       if (existing) {
-        await store.put({ ...existing, stats: tweet.stats, text: tweet.text })
+        if (!isNotification(item) && !isNotification(existing)) {
+          await store.put({ ...existing, stats: item.stats, text: item.text })
+        }
         return
       }
-      const record: StoredTweet = { ...tweet, key }
+      const record: StoredItem = { ...item, key }
       await store.put(record)
       inserted.push(record)
     }),
@@ -76,18 +86,18 @@ export async function saveTweets(tweets: Tweet[]): Promise<StoredTweet[]> {
   return inserted.sort((a, b) => b.capturedAt - a.capturedAt)
 }
 
-/** 컬럼의 최신 게시물을 관측 시각 내림차순으로 읽는다. */
+/** 컬럼의 최신 항목을 관측 시각 내림차순으로 읽는다. */
 export async function loadRecent(
   source: TimelineKind,
   limit: number,
   beforeCapturedAt?: number,
-): Promise<StoredTweet[]> {
+): Promise<StoredItem[]> {
   const db = await getDb()
   const upper = beforeCapturedAt ?? Number.MAX_SAFE_INTEGER
   const range = IDBKeyRange.bound([source, 0], [source, upper], false, beforeCapturedAt !== undefined)
   const index = db.transaction(STORE).store.index('by-source-captured')
 
-  const out: StoredTweet[] = []
+  const out: StoredItem[] = []
   let cursor = await index.openCursor(range, 'prev')
   while (cursor && out.length < limit) {
     out.push(cursor.value)
