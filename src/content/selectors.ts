@@ -200,6 +200,23 @@ header[role="banner"],
 [data-testid="primaryColumn"] { max-width: 100% !important; border: 0 !important; margin: 0 auto !important; }
 `
 
+/**
+ * 작성창에 지금 들어 있는 글. 편집기를 못 찾으면 null.
+ *
+ * 자리표시자 문구까지 딸려 들어오지만 상관없다 — 이 값은 처음 열렸을 때와
+ * 비교하는 데만 쓰므로, 변하지 않는 것은 저절로 상쇄된다. 인용처럼 처음부터
+ * 내용이 들어 있는 경우도 같은 이유로 알아서 걸러진다.
+ */
+export function readComposerText(doc: Document): string | null {
+  const editor = doc.querySelector('[data-testid^="tweetTextarea_"]')
+  return editor ? (editor.textContent ?? '') : null
+}
+
+/** 사진·GIF 를 붙여뒀는지. 글은 안 썼어도 이건 지우면 아까운 것이다. */
+export function hasComposerAttachment(doc: Document): boolean {
+  return doc.querySelector('[data-testid="attachments"]') !== null
+}
+
 /** 로그인이 풀렸는지 판단한다. /home 밖으로 튕겼거나 로그인 UI 가 보이면 참. */
 export function isLoggedOut(): boolean {
   const path = window.location.pathname

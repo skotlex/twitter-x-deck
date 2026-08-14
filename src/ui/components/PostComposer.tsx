@@ -7,10 +7,15 @@ import {
   type ComposeMode,
   type ComposeTarget,
 } from '../../content/actions'
+import { hasComposerAttachment, readComposerText } from '../../content/selectors'
 import { CloseIcon } from './icons'
 
 /** 이 시간 안에 작성 화면이 안 뜨면 임베드가 막힌 것으로 보고 새 창 안내를 띄운다. */
 const LOAD_TIMEOUT_MS = 12_000
+/** 처음 들어 있던 글을 기록하려고 편집기가 뜨기를 기다리는 주기. */
+const SNAPSHOT_POLL_MS = 300
+/** 바깥을 눌렀는데 안 닫았을 때 그 이유를 띄워두는 시간. */
+const HELD_NOTE_MS = 2_500
 
 export interface PostComposerProps {
   mode: ComposeMode
@@ -36,6 +41,20 @@ export interface PostComposerProps {
 export function PostComposer({ mode, target, handle, onPosted, onClose }: PostComposerProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const [blocked, setBlocked] = useState(false)
+  // 바깥을 눌렀지만 쓰던 글이 있어 닫지 않았음을 알린다. 아무 반응이 없으면 멈춘 줄 안다.
+  const [held, setHeld] = useState(false)
+  const heldTimer = useRef<number | undefined>(undefined)
+  /** 열렸을 때 편집기에 들어 있던 글. 인용처럼 미리 채워진 것을 내가 쓴 글로 치지 않기 위한 기준. */
+  const initialText = useRef<string | null>(null)
+
+  /** 프레임 문서. 아직 안 떴거나 못 읽으면 null. */
+  const frameDoc = useCallback((): Document | null => {
+    try {
+      return frameRef.current?.contentDocument ?? null
+    } catch {
+      return null
+    }
+  }, [])
   const title =
     mode === 'post' || !handle ? (
       '새 게시물'
@@ -77,17 +96,56 @@ export function PostComposer({ mode, target, handle, onPosted, onClose }: PostCo
   // 프레임이 끝내 안 뜨면 사용자를 세워두지 않고 새 창으로 가는 길을 알려준다.
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const doc = (() => {
-        try {
-          return frameRef.current?.contentDocument ?? null
-        } catch {
-          return null
-        }
-      })()
-      if (!doc?.body?.childElementCount) setBlocked(true)
+      if (!frameDoc()?.body?.childElementCount) setBlocked(true)
     }, LOAD_TIMEOUT_MS)
     return () => window.clearTimeout(timer)
-  }, [])
+  }, [frameDoc])
+
+  // 편집기가 뜨는 즉시 처음 내용을 적어둔다. 이후 달라진 만큼이 내가 쓴 글이다.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (initialText.current !== null) {
+        window.clearInterval(timer)
+        return
+      }
+      const doc = frameDoc()
+      const text = doc ? readComposerText(doc) : null
+      if (text !== null) initialText.current = text
+    }, SNAPSHOT_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [frameDoc])
+
+  useEffect(() => () => window.clearTimeout(heldTimer.current), [])
+
+  /**
+   * 바깥을 눌렀을 때. 다른 창들과 똑같이 닫되, 쓰던 글이 있으면 버틴다.
+   * 확인이 안 되는 상황(프레임을 못 읽음·편집기를 못 찾음)에서도 버틴다 —
+   * 실수로 하나 더 안 닫히는 것보다 쓰던 글이 날아가는 쪽이 훨씬 나쁘다.
+   */
+  const handleBackdrop = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      if (event.target !== event.currentTarget) return
+
+      const doc = frameDoc()
+      const text = doc ? readComposerText(doc) : null
+      const untouched =
+        doc !== null &&
+        text !== null &&
+        initialText.current !== null &&
+        text.trim() === initialText.current.trim() &&
+        !hasComposerAttachment(doc)
+
+      if (untouched) {
+        onClose()
+        return
+      }
+
+      setHeld(true)
+      window.clearTimeout(heldTimer.current)
+      heldTimer.current = window.setTimeout(() => setHeld(false), HELD_NOTE_MS)
+    },
+    [frameDoc, onClose],
+  )
 
   const openPopup = useCallback(() => {
     openComposerPopup(mode, target)
@@ -99,11 +157,17 @@ export function PostComposer({ mode, target, handle, onPosted, onClose }: PostCo
       role="dialog"
       aria-modal="true"
       aria-label={mode === 'post' ? '새 게시물 작성' : `@${handle} 에게 답글·인용`}
+      onClick={handleBackdrop}
       className="animate-fade fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4 backdrop-blur-sm"
     >
       <div className="flex h-[720px] max-h-full w-[620px] max-w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl shadow-black/40">
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
           <span className="truncate text-[14px] font-semibold text-text">{title}</span>
+          {held && (
+            <span className="animate-fade shrink-0 text-[12px] text-warn">
+              쓰던 글이 있어 닫지 않았다
+            </span>
+          )}
           <button
             type="button"
             onClick={openPopup}

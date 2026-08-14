@@ -112,6 +112,18 @@
     background: var(--accent-soft);
   }
 
+  /*
+   * 누를 수 있는 것은 눌러 보이게 한다. Tailwind 는 버튼 기본 커서를 default 로
+   * 두기 때문에 그냥 두면 덱 안의 모든 버튼이 글자 위처럼 보인다.
+   * 기반 레이어라 cursor-zoom-in 같은 유틸리티가 덮어쓰는 것은 그대로 살아남는다.
+   */
+  .xdeck button:not(:disabled),
+  .xdeck [role='button']:not([aria-disabled='true']),
+  .xdeck [role='switch'],
+  .xdeck [role='menuitem'] {
+    cursor: pointer;
+  }
+
   /* 컬럼 스크롤바는 얇게. 호버할 때만 또렷해진다. */
   .scroll-thin {
     scrollbar-width: thin;
