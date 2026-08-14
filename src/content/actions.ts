@@ -104,13 +104,18 @@ export async function runTweetAction(tweetUrl: string, action: TweetAction): Pro
   }
 }
 
+/** 답글 작성 화면 주소. 덱 안 대화상자와 새 창이 같은 곳을 본다. */
+export function replyComposerUrl(tweetId: string): string {
+  return `https://x.com/intent/post?in_reply_to=${tweetId}`
+}
+
 /**
- * 답글은 글을 써야 하므로 x.com 화면이 필요하다. 탭을 갈아치우지 않고
- * 대화상자 크기의 팝업으로 띄워 덱을 그대로 남긴다.
+ * 답글 작성창을 새 창으로 띄운다.
+ * 평소에는 덱 안 대화상자로 처리하고, 그게 막혔을 때만 쓰는 뒷문이다.
  */
-export function openReplyComposer(tweetId: string): void {
+export function openReplyPopup(tweetId: string): void {
   window.open(
-    `https://x.com/intent/post?in_reply_to=${tweetId}`,
+    replyComposerUrl(tweetId),
     `xdeck-reply-${tweetId}`,
     'width=620,height=760,noopener,noreferrer',
   )

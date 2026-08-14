@@ -6,10 +6,11 @@ import {
   type MediaSize,
   type Settings,
 } from '@core/settings'
-import { openReplyComposer, runTweetAction, type TweetAction } from '../../content/actions'
+import { runTweetAction, type TweetAction } from '../../content/actions'
 import { formatCount, formatRelative, formatStamp } from '../lib/format'
 import { Lightbox } from './Lightbox'
 import { MediaGrid } from './MediaGrid'
+import { ReplyComposer } from './ReplyComposer'
 import { RichText } from './RichText'
 import { LikeIcon, ReplyIcon, RepostIcon, VerifiedIcon, ViewsIcon } from './icons'
 
@@ -352,6 +353,7 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
   const metrics = METRICS[settings.density]
   const mediaSize = metrics.shrinkMedia ? smallerMediaSize(settings.mediaSize) : settings.mediaSize
   const [lightbox, setLightbox] = useState<LightboxTarget | null>(null)
+  const [replying, setReplying] = useState(false)
   const quoted = tweet.quoted
 
   return (
@@ -421,7 +423,7 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
               value={tweet.stats.replies}
               label="답글 달기"
               tone="hover:bg-accent-soft hover:text-accent"
-              onPress={() => openReplyComposer(tweet.id)}
+              onPress={() => setReplying(true)}
             />
             <ToggleAction
               icon={<RepostIcon className="h-3.5 w-3.5" />}
@@ -456,6 +458,14 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
           </div>
         </div>
       </div>
+
+      {replying && (
+        <ReplyComposer
+          tweetId={tweet.id}
+          handle={tweet.author.handle}
+          onClose={() => setReplying(false)}
+        />
+      )}
 
       {lightbox && (
         <Lightbox
