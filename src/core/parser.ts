@@ -248,6 +248,20 @@ function collectUsers(node: Raw, out: Raw[] = [], depth = 0): Raw[] {
   return out
 }
 
+/**
+ * 알림 시각.
+ *
+ * 이름은 `timestamp_ms` 지만 초 단위로 오기도 하고 아예 없기도 하다. 크기로
+ * 단위를 가려내고, 그마저 못 믿겠으면 알림이 가리키는 게시물의 시각을 쓴다 —
+ * 1970년으로 찍히는 것보다 대상 글의 시각이 훨씬 쓸모 있다.
+ */
+function notificationTime(value: unknown, target: Tweet | null, capturedAt: number): number {
+  const raw = toNumber(value)
+  if (raw > 1e12) return raw
+  if (raw > 1e9) return raw * 1000
+  return target?.createdAt ?? capturedAt
+}
+
 /** 알림 항목 하나를 정규화한다. 문구는 x.com 이 준 문장을 그대로 쓴다. */
 function normalizeNotification(
   item: Raw,
@@ -269,14 +283,13 @@ function normalizeNotification(
     ? `${actors[0]?.name ?? ''}님의 새 알림`
     : '새 알림'
 
-  const timestamp = toNumber(item?.timestamp_ms)
   const targetRaw = deepCollectTweets(item?.template)[0]
   const target = targetRaw ? normalize(targetRaw, source, capturedAt) : null
 
   const result: DeckNotification = {
     kind: 'notification',
     id,
-    createdAt: timestamp > 0 ? timestamp : capturedAt,
+    createdAt: notificationTime(item?.timestamp_ms, target, capturedAt),
     text: text || fallback,
     icon,
     actors,

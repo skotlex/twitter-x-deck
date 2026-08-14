@@ -72,7 +72,7 @@ function Avatar({ src, name, size }: { src: string; name: string; size: number }
   )
 }
 
-function AuthorLine({ tweet, metrics }: { tweet: Tweet; metrics: Metrics }) {
+function AuthorLine({ tweet }: { tweet: Tweet }) {
   return (
     <div className="flex min-w-0 items-baseline gap-1.5">
       <span className="truncate font-semibold text-text">{tweet.author.name}</span>
@@ -88,12 +88,6 @@ function AuthorLine({ tweet, metrics }: { tweet: Tweet; metrics: Metrics }) {
       >
         {formatRelative(tweet.createdAt)}
       </time>
-      {metrics.showViews && tweet.stats.views ? (
-        <span className="ml-auto flex shrink-0 items-center gap-1 text-[12px] text-faint">
-          <ViewsIcon className="h-3.5 w-3.5" />
-          {formatCount(tweet.stats.views)}
-        </span>
-      ) : null}
     </div>
   )
 }
@@ -571,7 +565,7 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
         </a>
 
         <div className="min-w-0 flex-1">
-          <AuthorLine tweet={tweet} metrics={metrics} />
+          <AuthorLine tweet={tweet} />
 
           {tweet.replyToHandle && (
             <p className="mt-0.5 text-[13px] text-faint">
@@ -633,6 +627,18 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
               off="unlike"
               report={setActionError}
             />
+
+            {/* 조회수는 누를 수 없는 숫자다. 동작 버튼들 끝에 같은 리듬으로 붙인다. */}
+            {metrics.showViews && tweet.stats.views ? (
+              <span
+                className="flex items-center gap-1.5 text-[12.5px] tabular-nums text-faint"
+                title="조회수"
+              >
+                <ViewsIcon className="h-3.5 w-3.5" />
+                {formatCount(tweet.stats.views)}
+              </span>
+            ) : null}
+
             <a
               href={tweet.url}
               target="_blank"

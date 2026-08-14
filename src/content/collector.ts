@@ -51,6 +51,25 @@ function roleFromOperation(operation: string): TimelineKind | null {
   return null
 }
 
+/**
+ * 응답 주소로 알림 컬럼을 가른다.
+ *
+ * 알림과 멘션은 한 화면에서 둘 다 불려 나올 수 있다. 프레임 담당만 믿으면 두
+ * 컬럼에 같은 내용이 들어간다 — 실제로 그렇게 됐다. 주소에는 어느 목록인지가
+ * 경로나 variables 로 적혀 있으므로, 적혀 있을 때는 그쪽이 더 정확하다.
+ */
+function roleFromUrl(url: string): TimelineKind | null {
+  let text = url
+  try {
+    text = decodeURIComponent(url)
+  } catch {
+    // 못 풀면 원본 그대로 본다. 경로 쪽 표시는 인코딩과 무관하다.
+  }
+  if (/notifications\/mentions|timeline_type"?\s*:\s*"?Mentions/i.test(text)) return 'mentions'
+  if (/notifications\/(all|verified)|timeline_type"?\s*:\s*"?All/i.test(text)) return 'notifications'
+  return null
+}
+
 export interface CollectorHandle {
   command: (kind: TimelineKind, command: DeckCommand['command']) => void
   /** 잠시 손을 뗀다. 사용자가 이 문서의 x.com 을 직접 쓰는 동안에는 탭을 건드리면 안 된다. */
@@ -267,8 +286,9 @@ export function startCollector(
     // 직전 시도가 통했다는 뜻이므로 사다리를 맨 아래로 되돌린다.
     escalation = 0
 
-    // operation 이름으로 귀속을 정한다. 모르는 operation 이면 지금 보고 있는 탭으로 본다.
-    const role = roleFromOperation(event.data.operation) ?? target()
+    // operation 이름 → 주소 → 지금 보고 있는 탭 순으로 귀속을 정한다.
+    const role =
+      roleFromOperation(event.data.operation) ?? roleFromUrl(event.data.url) ?? target()
     emit({
       channel: CHANNEL,
       type: 'timeline',

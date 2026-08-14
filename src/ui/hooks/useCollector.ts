@@ -11,6 +11,7 @@ import { CHANNEL, isFrameMessage, type DeckCommand, type FrameMessage } from '@c
 import { parseTimelinePayload } from '@core/parser'
 import type { Settings } from '@core/settings'
 import {
+  isNotification,
   isNotificationKind,
   TIMELINE_KINDS,
   type CollectorStatus,
@@ -187,7 +188,12 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
 
     // timeline: 파싱 → 저장 → 새로 들어온 것만 화면에 반영
     const capturedAt = Date.now()
-    const { items, degraded } = parseTimelinePayload(message.body, kind, capturedAt)
+    const parsed = parseTimelinePayload(message.body, kind, capturedAt)
+    const { degraded } = parsed
+    // 멘션 컬럼은 게시물만 담는다. 알림 목록 응답이 이 컬럼으로 흘러와도 두 컬럼이
+    // 똑같아지지 않게 막는 두 번째 잠금이다.
+    const items =
+      kind === 'mentions' ? parsed.items.filter((item) => !isNotification(item)) : parsed.items
     // 건진 게 하나도 없는 응답은 파싱 상태의 근거가 못 된다 — 판정을 그대로 유지한다.
     if (items.length === 0) {
       if (columnsRef.current[kind].refreshing) settleRefresh(kind, '새 글 없음')
