@@ -54,7 +54,9 @@ export function TopBar({
   const total = settings.columns.reduce((sum, kind) => sum + columns[kind].tweets.length, 0)
 
   return (
-    <header className="z-30 flex h-14 shrink-0 items-center gap-3 border-b border-line bg-canvas/85 px-3 backdrop-blur-xl sm:px-4">
+    // 아래 선은 두지 않는다. 컬럼 상자가 배경과 이미 갈려 있어 한 겹 더 그으면
+    // 화면 위쪽만 무거워진다.
+    <header className="z-30 flex h-14 shrink-0 items-center gap-3 bg-canvas/85 px-3 backdrop-blur-xl sm:px-4">
       <div className="flex items-center gap-2">
         <span className="grid h-7 w-7 place-items-center rounded-lg bg-text text-canvas">
           <XLogoIcon className="h-4 w-4" />
