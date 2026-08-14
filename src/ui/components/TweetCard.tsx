@@ -148,15 +148,26 @@ function QuotedTweet({
 }
 
 /**
- * 링크 미리보기. 인용글과 같은 이유로 배경을 깔아 본문과 구분한다.
+ * 링크 카드를 좌우로 눕히는 크기별 치수.
  *
- * 크기를 '작게' 로 두면 사진만 납작해지는 게 아니라 배치 자체가 바뀐다 —
- * 섬네일을 왼쪽으로 돌리고 제목을 그 옆에 붙여 카드 한 장의 높이를 확 줄인다.
- * 사진 높이만 깎으면 제목·설명·여백이 그대로 남아 실제로는 별로 짧아지지 않는다.
+ * 사진 높이만 깎으면 제목·설명·여백이 그대로 남아 카드가 실제로는 별로 짧아지지 않는다.
+ * 그래서 아래 두 단계는 배치 자체를 바꿔 섬네일을 왼쪽으로 돌린다.
+ * 여기 없는 단계(크게·원본)는 사진을 위에 크게 얹는 원래 배치를 쓴다.
  */
+const CARD_SIDE_LAYOUT: Partial<
+  Record<MediaSize, { image: string; minHeight: string; title: string; description: boolean }>
+> = {
+  // 제목 한 줄만 곁들인 목록형. 한 화면에 들어오는 글 수를 최대로 늘린다.
+  small: { image: 'w-[92px]', minHeight: 'min-h-[62px]', title: 'text-[13.5px]', description: false },
+  // 사진은 3분의 1만 쓰고 나머지는 기사 설명에 내준다.
+  medium: { image: 'w-1/3', minHeight: 'min-h-[116px]', title: 'text-[14px]', description: true },
+}
+
+/** 링크 미리보기. 인용글과 같은 이유로 배경을 깔아 본문과 구분한다. */
 function LinkCard({ card, mediaSize }: { card: NonNullable<Tweet['card']>; mediaSize: MediaSize }) {
   const Wrapper = card.url ? 'a' : 'div'
   const maxHeight = MEDIA_MAX_HEIGHT[mediaSize]
+  const side = CARD_SIDE_LAYOUT[mediaSize]
   const linkProps = card.url
     ? { href: card.url, target: '_blank', rel: 'noreferrer noopener' as const }
     : {}
@@ -164,12 +175,12 @@ function LinkCard({ card, mediaSize }: { card: NonNullable<Tweet['card']>; media
     card.url ? 'hover:border-accent/40' : ''
   }`
 
-  if (mediaSize === 'small') {
+  if (side) {
     return (
-      <Wrapper {...linkProps} className={`${shell} flex min-h-[62px] items-stretch`}>
+      <Wrapper {...linkProps} className={`${shell} flex items-stretch ${side.minHeight}`}>
         {card.imageUrl && (
           // 글 높이에 맞춰 늘어나야 하므로 칸을 먼저 잡고 그 안을 사진으로 채운다.
-          <div className="relative w-[92px] shrink-0 self-stretch overflow-hidden bg-surface-3">
+          <div className={`relative shrink-0 self-stretch overflow-hidden bg-surface-3 ${side.image}`}>
             <img
               src={card.imageUrl}
               alt=""
@@ -179,11 +190,14 @@ function LinkCard({ card, mediaSize }: { card: NonNullable<Tweet['card']>; media
             />
           </div>
         )}
-        <div className="min-w-0 flex-1 px-3 py-2">
+        <div className="flex min-w-0 flex-1 flex-col justify-center px-3 py-2">
           {card.domain && <p className="truncate text-[12px] text-faint">{card.domain}</p>}
-          <p className="mt-0.5 line-clamp-2 text-[13.5px] font-medium leading-snug text-text">
+          <p className={`mt-0.5 line-clamp-2 font-medium leading-snug text-text ${side.title}`}>
             {card.title}
           </p>
+          {side.description && card.description && (
+            <p className="mt-1 line-clamp-3 text-[13px] leading-snug text-muted">{card.description}</p>
+          )}
         </div>
       </Wrapper>
     )
