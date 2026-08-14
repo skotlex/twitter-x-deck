@@ -1,5 +1,5 @@
-import { useCallback, useRef } from 'react'
-import { ROLE_PARAM } from '@core/messages'
+import { useCallback, useRef, useState } from 'react'
+import { NOCACHE_PARAM, ROLE_PARAM } from '@core/messages'
 import { FRAME_NAME_PREFIX } from '@core/role'
 import { TIMELINE_LABEL, TIMELINE_PATH, type TimelineKind } from '@core/types'
 import { describeFrameBlock, refreshRuleReport } from '../../content/frameBlock'
@@ -10,6 +10,10 @@ import { describeFrameBlock, refreshRuleReport } from '../../content/frameBlock'
  * 부모가 x.com 이라 `frame-ancestors 'self'` 를 그대로 만족하고 쿠키도 same-site 로 실린다.
  * 다만 `X-Frame-Options: DENY` 는 동일 출처까지 막으므로 그 헤더는 확장이 걷어낸다
  * (`rules.json`, sub_frame 요청에 한해서만).
+ *
+ * 주소에는 일회용 값을 붙인다. 늘 같은 주소면 캐시에 남은 응답이 그대로 쓰이는데,
+ * 그 응답에는 걷어내야 할 헤더가 아직 붙어 있어 프레임이 막힌다 — 요청이 나가지
+ * 않으니 규칙이 걸릴 자리도 없다.
  *
  * 평소에는 `opacity: 0` 으로 감춘다. `display:none` 이나 화면 밖 배치는 렌더링이
  * 멈추거나 스로틀링돼서 타임라인이 갱신되지 않는다. 투명하게만 두면 문서는 정상적으로
@@ -26,6 +30,8 @@ export interface CollectorFrameProps {
 
 export function CollectorFrame({ kind, register, onReport }: CollectorFrameProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
+  // 렌더마다 바뀌면 프레임이 계속 다시 뜬다. 이 프레임이 사는 동안 한 값으로 붙든다.
+  const [nonce] = useState(() => Date.now().toString(36))
 
   const ref = useCallback(
     (element: HTMLIFrameElement | null) => {
@@ -59,7 +65,7 @@ export function CollectorFrame({ kind, register, onReport }: CollectorFrameProps
       ref={ref}
       title={`${TIMELINE_LABEL[kind]} 수집기`}
       name={`${FRAME_NAME_PREFIX}${kind}`}
-      src={`https://x.com${TIMELINE_PATH[kind]}?${ROLE_PARAM}=${kind}`}
+      src={`https://x.com${TIMELINE_PATH[kind]}?${ROLE_PARAM}=${kind}&${NOCACHE_PARAM}=${nonce}`}
       onLoad={handleLoad}
       aria-hidden="true"
       className="pointer-events-none fixed left-0 top-0 -z-10 h-screen w-[560px] border-0 opacity-0"

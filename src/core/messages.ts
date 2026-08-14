@@ -9,6 +9,16 @@ export const ROLE_PARAM = 'xdeck_role'
 /** 이 탭에 덱 UI 를 띄우라는 표시. 확장 아이콘으로 열린 탭에만 붙는다. */
 export const DECK_PARAM = 'xdeck'
 
+/**
+ * 수집 프레임 주소에 붙이는 일회용 값.
+ *
+ * 늘 같은 주소로 프레임을 띄우면 브라우저가 캐시에 남은 응답을 그대로 쓴다.
+ * 그러면 요청이 네트워크로 나가지 않아 헤더 제거 규칙이 낄 자리가 없고,
+ * 캐시된 응답에 남아 있는 `X-Frame-Options` 가 그대로 프레임을 막는다.
+ * 값이 매번 달라지면 캐시를 비켜가 규칙이 걸린 응답을 받는다.
+ */
+export const NOCACHE_PARAM = 'xdeck_t'
+
 /** 덱 → 배경 워커. 헤더 제거 규칙이 살아 있는지 물어본다 (진단용). */
 export const RULE_REPORT = 'xdeck:rule-report'
 
