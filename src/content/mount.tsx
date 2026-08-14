@@ -74,10 +74,10 @@ function mount(): void {
 
   // 최상위 문서가 담당하는 컬럼은 이 자리에서 직접 수집한다.
   // 결과를 window 로 되던져 자식 프레임과 똑같은 경로로 덱에 도달하게 한다.
-  const handle = startCollector(hostKind, (message) => {
+  const handle = startCollector([hostKind], (message) => {
     window.postMessage(message, window.location.origin)
   })
-  setHostCollector(hostKind, handle)
+  setHostCollector([hostKind], handle)
 
   createRoot(mountPoint).render(
     <App

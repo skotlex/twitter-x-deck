@@ -4,8 +4,17 @@
   "version": "0.0.1",
   "description": "x.com 추천·팔로잉 타임라인을 덱 형태로 실시간 스트리밍한다.",
   "minimum_chrome_version": "120",
-  "permissions": ["storage", "unlimitedStorage", "tabs"],
+  "permissions": ["storage", "unlimitedStorage", "tabs", "declarativeNetRequest"],
   "host_permissions": ["https://x.com/*"],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "embed",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
   "background": {
     "service_worker": "background.js"
   },

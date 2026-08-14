@@ -13,11 +13,11 @@ const role = readFrameRole()
 
 if (role && window.parent !== window.self) {
   const origin = window.location.origin
-  const handle = startCollector(role, (message) => {
+  const handle = startCollector([role], (message) => {
     window.parent.postMessage(message, origin)
   })
 
   window.addEventListener('message', (event: MessageEvent) => {
-    if (event.origin === origin && isDeckCommand(event.data)) handle.command(event.data.command)
+    if (event.origin === origin && isDeckCommand(event.data)) handle.command(role, event.data.command)
   })
 }

@@ -8,15 +8,28 @@ import type { CollectorHandle } from '../content/collector'
 import type { DeckCommand } from '@core/messages'
 import type { TimelineKind } from '@core/types'
 
-let registered: { kind: TimelineKind; handle: CollectorHandle } | null = null
+let handle: CollectorHandle | null = null
+let owned: TimelineKind[] = []
 
-export function setHostCollector(kind: TimelineKind, handle: CollectorHandle): void {
-  registered = { kind, handle }
+export function setHostCollector(kinds: TimelineKind[], next: CollectorHandle): void {
+  handle = next
+  owned = [...kinds]
 }
 
 /** 해당 컬럼이 최상위 문서 담당이면 명령을 전달하고 true 를 준다. */
 export function commandHostCollector(kind: TimelineKind, command: DeckCommand['command']): boolean {
-  if (registered?.kind !== kind) return false
-  registered.handle.command(command)
+  if (!handle || !owned.includes(kind)) return false
+  handle.command(kind, command)
   return true
+}
+
+/** 최상위 문서가 맡을 컬럼을 다시 정한다. 프레임이 죽었을 때 교대 수집으로 넘기는 통로. */
+export function setHostKinds(kinds: TimelineKind[]): void {
+  if (!handle) return
+  owned = [...kinds]
+  handle.setKinds(kinds)
+}
+
+export function hostOwns(kind: TimelineKind): boolean {
+  return owned.includes(kind)
 }

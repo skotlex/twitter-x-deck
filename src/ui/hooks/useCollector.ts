@@ -11,7 +11,7 @@ import { CHANNEL, isFrameMessage, type DeckCommand, type FrameMessage } from '@c
 import { parseTimelinePayload } from '@core/parser'
 import type { Settings } from '@core/settings'
 import { TIMELINE_KINDS, type CollectorStatus, type TimelineKind } from '@core/types'
-import { commandHostCollector } from '../hostCollector'
+import { commandHostCollector, hostOwns, setHostKinds } from '../hostCollector'
 
 /** 한 컬럼이 DOM 에 유지하는 최대 카드 수. 넘으면 오래된 쪽을 잘라낸다. */
 const RENDER_CAP = 400
@@ -62,7 +62,11 @@ export interface Collector {
   columns: ColumnMap
   /** 로그인 화면을 띄워야 하는 컬럼. 없으면 null. */
   loginNeededFor: TimelineKind | null
+  /** 프레임을 못 띄워 최상위 문서가 탭을 교대로 방문하는 중인지. */
+  rotating: boolean
   registerFrame: (kind: TimelineKind, frame: HTMLIFrameElement | null) => void
+  /** 프레임이 뜬 뒤 확인한 진단 문구를 전달한다. */
+  reportFrame: (kind: TimelineKind, message: string) => void
   /** 대기 중인 새 글을 목록에 반영한다. */
   flush: (kind: TimelineKind) => void
   /** 스크롤 위치에 따라 새 글을 즉시 반영할지 대기시킬지 알린다. */
@@ -75,6 +79,7 @@ export interface Collector {
 
 export function useCollector(settings: Settings, hostKind: TimelineKind): Collector {
   const [columns, setColumns] = useState<ColumnMap>(initialColumns)
+  const [rotating, setRotating] = useState(false)
 
   const frames = useRef(new Map<TimelineKind, HTMLIFrameElement>())
   const holds = useRef<Record<TimelineKind, boolean>>({ foryou: false, following: false })
@@ -88,6 +93,13 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
   const registerFrame = useCallback((kind: TimelineKind, frame: HTMLIFrameElement | null) => {
     if (frame) frames.current.set(kind, frame)
     else frames.current.delete(kind)
+  }, [])
+
+  const reportFrame = useCallback((kind: TimelineKind, message: string) => {
+    setColumns((prev) => ({
+      ...prev,
+      [kind]: { ...prev[kind], status: { ...prev[kind].status, message } },
+    }))
   }, [])
 
   const sendCommand = useCallback((kind: TimelineKind, command: DeckCommand['command']) => {
@@ -183,21 +195,31 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     }
   }, [])
 
-  // 자식 프레임이 끝내 말을 걸지 않으면 조용히 두지 않고 'blocked' 로 올린다.
+  /**
+   * 자식 프레임이 끝내 말을 걸지 않으면 교대 수집으로 넘어간다.
+   *
+   * 최상위 문서가 두 탭을 번갈아 방문하면 프레임 없이도 두 컬럼을 채울 수 있다.
+   * 응답 귀속은 GraphQL operation 이름으로 하므로 어느 탭을 보고 있었는지와 무관하게 정확하다.
+   * 대가는 지연 — 각 컬럼이 교대 주기만큼 늦게 갱신된다.
+   */
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      const stalled = TIMELINE_KINDS.filter(
+        (kind) => !hostOwns(kind) && columnsRef.current[kind].status.state === 'idle',
+      )
+      if (stalled.length === 0) return
+
+      setRotating(true)
+      setHostKinds([...settingsRef.current.columns])
       setColumns((prev) => {
-        let changed = false
         const next = { ...prev }
-        for (const kind of TIMELINE_KINDS) {
-          if (kind === hostKind || prev[kind].status.state !== 'idle') continue
+        for (const kind of stalled) {
           next[kind] = {
             ...prev[kind],
-            status: { ...prev[kind].status, state: 'blocked', message: '수집 프레임이 뜨지 못했다.' },
+            status: { ...prev[kind].status, state: 'loading', message: '교대 수집으로 전환' },
           }
-          changed = true
         }
-        return changed ? next : prev
+        return next
       })
     }, FRAME_TIMEOUT_MS)
     return () => window.clearTimeout(timer)
@@ -264,5 +286,5 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     [columns],
   )
 
-  return { columns, loginNeededFor, registerFrame, flush, setHold, refresh, loadMore }
+  return { columns, loginNeededFor, rotating, registerFrame, reportFrame, flush, setHold, refresh, loadMore }
 }

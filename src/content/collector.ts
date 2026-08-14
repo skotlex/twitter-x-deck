@@ -1,17 +1,18 @@
 /**
- * 한 x.com 문서에서 타임라인 한 종류를 계속 길어 올리는 수집기.
+ * 한 x.com 문서에서 타임라인을 계속 길어 올리는 수집기.
  *
- * 하는 일 세 가지.
+ * 하는 일 네 가지.
  *   1) MAIN world 인터셉터가 잡은 응답을 밖으로 넘긴다.
  *   2) 담당 탭(추천/팔로잉)을 선택된 상태로 유지한다.
  *   3) '새 게시물 보기' 알림을 감지해 눌러서 다음 타임라인을 끌어온다.
+ *   4) 담당 컬럼이 둘 이상이면 탭을 교대로 방문한다 (프레임을 못 띄울 때의 경로).
  *
  * 전송 수단은 모른다 — 최상위 문서에서는 덱이 직접 받고, 자식 프레임에서는
  * 부모로 postMessage 한다. 호출하는 쪽이 `emit` 으로 정한다.
  */
 import { CHANNEL, isCapturedPayload, type DeckCommand, type FrameMessage } from '@core/messages'
 import { DEFAULT_SETTINGS, loadSettings, watchSettings, type Settings } from '@core/settings'
-import type { CollectorState, TimelineKind } from '@core/types'
+import { TIMELINE_OPERATION, type CollectorState, type TimelineKind } from '@core/types'
 import {
   findHomeNavLink,
   findRefreshPill,
@@ -29,39 +30,63 @@ const TICK_MS = 1_000
 const PILL_COOLDOWN_MS = 3_000
 /** 탭 선택이 어긋났을 때 다시 누르기까지의 최소 간격. */
 const TAB_ASSERT_COOLDOWN_MS = 4_000
+/** 교대 수집에서 한 탭에 머무는 시간. */
+const ROTATE_MS = 30_000
+
+/**
+ * 응답이 어느 타임라인 것인지는 GraphQL operation 이름이 알려준다.
+ * 지금 어느 탭이 열려 있는지 추측하는 것보다 정확하다.
+ */
+function roleFromOperation(operation: string): TimelineKind | null {
+  for (const kind of Object.keys(TIMELINE_OPERATION) as TimelineKind[]) {
+    if (TIMELINE_OPERATION[kind] === operation) return kind
+  }
+  return null
+}
 
 export interface CollectorHandle {
-  command: (command: DeckCommand['command']) => void
+  command: (kind: TimelineKind, command: DeckCommand['command']) => void
+  /** 담당 컬럼 목록을 바꾼다. 둘 이상이면 교대 수집으로 넘어간다. */
+  setKinds: (kinds: TimelineKind[]) => void
   dispose: () => void
 }
 
 export function startCollector(
-  kind: TimelineKind,
+  initialKinds: TimelineKind[],
   emit: (message: FrameMessage) => void,
 ): CollectorHandle {
+  let kinds = [...initialKinds]
+  let activeIndex = 0
   let settings: Settings = DEFAULT_SETTINGS
-  let state: CollectorState = 'loading'
-  let pending: number | null = null
+  const states = new Map<TimelineKind, CollectorState>()
+  const pendings = new Map<TimelineKind, number | null>()
   let lastCaptureAt = 0
   let lastPillClickAt = 0
   let lastTabAssertAt = 0
+  let lastRotateAt = Date.now()
   let lastForcedRefreshAt = Date.now()
   /** 강제 갱신 사다리의 현재 칸. 새 응답이 들어오면 0 으로 되돌린다. */
   let escalation = 0
 
+  /** 지금 선택돼 있어야 하는 타임라인. */
+  const target = (): TimelineKind => kinds[activeIndex % kinds.length] ?? 'foryou'
+
   function setState(next: CollectorState, message?: string): void {
-    if (next === state) return
-    state = next
-    emit(
-      message
-        ? { channel: CHANNEL, type: 'status', role: kind, state: next, message }
-        : { channel: CHANNEL, type: 'status', role: kind, state: next },
-    )
+    // 담당하는 모든 컬럼의 상태를 함께 올린다 — 교대 수집이면 둘 다 같은 처지다.
+    for (const kind of kinds) {
+      if (states.get(kind) === next) continue
+      states.set(kind, next)
+      emit(
+        message
+          ? { channel: CHANNEL, type: 'status', role: kind, state: next, message }
+          : { channel: CHANNEL, type: 'status', role: kind, state: next },
+      )
+    }
   }
 
-  function setPending(next: number | null): void {
-    if (next === pending) return
-    pending = next
+  function setPending(kind: TimelineKind, next: number | null): void {
+    if (pendings.get(kind) === next) return
+    pendings.set(kind, next)
     emit({ channel: CHANNEL, type: 'pending', role: kind, count: next })
   }
 
@@ -90,7 +115,7 @@ export function startCollector(
         break
       }
       case 1: {
-        const tab = findTab(kind)
+        const tab = findTab(target())
         if (tab) simulateClick(tab)
         break
       }
@@ -105,16 +130,28 @@ export function startCollector(
     escalation = Math.min(escalation + 1, 3)
   }
 
-  function command(next: DeckCommand['command']): void {
+  function command(kind: TimelineKind, next: DeckCommand['command']): void {
     if (next === 'ping') {
-      emit({ channel: CHANNEL, type: 'status', role: kind, state })
+      emit({ channel: CHANNEL, type: 'status', role: kind, state: states.get(kind) ?? 'idle' })
       return
     }
+
+    // 교대 수집 중 다른 컬럼을 새로 받으라는 요청이면 그 탭으로 먼저 옮긴다.
+    const index = kinds.indexOf(kind)
+    if (index >= 0 && index !== activeIndex) {
+      activeIndex = index
+      lastRotateAt = Date.now()
+      const tab = findTab(kind)
+      if (tab) simulateClick(tab)
+      if (next === 'select-tab') return
+    }
+
     if (next === 'select-tab') {
       const tab = findTab(kind)
       if (tab) simulateClick(tab)
       return
     }
+
     forceRefresh()
   }
 
@@ -127,33 +164,46 @@ export function startCollector(
     // 직전 시도가 통했다는 뜻이므로 사다리를 맨 아래로 되돌린다.
     escalation = 0
 
+    // operation 이름으로 귀속을 정한다. 모르는 operation 이면 지금 보고 있는 탭으로 본다.
+    const role = roleFromOperation(event.data.operation) ?? target()
     emit({
       channel: CHANNEL,
       type: 'timeline',
-      role: kind,
+      role,
       operation: event.data.operation,
       body: event.data.body,
     })
     setState('streaming')
-    setPending(null)
+    setPending(role, null)
   }
 
   function tick(): void {
     const now = Date.now()
 
     if (isLoggedOut()) {
-      setPending(null)
+      for (const kind of kinds) setPending(kind, null)
       setState('login-required')
       return
     }
 
-    const tab = findTab(kind)
+    // 담당이 둘 이상이면 주기적으로 다음 탭으로 넘어간다.
+    if (kinds.length > 1 && now - lastRotateAt > ROTATE_MS) {
+      activeIndex = (activeIndex + 1) % kinds.length
+      lastRotateAt = now
+      lastForcedRefreshAt = now
+      const nextTab = findTab(target())
+      if (nextTab) simulateClick(nextTab)
+      return
+    }
+
+    const wanted = target()
+    const tab = findTab(wanted)
     if (!tab) {
       setState('loading')
       return
     }
 
-    // 두 문서가 같은 오리진을 공유해 탭 선택이 서로 밀릴 수 있다. 매 tick 확인해 되돌린다.
+    // 같은 오리진의 다른 문서가 탭 선택을 밀어버릴 수 있다. 매 tick 확인해 되돌린다.
     if (!isTabSelected(tab)) {
       if (now - lastTabAssertAt > TAB_ASSERT_COOLDOWN_MS) {
         simulateClick(tab)
@@ -172,7 +222,7 @@ export function startCollector(
 
     const pill = findRefreshPill()
     if (pill) {
-      setPending(pill.count)
+      setPending(wanted, pill.count)
       if (settings.autoAdvance && now - lastPillClickAt > PILL_COOLDOWN_MS) {
         simulateClick(pill.element)
         lastPillClickAt = now
@@ -181,7 +231,7 @@ export function startCollector(
       return
     }
 
-    setPending(null)
+    setPending(wanted, null)
 
     // 알림이 한동안 안 뜨면 사다리를 한 칸 올라 직접 새 타임라인을 받아온다.
     const idleFor = now - Math.max(lastCaptureAt, lastForcedRefreshAt)
@@ -198,11 +248,20 @@ export function startCollector(
     settings = next
   })
 
-  emit({ channel: CHANNEL, type: 'status', role: kind, state: 'loading' })
+  setState('loading')
   const timer = window.setInterval(tick, TICK_MS)
 
   return {
     command,
+    setKinds(next) {
+      if (next.length === 0) return
+      kinds = [...next]
+      activeIndex = 0
+      lastRotateAt = Date.now()
+      // 새로 맡은 컬럼에도 현재 상태를 알려야 하므로 캐시를 비운다.
+      states.clear()
+      setState(lastCaptureAt === 0 ? 'loading' : 'streaming')
+    },
     dispose() {
       window.clearInterval(timer)
       window.removeEventListener('message', onWindowMessage)

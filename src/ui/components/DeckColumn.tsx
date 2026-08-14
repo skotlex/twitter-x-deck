@@ -36,6 +36,8 @@ export interface DeckColumnProps {
   onHold: (kind: TimelineKind, hold: boolean) => void
   onRefresh: (kind: TimelineKind) => void
   onLoadMore: (kind: TimelineKind) => void
+  /** 최상위 문서가 탭을 교대로 방문하며 수집하는 중인지. */
+  rotating: boolean
 }
 
 export function DeckColumn({
@@ -46,6 +48,7 @@ export function DeckColumn({
   onHold,
   onRefresh,
   onLoadMore,
+  rotating,
 }: DeckColumnProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [atTop, setAtTop] = useState(true)
@@ -99,6 +102,15 @@ export function DeckColumn({
           </span>
         )}
 
+        {rotating && (
+          <span
+            className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted"
+            title="숨은 프레임을 띄우지 못해 한 문서가 두 탭을 번갈아 방문하며 수집한다. 갱신이 그만큼 늦다."
+          >
+            교대 수집
+          </span>
+        )}
+
         {column.degraded && (
           <span
             className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-warn"
@@ -120,10 +132,9 @@ export function DeckColumn({
 
       {state === 'blocked' && (
         <div className="border-b border-line bg-surface-2 px-4 py-3">
-          <p className="text-[13px] font-medium text-text">수집 프레임이 뜨지 못했다</p>
+          <p className="text-[13px] font-medium text-text">수집기를 띄우지 못했다</p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-            {TIMELINE_LABEL[kind]} 을 담당하는 숨은 x.com 프레임이 응답하지 않는다. 탭을
-            새로고침하면 대개 복구된다.
+            {column.status.message ?? `${TIMELINE_LABEL[kind]} 수집기가 응답하지 않는다.`}
           </p>
           <button
             type="button"

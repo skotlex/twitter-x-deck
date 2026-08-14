@@ -57,7 +57,8 @@ export function App({ hostKind, onPassthrough }: AppProps) {
   )
 
   const visibleColumns = isDeck ? settings.columns : settings.columns.filter((kind) => kind === activeColumn)
-  const collectorKinds = settings.columns.filter((kind) => kind !== hostKind)
+  // 교대 수집으로 넘어갔으면 프레임은 더 이상 쓸모가 없다.
+  const collectorKinds = collector.rotating ? [] : settings.columns.filter((kind) => kind !== hostKind)
 
   return (
     <div
@@ -95,6 +96,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
                 onHold={collector.setHold}
                 onRefresh={collector.refresh}
                 onLoadMore={handleLoadMore}
+                rotating={collector.rotating}
               />
             ))}
           </main>
@@ -110,7 +112,12 @@ export function App({ hostKind, onPassthrough }: AppProps) {
 
       {/* 통과 모드에서도 수집은 계속 돌아야 하므로 프레임은 항상 남겨둔다. */}
       {collectorKinds.map((kind) => (
-        <CollectorFrame key={kind} kind={kind} register={collector.registerFrame} />
+        <CollectorFrame
+          key={kind}
+          kind={kind}
+          register={collector.registerFrame}
+          onReport={collector.reportFrame}
+        />
       ))}
     </div>
   )
