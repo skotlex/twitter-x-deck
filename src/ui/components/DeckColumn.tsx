@@ -36,7 +36,6 @@ export interface DeckColumnProps {
   onHold: (kind: TimelineKind, hold: boolean) => void
   onRefresh: (kind: TimelineKind) => void
   onLoadMore: (kind: TimelineKind) => void
-  onSwitchToTabMode: (kind: TimelineKind) => void
 }
 
 export function DeckColumn({
@@ -47,7 +46,6 @@ export function DeckColumn({
   onHold,
   onRefresh,
   onLoadMore,
-  onSwitchToTabMode,
 }: DeckColumnProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [atTop, setAtTop] = useState(true)
@@ -122,17 +120,17 @@ export function DeckColumn({
 
       {state === 'blocked' && (
         <div className="border-b border-line bg-surface-2 px-4 py-3">
-          <p className="text-[13px] font-medium text-text">x.com 임베드가 차단됐다</p>
+          <p className="text-[13px] font-medium text-text">수집 프레임이 뜨지 못했다</p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-            덱 안에 숨겨 띄우는 방식이 막혔다. 이 페이지의 개발자 도구 콘솔에 남은 오류가 원인을
-            말해준다. 당장 쓰려면 고정 탭으로 바꾼다 — x.com 탭이 하나 생긴다.
+            {TIMELINE_LABEL[kind]} 을 담당하는 숨은 x.com 프레임이 응답하지 않는다. 탭을
+            새로고침하면 대개 복구된다.
           </p>
           <button
             type="button"
-            onClick={() => onSwitchToTabMode(kind)}
+            onClick={() => window.location.reload()}
             className="mt-2 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-accent-strong"
           >
-            고정 탭으로 전환
+            탭 새로고침
           </button>
         </div>
       )}

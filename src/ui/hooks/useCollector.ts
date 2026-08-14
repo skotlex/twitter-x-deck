@@ -1,8 +1,8 @@
 /**
  * 수집 파이프라인의 덱 쪽 절반.
  *
- * 프레임(또는 폴백 탭)에서 올라온 메시지를 받아 파싱 → 저장 → 화면 반영까지 잇고,
- * 컬럼별 상태와 조작 함수를 컴포넌트에 넘긴다.
+ * 최상위 문서가 담당하는 컬럼은 같은 문서의 수집기가, 나머지는 같은 오리진의 숨은
+ * 프레임이 채운다. 양쪽 모두 `window` 의 message 로 도착하므로 받는 경로는 하나다.
  * x.com DOM 을 아는 코드는 여기에 한 줄도 없다 — 전부 content script 쪽에 있다.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -11,18 +11,16 @@ import { CHANNEL, isFrameMessage, type DeckCommand, type FrameMessage } from '@c
 import { parseTimelinePayload } from '@core/parser'
 import type { Settings } from '@core/settings'
 import { TIMELINE_KINDS, type CollectorStatus, type TimelineKind } from '@core/types'
+import { commandHostCollector } from '../hostCollector'
 
-const X_ORIGIN = 'https://x.com'
 /** 한 컬럼이 DOM 에 유지하는 최대 카드 수. 넘으면 오래된 쪽을 잘라낸다. */
 const RENDER_CAP = 400
 /** 스크롤로 과거를 더 불러올 때의 한 페이지 크기. */
 const PAGE_SIZE = 40
-/** 프레임이 이 시간 안에 응답이 없으면 임베드가 막힌 것으로 보고 탭 모드로 넘어간다. */
-const FRAME_TIMEOUT_MS = 20_000
+/** 프레임이 이 시간 안에 응답이 없으면 뜨지 못한 것으로 본다. */
+const FRAME_TIMEOUT_MS = 25_000
 /** 보관 정책 적용 주기. */
 const PRUNE_INTERVAL_MS = 10 * 60_000
-
-export type CollectorMode = 'frame' | 'tab'
 
 export interface ColumnState {
   status: CollectorStatus
@@ -62,7 +60,6 @@ function prepend(incoming: StoredTweet[], current: StoredTweet[]): StoredTweet[]
 
 export interface Collector {
   columns: ColumnMap
-  mode: Record<TimelineKind, CollectorMode>
   /** 로그인 화면을 띄워야 하는 컬럼. 없으면 null. */
   loginNeededFor: TimelineKind | null
   registerFrame: (kind: TimelineKind, frame: HTMLIFrameElement | null) => void
@@ -72,18 +69,12 @@ export interface Collector {
   setHold: (kind: TimelineKind, hold: boolean) => void
   /** 해당 컬럼을 강제로 새로 받아온다. */
   refresh: (kind: TimelineKind) => void
-  /** 임베드가 막혔을 때 사용자가 직접 고정 탭 모드로 넘어간다. */
-  switchToTabMode: (kind: TimelineKind) => void
   /** 과거 글을 한 페이지 더 읽어온다. */
   loadMore: (kind: TimelineKind) => Promise<void>
 }
 
-export function useCollector(settings: Settings): Collector {
+export function useCollector(settings: Settings, hostKind: TimelineKind): Collector {
   const [columns, setColumns] = useState<ColumnMap>(initialColumns)
-  const [mode, setMode] = useState<Record<TimelineKind, CollectorMode>>({
-    foryou: 'frame',
-    following: 'frame',
-  })
 
   const frames = useRef(new Map<TimelineKind, HTMLIFrameElement>())
   const holds = useRef<Record<TimelineKind, boolean>>({ foryou: false, following: false })
@@ -100,19 +91,13 @@ export function useCollector(settings: Settings): Collector {
   }, [])
 
   const sendCommand = useCallback((kind: TimelineKind, command: DeckCommand['command']) => {
+    // 같은 문서의 수집기라면 함수를 그대로 부른다.
+    if (commandHostCollector(kind, command)) return
     const message: DeckCommand = { channel: CHANNEL, type: 'command', command }
-    const frame = frames.current.get(kind)
-    if (frame?.contentWindow) {
-      frame.contentWindow.postMessage(message, X_ORIGIN)
-      return
-    }
-    // 폴백 탭 모드에서는 백그라운드가 해당 탭으로 중계한다.
-    void chrome.runtime
-      .sendMessage({ channel: CHANNEL, type: 'background', action: 'relay-command', role: kind, command })
-      .catch(() => {})
+    frames.current.get(kind)?.contentWindow?.postMessage(message, window.location.origin)
   }, [])
 
-  /** 프레임에서 올라온 메시지 하나를 처리한다. */
+  /** 수집기에서 올라온 메시지 하나를 처리한다. */
   const handleMessage = useCallback((message: FrameMessage) => {
     const kind = message.role
 
@@ -168,22 +153,14 @@ export function useCollector(settings: Settings): Collector {
     })
   }, [])
 
-  // 프레임(postMessage) 과 폴백 탭(runtime message) 양쪽에서 같은 형태로 받는다.
+  // 최상위 문서의 수집기와 자식 프레임 모두 같은 오리진에서 같은 형태로 보낸다.
   useEffect(() => {
-    const onWindowMessage = (event: MessageEvent) => {
-      if (event.origin !== X_ORIGIN || !isFrameMessage(event.data)) return
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || !isFrameMessage(event.data)) return
       handleMessage(event.data)
     }
-    const onRuntimeMessage = (message: unknown) => {
-      if (isFrameMessage(message)) handleMessage(message)
-    }
-
-    window.addEventListener('message', onWindowMessage)
-    chrome.runtime.onMessage.addListener(onRuntimeMessage)
-    return () => {
-      window.removeEventListener('message', onWindowMessage)
-      chrome.runtime.onMessage.removeListener(onRuntimeMessage)
-    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
   }, [handleMessage])
 
   // 저장해둔 최근 글을 먼저 그려서 빈 화면을 보여주지 않는다.
@@ -206,26 +183,17 @@ export function useCollector(settings: Settings): Collector {
     }
   }, [])
 
-  /**
-   * 임베드가 막혔다고 판단되면 상태만 'blocked' 로 올린다.
-   * 예전에는 여기서 곧바로 고정 탭을 열었지만, 확장을 켰다는 이유로 탭이 두 개 튀어나오는 건
-   * 사용자가 원한 동작이 아니다. 전환은 컬럼 배너의 버튼으로만 일어난다.
-   */
+  // 자식 프레임이 끝내 말을 걸지 않으면 조용히 두지 않고 'blocked' 로 올린다.
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setColumns((prev) => {
         let changed = false
         const next = { ...prev }
         for (const kind of TIMELINE_KINDS) {
-          // 여태 'idle' 이면 브리지가 한 번도 말을 걸지 않은 것 — 프레임이 뜨지 못했다는 뜻.
-          if (prev[kind].status.state !== 'idle') continue
+          if (kind === hostKind || prev[kind].status.state !== 'idle') continue
           next[kind] = {
             ...prev[kind],
-            status: {
-              ...prev[kind].status,
-              state: 'blocked',
-              message: 'x.com 임베드가 차단됐다.',
-            },
+            status: { ...prev[kind].status, state: 'blocked', message: '수집 프레임이 뜨지 못했다.' },
           }
           changed = true
         }
@@ -233,7 +201,7 @@ export function useCollector(settings: Settings): Collector {
       })
     }, FRAME_TIMEOUT_MS)
     return () => window.clearTimeout(timer)
-  }, [])
+  }, [hostKind])
 
   // 보관 정책 적용.
   useEffect(() => {
@@ -267,17 +235,6 @@ export function useCollector(settings: Settings): Collector {
     [sendCommand],
   )
 
-  const switchToTabMode = useCallback((kind: TimelineKind) => {
-    setMode((prev) => ({ ...prev, [kind]: 'tab' }))
-    setColumns((prev) => ({
-      ...prev,
-      [kind]: { ...prev[kind], status: { ...prev[kind].status, state: 'loading', message: undefined } },
-    }))
-    void chrome.runtime
-      .sendMessage({ channel: CHANNEL, type: 'background', action: 'open-fallback-tab', role: kind })
-      .catch(() => {})
-  }, [])
-
   const loadMore = useCallback(async (kind: TimelineKind) => {
     if (loadingMore.current[kind]) return
     loadingMore.current[kind] = true
@@ -307,5 +264,5 @@ export function useCollector(settings: Settings): Collector {
     [columns],
   )
 
-  return { columns, mode, loginNeededFor, registerFrame, flush, setHold, refresh, switchToTabMode, loadMore }
+  return { columns, loginNeededFor, registerFrame, flush, setHold, refresh, loadMore }
 }

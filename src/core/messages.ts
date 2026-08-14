@@ -6,6 +6,9 @@ export const CHANNEL = 'xdeck/v1'
 /** iframe src 에 붙여 해당 프레임이 어느 컬럼용인지 알려주는 쿼리 파라미터. */
 export const ROLE_PARAM = 'xdeck_role'
 
+/** 이 탭에 덱 UI 를 띄우라는 표시. 확장 아이콘으로 열린 탭에만 붙는다. */
+export const DECK_PARAM = 'xdeck'
+
 /** MAIN world 인터셉터 → ISOLATED world 브리지 (같은 프레임 안). */
 export interface CapturedPayload {
   channel: typeof CHANNEL
@@ -47,13 +50,14 @@ export type DeckCommand =
   | { channel: typeof CHANNEL; type: 'command'; command: 'select-tab' }
   | { channel: typeof CHANNEL; type: 'command'; command: 'ping' }
 
+const FRAME_MESSAGE_TYPES = new Set(['timeline', 'status', 'pending'])
+
 export function isFrameMessage(value: unknown): value is FrameMessage {
   return (
     typeof value === 'object' &&
     value !== null &&
     (value as { channel?: unknown }).channel === CHANNEL &&
-    typeof (value as { type?: unknown }).type === 'string' &&
-    (value as { type: string }).type !== 'command'
+    FRAME_MESSAGE_TYPES.has((value as { type?: string }).type ?? '')
   )
 }
 

@@ -1,10 +1,11 @@
 // 확장 번들 빌드 오케스트레이터.
-//   1) vite   → deck.html(React) + background.js(ESM 서비스 워커)
-//   2) esbuild → interceptor.js / bridge.js (content script 는 ESM 불가 → IIFE 단일 파일)
-//   3) manifest.json, rules.json, 아이콘을 dist 로 복사
+//   1) dist 청소
+//   2) vite    → deck.js (덱 UI. IIFE + CSS 인라인)
+//   3) esbuild → interceptor.js / bridge.js / background.js (CSS·JSX 없는 단일 IIFE)
+//   4) manifest.json 과 아이콘을 dist 로 복사
 //
-// --watch 를 주면 2·3 을 감시 모드로 돌리고 vite 도 watch 빌드로 띄운다.
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
+// --watch 를 주면 감시 모드로 돈다.
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
@@ -15,10 +16,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = resolve(root, 'dist')
 const watch = process.argv.includes('--watch')
 
-/** content script 는 반드시 의존성까지 인라인된 단일 IIFE 여야 한다. */
-const CONTENT_SCRIPTS = [
+const PLAIN_SCRIPTS = [
   { entry: 'src/injected/interceptor.ts', out: 'interceptor.js' },
   { entry: 'src/content/bridge.ts', out: 'bridge.js' },
+  { entry: 'src/background/service-worker.ts', out: 'background.js' },
 ]
 
 async function copyStatic() {
@@ -30,7 +31,6 @@ async function copyStatic() {
   manifest.version = pkg.version
   await writeFile(resolve(dist, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
 
-  await cp(resolve(root, 'rules.json'), resolve(dist, 'rules.json'))
   if (existsSync(resolve(root, 'icons'))) {
     await cp(resolve(root, 'icons'), resolve(dist, 'icons'), { recursive: true })
   }
@@ -46,26 +46,28 @@ const esbuildOptions = ({ entry, out }) => ({
   target: 'chrome120',
   sourcemap: true,
   legalComments: 'none',
-  logLevel: 'info',
+  logLevel: 'warning',
   alias: {
     '@core': resolve(root, 'src/core'),
   },
 })
 
 async function main() {
-  // vite 가 emptyOutDir 로 dist 를 비우므로 반드시 vite 를 먼저 돌린 뒤 나머지를 얹는다.
+  await rm(dist, { recursive: true, force: true })
+  await mkdir(dist, { recursive: true })
+
   if (watch) {
     await viteBuild({ build: { watch: {} } })
-    await copyStatic()
-    const contexts = await Promise.all(CONTENT_SCRIPTS.map((s) => esbuild.context(esbuildOptions(s))))
+    const contexts = await Promise.all(PLAIN_SCRIPTS.map((s) => esbuild.context(esbuildOptions(s))))
     await Promise.all(contexts.map((c) => c.watch()))
+    await copyStatic()
     console.log('\n[x-deck] watch 모드로 실행 중. dist/ 를 chrome://extensions 에 로드해라.')
     return
   }
 
   await viteBuild()
+  await Promise.all(PLAIN_SCRIPTS.map((s) => esbuild.build(esbuildOptions(s))))
   await copyStatic()
-  await Promise.all(CONTENT_SCRIPTS.map((s) => esbuild.build(esbuildOptions(s))))
   console.log('\n[x-deck] 빌드 완료 → dist/')
 }
 

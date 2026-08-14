@@ -3,8 +3,16 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwind from '@tailwindcss/vite'
 
-// 덱 페이지(React) 와 백그라운드 서비스 워커만 담당한다.
-// content script 는 IIFE 단일 파일이어야 하므로 scripts/build.mjs 에서 esbuild 로 따로 만든다.
+/**
+ * 덱 UI 만 담당한다.
+ *
+ * 덱은 x.com 페이지에 얹히는 content script 라서 ESM 이 안 되고 단일 파일이어야 한다.
+ * 그래서 IIFE 라이브러리 모드로 굽고, Tailwind CSS 는 `?inline` 로 받아 그림자 DOM 에
+ * 직접 넣는다 (별도 CSS 파일을 로드할 방법이 없다).
+ *
+ * interceptor / bridge / background 는 CSS·JSX 가 없으므로 esbuild 가 맡는다
+ * (scripts/build.mjs).
+ */
 export default defineConfig({
   plugins: [react(), tailwind()],
   resolve: {
@@ -13,24 +21,21 @@ export default defineConfig({
       '@ui': fileURLToPath(new URL('./src/ui', import.meta.url)),
     },
   },
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('production'),
+  },
   build: {
     outDir: 'dist',
-    emptyOutDir: true,
+    // dist 청소는 scripts/build.mjs 가 먼저 한다. vite 가 지우면 esbuild 산출물이 날아간다.
+    emptyOutDir: false,
     target: 'chrome120',
     sourcemap: true,
-    // MV3 확장 페이지의 CSP 는 인라인 스크립트를 막는다. vite 가 심는 preload 폴리필도 예외가 아니다.
-    modulePreload: { polyfill: false },
-    rollupOptions: {
-      input: {
-        deck: fileURLToPath(new URL('./deck.html', import.meta.url)),
-        background: fileURLToPath(new URL('./src/background/service-worker.ts', import.meta.url)),
-      },
-      output: {
-        // 서비스 워커 경로는 manifest 에 고정돼 있어 해시를 붙이지 않는다.
-        entryFileNames: (chunk) => (chunk.name === 'background' ? 'background.js' : 'assets/[name]-[hash].js'),
-        chunkFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash][extname]',
-      },
+    cssCodeSplit: false,
+    lib: {
+      entry: fileURLToPath(new URL('./src/content/mount.tsx', import.meta.url)),
+      formats: ['iife'],
+      name: 'XDeck',
+      fileName: () => 'deck.js',
     },
   },
 })
