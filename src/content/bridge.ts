@@ -9,7 +9,7 @@
  * 작성창 프레임. 작성창은 수집하지 않고 글이 올라간 순간만 부모에게 알린다.
  */
 import { CHANNEL, isCapturedPayload, isDeckCommand } from '@core/messages'
-import { isComposeFrame, readFrameRole } from '@core/role'
+import { isDeckPanelFrame, readFrameRole } from '@core/role'
 import { CREATE_TWEET_OPERATION, DELETE_TWEET_OPERATION } from '@core/types'
 import { startCollector } from './collector'
 
@@ -25,9 +25,10 @@ if (role && framed) {
   window.addEventListener('message', (event: MessageEvent) => {
     if (event.origin === origin && isDeckCommand(event.data)) handle.command(role, event.data.command)
   })
-} else if (isComposeFrame() && framed) {
-  // 수집은 하지 않는다. 글이 올라갔다는 것과 지워졌다는 것만 위로 넘긴다.
-  // 덱은 전자로 창을 닫고 그 글을 목록에 끼워 넣으며, 후자로 지운 글을 걷어낸다.
+} else if (isDeckPanelFrame() && framed) {
+  // 작성창·상세 창. 수집은 하지 않고 글이 올라갔다는 것과 지워졌다는 것만 위로
+  // 넘긴다. 덱은 전자로 창을 닫고 그 글을 목록에 끼워 넣으며, 후자로 지운 글을
+  // 목록에서 걷어내고 그 글을 보고 있던 창을 닫는다.
   window.addEventListener('message', (event: MessageEvent) => {
     if (event.source !== window || !isCapturedPayload(event.data)) return
     const { operation, body } = event.data

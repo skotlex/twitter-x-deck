@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { isDeletedMessage } from '@core/messages'
+import { parseDeletedId } from '@core/parser'
+import { PAGE_FRAME_NAME } from '@core/role'
 import { HIDE_X_CHROME_CSS } from '../../content/selectors'
 import { CloseIcon } from './icons'
 
@@ -38,6 +41,23 @@ export function XPageModal({ url, handle, label = '님의 게시물', onClose }:
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [onClose])
+
+  /**
+   * 보고 있던 글이 지워지면 스스로 닫는다.
+   *
+   * x.com 은 글을 지운 뒤 그 화면을 프로필로 갈아 끼운다. 그대로 두면 게시물을
+   * 보려고 연 창에 엉뚱한 화면이 남는다. 지운 글이 이 창이 보고 있던 그 글일 때만
+   * 닫는다 — 프로필을 띄운 창에서 남의 글을 지웠다고 닫힐 이유는 없다.
+   */
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || !isDeletedMessage(event.data)) return
+      const id = parseDeletedId(event.data.body)
+      if (id && url.includes(id)) onClose()
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [onClose, url])
 
   // 같은 오리진이라 프레임 문서에 스타일을 직접 얹을 수 있다.
   const handleLoad = useCallback(() => {
@@ -118,6 +138,7 @@ export function XPageModal({ url, handle, label = '님의 게시물', onClose }:
         ) : (
           <iframe
             ref={frameRef}
+            name={PAGE_FRAME_NAME}
             src={url}
             title={`@${handle} ${label}`}
             onLoad={handleLoad}

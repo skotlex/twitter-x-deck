@@ -6,7 +6,7 @@
  * 페이지 컨텍스트라 chrome API 를 못 쓰므로 결과는 postMessage 로 브리지에 넘긴다.
  */
 import { CHANNEL, type CapturedPayload } from '@core/messages'
-import { isComposeFrame, readFrameRole } from '@core/role'
+import { isDeckPanelFrame, readFrameRole } from '@core/role'
 import {
   CREATE_TWEET_OPERATION,
   DELETE_TWEET_OPERATION,
@@ -157,16 +157,17 @@ function main(): void {
   if (globals[GUARD]) return
 
   const role = readFrameRole()
-  const composing = isComposeFrame()
+  const panel = isDeckPanelFrame()
   // 덱이 띄운 프레임/탭이 아니면 사용자의 x.com 을 건드리지 않는다.
-  if (role === null && !composing) return
+  if (role === null && !panel) return
   globals[GUARD] = true
 
   const collecting = role !== null
   if (collecting && isNotificationKind(role)) catchAll = true
 
   // 작성창은 글이 올라간 순간만 알면 된다. 타임라인을 계속 받을 이유가 없다.
-  if (composing) WATCHED.add(CREATE_TWEET_OPERATION)
+  // 작성창은 물론 상세 창에서도 글이 올라간다 (거기서 답글을 단다).
+  if (panel) WATCHED.add(CREATE_TWEET_OPERATION)
   // 사람이 보고 있는 작성창은 숨길 이유가 없으므로 가시성도 손대지 않는다.
   if (collecting) spoofVisibility()
 

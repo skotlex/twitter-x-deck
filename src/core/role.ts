@@ -18,6 +18,24 @@ export function isComposeFrame(): boolean {
   return window.name === COMPOSE_FRAME_NAME
 }
 
+/**
+ * 게시물 상세·프로필을 띄우는 창의 프레임 이름.
+ *
+ * 여기서도 사람이 글을 지우거나 답글을 단다. 이름을 붙여야 우리 코드가 그 문서에
+ * 들어가 그 사실을 덱까지 나른다 — 안 붙이면 창 안에서 지운 글이 목록에 그대로
+ * 남는다.
+ */
+export const PAGE_FRAME_NAME = `${FRAME_NAME_PREFIX}page`
+
+export function isPageFrame(): boolean {
+  return window.name === PAGE_FRAME_NAME
+}
+
+/** 덱이 띄운 창의 프레임인지. 수집은 안 하지만 무슨 일이 일어났는지는 알려야 한다. */
+export function isDeckPanelFrame(): boolean {
+  return isComposeFrame() || isPageFrame()
+}
+
 const SESSION_KEY = 'xdeck:role'
 
 /** 컬럼 종류 목록에서 직접 확인한다. 종류가 늘 때 여기를 빠뜨리면 그 프레임은 조용히 죽는다. */
