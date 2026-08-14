@@ -1,6 +1,6 @@
 import { memo, useState } from 'react'
 import type { Tweet } from '@core/types'
-import type { Settings } from '@core/settings'
+import { MEDIA_MAX_HEIGHT, type MediaSize, type Settings } from '@core/settings'
 import { formatCount, formatRelative, formatStamp } from '../lib/format'
 import { Lightbox } from './Lightbox'
 import { MediaGrid } from './MediaGrid'
@@ -62,7 +62,19 @@ function AuthorLine({ tweet, compact }: { tweet: Tweet; compact: boolean }) {
   )
 }
 
-function QuotedTweet({ tweet, showMedia }: { tweet: Tweet; showMedia: boolean }) {
+/** 인용된 글의 미디어는 한 단계 작게 보여 원글에 시선이 남게 한다. */
+const smallerSize = (size: MediaSize): MediaSize =>
+  size === 'large' ? 'medium' : 'small'
+
+function QuotedTweet({
+  tweet,
+  showMedia,
+  mediaSize,
+}: {
+  tweet: Tweet
+  showMedia: boolean
+  mediaSize: MediaSize
+}) {
   return (
     <a
       href={tweet.url}
@@ -81,13 +93,16 @@ function QuotedTweet({ tweet, showMedia }: { tweet: Tweet; showMedia: boolean })
       <div className="mt-1.5 text-muted">
         <RichText text={tweet.text} />
       </div>
-      {showMedia && <MediaGrid media={tweet.media} />}
+      {showMedia && (
+        <MediaGrid media={tweet.media} size={smallerSize(mediaSize)} sourceUrl={tweet.url} />
+      )}
     </a>
   )
 }
 
-function LinkCard({ card }: { card: NonNullable<Tweet['card']> }) {
+function LinkCard({ card, mediaSize }: { card: NonNullable<Tweet['card']>; mediaSize: MediaSize }) {
   const Wrapper = card.url ? 'a' : 'div'
+  const maxHeight = MEDIA_MAX_HEIGHT[mediaSize]
   return (
     <Wrapper
       {...(card.url
@@ -103,6 +118,7 @@ function LinkCard({ card }: { card: NonNullable<Tweet['card']> }) {
           alt=""
           loading="lazy"
           decoding="async"
+          style={maxHeight === null ? undefined : { maxHeight }}
           className="aspect-[1.91/1] w-full object-cover"
         />
       )}
@@ -194,9 +210,24 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
             <RichText text={tweet.text} />
           </div>
 
-          {settings.showMedia && <MediaGrid media={tweet.media} onOpen={setLightboxAt} />}
-          {tweet.card && !tweet.media.length && settings.showMedia && <LinkCard card={tweet.card} />}
-          {tweet.quoted && <QuotedTweet tweet={tweet.quoted} showMedia={settings.showMedia} />}
+          {settings.showMedia && (
+            <MediaGrid
+              media={tweet.media}
+              size={settings.mediaSize}
+              sourceUrl={tweet.url}
+              onOpen={setLightboxAt}
+            />
+          )}
+          {tweet.card && !tweet.media.length && settings.showMedia && (
+            <LinkCard card={tweet.card} mediaSize={settings.mediaSize} />
+          )}
+          {tweet.quoted && (
+            <QuotedTweet
+              tweet={tweet.quoted}
+              showMedia={settings.showMedia}
+              mediaSize={settings.mediaSize}
+            />
+          )}
 
           <div className={`flex items-center gap-4 ${compact ? 'mt-1.5' : 'mt-2.5'}`}>
             <StatAction

@@ -196,6 +196,22 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
                 />
               }
             />
+            <Row
+              label="미디어 크기"
+              hint="작게 둘수록 한 화면에 글이 많이 들어온다. 원본은 이미지를 눌러서 본다."
+              control={
+                <Select
+                  label="미디어 크기"
+                  value={settings.mediaSize}
+                  onChange={(next) => onUpdate({ mediaSize: next })}
+                  options={[
+                    { value: 'small', label: '작게' },
+                    { value: 'medium', label: '보통' },
+                    { value: 'large', label: '원본 비율' },
+                  ]}
+                />
+              }
+            />
           </section>
 
           <section>

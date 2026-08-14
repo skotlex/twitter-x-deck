@@ -32,14 +32,10 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
       else return
       event.preventDefault()
     }
-    window.addEventListener('keydown', onKey)
-    // 뒤쪽 컬럼이 같이 스크롤되지 않게 잠근다.
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      document.body.style.overflow = previousOverflow
-    }
+    // 캡처 단계로 받는다. 덱 오버레이가 키 이벤트를 x.com 쪽으로 못 가게 끊기 때문에
+    // 버블 단계에서는 window 까지 올라오지 않는다.
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [move, onClose])
 
   if (!current) return null
@@ -88,12 +84,25 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
       </header>
 
       <div className="flex min-h-0 flex-1 items-center justify-center px-4 pb-6">
-        <img
-          src={originalMediaUrl(current.previewUrl)}
-          alt={current.altText ?? ''}
-          onClick={(event) => event.stopPropagation()}
-          className="max-h-full max-w-full cursor-default object-contain"
-        />
+        {current.playbackUrl ? (
+          <video
+            src={current.playbackUrl}
+            poster={current.previewUrl}
+            controls
+            autoPlay
+            playsInline
+            loop={current.kind === 'animated_gif'}
+            onClick={(event) => event.stopPropagation()}
+            className="max-h-full max-w-full object-contain"
+          />
+        ) : (
+          <img
+            src={originalMediaUrl(current.previewUrl)}
+            alt={current.altText ?? ''}
+            onClick={(event) => event.stopPropagation()}
+            className="max-h-full max-w-full cursor-default object-contain"
+          />
+        )}
       </div>
 
       {total > 1 && (

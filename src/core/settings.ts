@@ -3,6 +3,16 @@ import type { TimelineKind } from './types'
 
 const STORAGE_KEY = 'x-deck:settings'
 
+/** 미디어 표시 크기. `large` 는 원본 비율 그대로라 높이 제한이 없다. */
+export type MediaSize = 'small' | 'medium' | 'large'
+
+/** 크기별 최대 높이(px). `null` 이면 제한 없음. */
+export const MEDIA_MAX_HEIGHT: Record<MediaSize, number | null> = {
+  small: 180,
+  medium: 340,
+  large: null,
+}
+
 export interface Settings {
   /** 덱에 표시할 컬럼과 좌우 순서. */
   columns: TimelineKind[]
@@ -18,6 +28,8 @@ export interface Settings {
   density: 'comfortable' | 'compact'
   /** 이미지·동영상 표시 여부. */
   showMedia: boolean
+  /** 미디어가 차지하는 최대 높이. 작을수록 한 화면에 글이 많이 들어온다. */
+  mediaSize: MediaSize
   /** 목록을 위로 올려둔 동안에는 새 글을 끼워넣지 않고 상단 알림으로만 모아둔다. */
   holdWhileScrolled: boolean
   /** 화면 테마. */
@@ -32,6 +44,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxPerColumn: 2_000,
   density: 'comfortable',
   showMedia: true,
+  mediaSize: 'medium',
   holdWhileScrolled: true,
   theme: 'dark',
 }

@@ -56,6 +56,28 @@ function createOverlay(): { host: HTMLDivElement; mountPoint: HTMLDivElement } {
   mountPoint.style.height = '100%'
   shadow.append(mountPoint)
 
+  // 그림자 DOM 을 빠져나온 이벤트가 x.com 의 전역 핸들러에 닿지 않게 여기서 끊는다.
+  // 우리 React 루트는 그림자 안쪽이라 이미 처리를 마친 뒤다 — 덱 조작이 x.com 의
+  // 라우팅이나 단축키를 건드리는 일이 없어진다.
+  const CONTAINED = [
+    'click',
+    'auxclick',
+    'dblclick',
+    'mousedown',
+    'mouseup',
+    'pointerdown',
+    'pointerup',
+    'keydown',
+    'keyup',
+    'keypress',
+    'wheel',
+    'touchstart',
+    'touchend',
+  ]
+  for (const type of CONTAINED) {
+    host.addEventListener(type, (event) => event.stopPropagation())
+  }
+
   document.documentElement.append(host)
 
   // x.com 이 리렌더 과정에서 걷어내면 다시 붙인다.
