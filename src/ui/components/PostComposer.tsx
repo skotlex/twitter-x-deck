@@ -165,7 +165,7 @@ export function PostComposer({ mode, target, handle, onPosted, onClose }: PostCo
           <span className="truncate text-[14px] font-semibold text-text">{title}</span>
           {held && (
             <span className="animate-fade shrink-0 text-[12px] text-warn">
-              쓰던 글이 있어 닫지 않았다
+              쓰던 글이 있어 닫지 않았습니다
             </span>
           )}
           <button
@@ -188,7 +188,7 @@ export function PostComposer({ mode, target, handle, onPosted, onClose }: PostCo
         {blocked ? (
           <div className="grid flex-1 place-items-center px-8 text-center">
             <div>
-              <p className="text-[14px] text-text">작성 화면을 덱 안에 띄우지 못했다.</p>
+              <p className="text-[14px] text-text">작성 화면을 덱 안에 띄우지 못했습니다.</p>
               <button
                 type="button"
                 onClick={openPopup}

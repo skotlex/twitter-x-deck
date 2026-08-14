@@ -102,7 +102,7 @@ export function TweetDetail({ url, handle, onClose }: TweetDetailProps) {
         {blocked ? (
           <div className="grid flex-1 place-items-center px-8 text-center">
             <div>
-              <p className="text-[14px] text-text">게시물을 덱 안에 띄우지 못했다.</p>
+              <p className="text-[14px] text-text">게시물을 덱 안에 띄우지 못했습니다.</p>
               <a
                 href={url}
                 target="_blank"

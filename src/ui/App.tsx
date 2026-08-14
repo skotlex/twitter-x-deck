@@ -243,7 +243,7 @@ function PassthroughBanner({
       <div className="animate-fade pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-surface/95 px-4 py-2 shadow-lg shadow-black/25 backdrop-blur-xl">
         <span className="text-[13px] text-text">
           {reason
-            ? `x.com 로그인이 필요하다 — 로그인하면 ${TIMELINE_LABEL[reason]} 수집이 이어서 시작된다.`
+            ? `x.com 로그인이 필요합니다 — 로그인하면 ${TIMELINE_LABEL[reason]} 수집이 이어서 시작됩니다.`
             : 'x.com 원본을 보고 있습니다.'}
         </span>
         {canReturn && (

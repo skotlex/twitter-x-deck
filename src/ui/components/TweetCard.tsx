@@ -643,7 +643,7 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
 
           {actionError && (
             <p className="mt-1.5 text-[12px] text-danger" role="status">
-              x.com 에 반영하지 못했다 — {actionError}
+              x.com 에 반영하지 못했습니다 — {actionError}
             </p>
           )}
         </div>

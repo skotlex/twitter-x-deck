@@ -31,7 +31,7 @@ export async function refreshRuleReport(): Promise<void> {
     const answer: unknown = await chrome.runtime.sendMessage({ type: RULE_REPORT })
     if (typeof answer === 'string') rules = answer
   } catch {
-    rules = '배경 워커가 답하지 않는다'
+    rules = '배경 워커가 답하지 않습니다'
   }
 }
 
@@ -42,5 +42,5 @@ export function frameBlockReason(): string | null {
 
 /** 임베드가 막혔을 때 붙일 설명. 범인과 규칙 상태를 함께 지목한다. */
 export function describeFrameBlock(): string {
-  return `${reason ?? 'CSP 위반 이벤트 없음 — XFO 로 보인다'} · ${rules}`
+  return `${reason ?? 'CSP 위반 이벤트 없음 — XFO 로 보입니다'} · ${rules}`
 }

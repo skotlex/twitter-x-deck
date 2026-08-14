@@ -173,7 +173,7 @@ export function DeckColumn({
         {rotating && (
           <span
             className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted"
-            title="숨은 프레임을 띄우지 못해 한 문서가 두 탭을 번갈아 방문하며 수집한다. 갱신이 그만큼 늦다."
+            title="숨은 프레임을 띄우지 못해 한 문서가 두 탭을 번갈아 방문하며 수집합니다. 갱신이 그만큼 늦습니다."
           >
             교대 수집
           </span>
@@ -188,7 +188,7 @@ export function DeckColumn({
         {column.degraded && (
           <span
             className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-warn"
-            title="정석 파싱 경로가 실패해 전체 훑기로 대체 중이다. 선택자 점검이 필요하다."
+            title="정석 파싱 경로가 실패해 전체 훑기로 대체 중입니다. 선택자 점검이 필요합니다."
           >
             폴백 파싱
           </span>
@@ -208,9 +208,9 @@ export function DeckColumn({
 
       {state === 'blocked' && (
         <div className="border-b border-line bg-surface-2 px-4 py-3">
-          <p className="text-[13px] font-medium text-text">수집기를 띄우지 못했다</p>
+          <p className="text-[13px] font-medium text-text">수집기를 띄우지 못했습니다</p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-            {column.status.message ?? `${TIMELINE_LABEL[kind]} 수집기가 응답하지 않는다.`}
+            {column.status.message ?? `${TIMELINE_LABEL[kind]} 수집기가 응답하지 않습니다.`}
           </p>
           <button
             type="button"
@@ -260,19 +260,19 @@ export function DeckColumn({
 function EmptyState({ state }: { state: CollectorState }) {
   const copy =
     state === 'login-required'
-      ? 'x.com 로그인이 필요하다.'
+      ? 'x.com 로그인이 필요합니다.'
       : state === 'blocked'
-        ? '수집기를 띄우지 못했다.'
+        ? '수집기를 띄우지 못했습니다.'
         : state === 'streaming'
-          ? '새 게시물을 기다리는 중.'
-          : 'x.com 타임라인을 준비하는 중.'
+          ? '새 게시물을 기다리는 중입니다.'
+          : 'x.com 타임라인을 준비하는 중입니다.'
 
   return (
     <div className="grid h-full place-items-center px-8 py-16 text-center">
       <div>
         <div className="mx-auto h-9 w-9 animate-pulse rounded-full bg-surface-3" />
         <p className="mt-4 text-[14px] text-muted">{copy}</p>
-        <p className="mt-1 text-[12.5px] text-faint">수집한 게시물은 자동으로 이 자리에 쌓인다.</p>
+        <p className="mt-1 text-[12.5px] text-faint">수집한 게시물은 자동으로 이 자리에 쌓입니다.</p>
       </div>
     </div>
   )

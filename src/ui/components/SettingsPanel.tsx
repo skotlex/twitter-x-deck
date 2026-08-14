@@ -114,13 +114,13 @@ function FontPicker({ value, onChange }: { value: string; onChange: (next: strin
       setLoading(false)
       if (result.ok) {
         setFamilies(result.families)
-        setNote(`${result.families.length.toLocaleString('ko-KR')}개를 불러왔다.`)
+        setNote(`${result.families.length.toLocaleString('ko-KR')}개를 불러왔습니다.`)
         return
       }
       setNote(
         result.reason === 'unsupported'
-          ? '이 브라우저는 설치된 글꼴 목록을 내주지 않는다. 아래 후보에서 고를 수 있다.'
-          : '글꼴 목록 접근이 거절됐다. 주소창의 권한 설정에서 허용하면 다시 시도할 수 있다.',
+          ? '이 브라우저는 설치된 글꼴 목록을 내주지 않습니다. 아래 후보에서 고를 수 있습니다.'
+          : '글꼴 목록 접근이 거절됐습니다. 주소창의 권한 설정에서 허용하면 다시 시도할 수 있습니다.',
       )
     })
   }
@@ -129,7 +129,7 @@ function FontPicker({ value, onChange }: { value: string; onChange: (next: strin
     <div className="py-3.5">
       <p className="text-[14px] font-medium text-text">글꼴</p>
       <p className="mt-0.5 text-[12.5px] leading-relaxed text-faint">
-        덱 전체에 쓸 글꼴. 이 PC 에 설치된 글꼴을 불러와 고를 수 있다.
+        덱 전체에 쓸 글꼴입니다. 이 PC 에 설치된 글꼴을 불러와 고를 수 있습니다.
       </p>
 
       <div className="mt-2.5 flex items-center gap-2">
@@ -240,7 +240,7 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
             <div className="divide-y divide-line-soft">
               <Row
                 label="새 게시물 자동 반영"
-                hint="x.com 상단에 뜨는 '새 게시물 보기' 알림을 자동으로 눌러 다음 타임라인을 받아온다."
+                hint="x.com 상단에 뜨는 '새 게시물 보기' 알림을 자동으로 눌러 다음 타임라인을 받아옵니다."
                 control={
                   <Toggle
                     checked={settings.autoAdvance}
@@ -251,7 +251,7 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
               />
               <Row
                 label="유휴 강제 갱신"
-                hint="이 시간 동안 새 알림이 없으면 타임라인을 직접 다시 불러온다."
+                hint="이 시간 동안 새 알림이 없으면 타임라인을 직접 다시 불러옵니다."
                 control={
                   <Select
                     label="유휴 강제 갱신 주기"
@@ -268,7 +268,7 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
               />
               <Row
                 label="스크롤 중 대기"
-                hint="목록을 내려 읽는 동안에는 새 글을 끼워넣지 않고 상단 배지로 모아둔다."
+                hint="목록을 내려 읽는 동안에는 새 글을 끼워넣지 않고 상단 배지로 모아둡니다."
                 control={
                   <Toggle
                     checked={settings.holdWhileScrolled}
@@ -284,7 +284,7 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
             <div className="divide-y divide-line-soft">
               <Row
                 label="x.com 열면 덱으로"
-                hint="끄면 확장 아이콘을 눌러야 덱이 뜬다. 게시물·프로필 주소는 어느 쪽이든 원본 그대로다."
+                hint="끄면 확장 아이콘을 눌러야 덱이 뜹니다. 게시물·프로필 주소는 어느 쪽이든 원본 그대로입니다."
                 control={
                   <Toggle
                     checked={settings.autoMount}
@@ -314,7 +314,7 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
               />
               <Row
                 label="카드 밀도"
-                hint="조밀은 프로필 사진·글자·여백·미디어를 한꺼번에 줄여 한 화면에 글을 더 많이 넣는다."
+                hint="조밀은 프로필 사진·글자·여백·미디어를 한꺼번에 줄여 한 화면에 글을 더 많이 넣습니다."
                 control={
                   <Select
                     label="카드 밀도"
@@ -329,7 +329,7 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
               />
               <Row
                 label="미디어 표시"
-                hint="끄면 이미지·동영상을 불러오지 않아 트래픽이 줄어든다."
+                hint="끄면 이미지·동영상을 불러오지 않아 트래픽이 줄어듭니다."
                 control={
                   <Toggle
                     checked={settings.showMedia}
@@ -340,7 +340,7 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
               />
               <Row
                 label="미디어 크기"
-                hint="작게 둘수록 한 화면에 글이 많이 들어온다. 원본은 이미지를 눌러서 본다."
+                hint="작게 둘수록 한 화면에 글이 많이 들어옵니다. 원본은 이미지를 눌러서 봅니다."
                 control={
                   <Select
                     label="미디어 크기"
@@ -395,7 +395,7 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
               />
               <Row
                 label="보관 데이터 비우기"
-                hint="저장된 게시물을 전부 지운다. 되돌릴 수 없다."
+                hint="저장된 게시물을 전부 지웁니다. 되돌릴 수 없습니다."
                 control={
                   <button
                     type="button"
@@ -404,7 +404,7 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
                     }}
                     className="rounded-lg border border-line px-3 py-1.5 text-[13px] font-medium text-danger transition-colors hover:bg-surface-2"
                   >
-                    {cleared ? '비웠음' : '비우기'}
+                    {cleared ? '비웠습니다' : '비우기'}
                   </button>
                 }
               />

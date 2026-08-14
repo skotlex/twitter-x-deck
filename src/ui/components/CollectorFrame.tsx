@@ -44,13 +44,13 @@ export function CollectorFrame({ kind, register, onReport }: CollectorFrameProps
       if (!doc) {
         // 규칙이 요청에 걸렸는지는 요청이 나간 뒤에 물어야 의미가 있다.
         void refreshRuleReport().then(() => {
-          onReport(kind, `프레임 문서를 읽을 수 없다 — 임베드 차단 (${describeFrameBlock()})`)
+          onReport(kind, `프레임 문서를 읽을 수 없습니다 — 임베드 차단 (${describeFrameBlock()})`)
         })
         return
       }
       onReport(kind, `프레임 로드: ${doc.location.pathname}${doc.location.search} (${doc.readyState})`)
     } catch {
-      onReport(kind, `프레임이 교차 출처로 떨어졌다 — 임베드 차단 (${describeFrameBlock()})`)
+      onReport(kind, `프레임이 교차 출처로 떨어졌습니다 — 임베드 차단 (${describeFrameBlock()})`)
     }
   }, [kind, onReport])
 

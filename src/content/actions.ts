@@ -75,15 +75,19 @@ function describeFrame(frame: HTMLIFrameElement): string {
   try {
     doc = frame.contentDocument
   } catch {
-    return `교차 출처로 떨어졌다 · 임베드 차단 — ${describeFrameBlock()}`
+    return `교차 출처로 떨어졌습니다 · 임베드 차단 — ${describeFrameBlock()}`
   }
-  if (!doc) return `문서를 읽을 수 없다 · 임베드 차단 — ${describeFrameBlock()}`
-  if (doc.location.href === 'about:blank') return `아직 빈 문서 (${doc.readyState})`
+  if (!doc) return `문서를 읽을 수 없습니다 · 임베드 차단 — ${describeFrameBlock()}`
+  if (doc.location.href === 'about:blank') return `아직 빈 문서입니다 (${doc.readyState})`
   return `${doc.location.pathname} · ${doc.readyState} · article ${doc.querySelectorAll('article').length}개`
 }
 
 /** 시도 결과. 실패는 어느 단계에서 멈췄는지까지 들고 온다 — 사용자에게 그대로 보여준다. */
-type Attempt = 'done' | '확인 메뉴가 뜨지 않았다' | '눌러도 버튼이 그대로다' | '버튼이 사라졌다'
+type Attempt =
+  | 'done'
+  | '확인 메뉴가 뜨지 않았습니다'
+  | '눌러도 버튼이 그대로입니다'
+  | '버튼이 사라졌습니다'
 
 /** 원하는 상태에 도달했는지. done 버튼이 생겼거나, 누를 버튼이 사라졌으면 된 것이다. */
 function reached(doc: Document, plan: { press: string[]; done: string[] }): boolean {
@@ -105,17 +109,17 @@ async function attempt(
   if (reached(doc, plan)) return 'done'
 
   const button = findPrimaryTweetAction(doc, plan.press)
-  if (!button) return '버튼이 사라졌다'
+  if (!button) return '버튼이 사라졌습니다'
   simulateClick(button)
 
   if (plan.confirm) {
     const confirm = await waitFor(() => findMenuItem(doc, plan.confirm ?? []), SETTLE_TIMEOUT_MS)
-    if (!confirm) return '확인 메뉴가 뜨지 않았다'
+    if (!confirm) return '확인 메뉴가 뜨지 않았습니다'
     simulateClick(confirm)
   }
 
   const settled = await waitFor(() => (reached(doc, plan) ? true : null), SETTLE_TIMEOUT_MS)
-  return settled ? 'done' : '눌러도 버튼이 그대로다'
+  return settled ? 'done' : '눌러도 버튼이 그대로입니다'
 }
 
 /**
@@ -142,18 +146,18 @@ export async function runTweetAction(tweetUrl: string, action: TweetAction): Pro
     if (!doc) {
       // 규칙이 요청에 걸렸는지는 요청이 나간 뒤에 물어야 의미가 있다.
       await refreshRuleReport()
-      throw new TweetActionError(`게시물 페이지가 뜨지 않았다 (${describeFrame(frame)})`)
+      throw new TweetActionError(`게시물 페이지가 뜨지 않았습니다 (${describeFrame(frame)})`)
     }
     // isLoggedOut 은 자기 문서만 보므로 프레임 문서는 여기서 직접 확인한다.
     if (doc.querySelector('[data-testid="loginButton"], [data-testid="signupButton"]')) {
-      throw new TweetActionError('x.com 로그인이 풀렸다')
+      throw new TweetActionError('x.com 로그인이 풀렸습니다')
     }
 
     const ready = await waitFor(
       () => findPrimaryTweetAction(doc, plan.press.concat(plan.done)),
       BUTTON_TIMEOUT_MS,
     )
-    if (!ready) throw new TweetActionError('동작 버튼을 찾지 못했다')
+    if (!ready) throw new TweetActionError('동작 버튼을 찾지 못했습니다')
 
     // 버튼이 그려진 것과 누를 수 있는 것은 다르다. 핸들러가 붙을 틈을 준다.
     await sleep(HYDRATE_MS)

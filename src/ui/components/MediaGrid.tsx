@@ -58,7 +58,7 @@ function MediaItem({
         rel="noreferrer noopener"
         className="grid h-full w-full place-items-center bg-surface-2 px-4 text-center text-[13px] text-muted hover:text-accent"
       >
-        재생할 수 없다 — x.com 에서 열기
+        재생할 수 없습니다 — x.com 에서 열기
       </a>
     )
   }
