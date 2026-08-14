@@ -239,13 +239,13 @@ function PassthroughBanner({
         <span className="text-[13px] text-text">
           {reason
             ? `x.com 로그인이 필요하다 — 로그인하면 ${TIMELINE_LABEL[reason]} 수집이 이어서 시작된다.`
-            : 'x.com 원본을 보고 있다.'}
+            : 'x.com 원본을 보고 있습니다.'}
         </span>
         {canReturn && (
           <button
             type="button"
             onClick={onReturn}
-            className="rounded-full bg-accent px-3 py-1 text-[12.5px] font-semibold text-white transition-colors hover:bg-accent-strong"
+            className="rounded-full bg-button px-3 py-1 text-[12.5px] font-semibold text-button-text transition-colors hover:bg-button-strong"
           >
             덱으로 돌아가기
           </button>

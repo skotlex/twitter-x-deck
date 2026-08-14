@@ -192,7 +192,7 @@ export function PostComposer({ mode, target, handle, onPosted, onClose }: PostCo
               <button
                 type="button"
                 onClick={openPopup}
-                className="mt-3 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-accent-strong"
+                className="mt-3 rounded-lg bg-button px-3 py-1.5 text-[13px] font-semibold text-button-text transition-colors hover:bg-button-strong"
               >
                 새 창에서 이어 쓰기
               </button>

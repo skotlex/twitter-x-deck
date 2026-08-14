@@ -131,7 +131,7 @@ export function TopBar({
         <button
           type="button"
           onClick={onCompose}
-          className="mr-1 flex h-9 items-center gap-1.5 rounded-full bg-accent px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-accent-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+          className="mr-1 flex h-9 items-center gap-1.5 rounded-full bg-button px-3.5 text-[13px] font-semibold text-button-text transition-colors hover:bg-button-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
           title="새 게시물 작성"
         >
           <QuoteIcon className="h-4 w-4" />

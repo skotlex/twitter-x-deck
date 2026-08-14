@@ -13,6 +13,7 @@ import { createRoot } from 'react-dom/client'
 import css from '../ui/index.css?inline'
 import { DECK_PARAM } from '@core/messages'
 import { readFrameRole } from '@core/role'
+import { loadSettings } from '@core/settings'
 import type { TimelineKind } from '@core/types'
 import { App } from '../ui/App'
 import { setHostCollector } from '../ui/hostCollector'
@@ -48,12 +49,16 @@ function isTimelineHome(): boolean {
 }
 
 /**
- * 이 탭이 덱 탭인지. 확장 아이콘으로 열릴 때 붙는 파라미터를 세션에 새겨두어,
- * x.com 의 SPA 이동이 쿼리를 지운 뒤에도 새로고침하면 덱이 그대로 살아난다.
- * 앱 창은 파라미터를 받을 자리가 없으므로 창 모양만으로 판단한다.
+ * 사용자가 이 탭을 덱으로 지목했는지.
+ *
+ * 확장 아이콘으로 열릴 때 붙는 파라미터를 세션에 새겨두어, x.com 의 SPA 이동이
+ * 쿼리를 지운 뒤에도 새로고침하면 덱이 그대로 살아난다. 앱 창은 파라미터를 받을
+ * 자리가 없으므로 창 모양만으로 판단한다.
+ *
+ * 여기에 걸리면 자동 적용 설정과 무관하게 뜬다 — 직접 부른 것이기 때문이다.
  */
 function isDeckTab(): boolean {
-  if (isAppWindow() || isTimelineHome()) return true
+  if (isAppWindow()) return true
   try {
     if (new URLSearchParams(window.location.search).get(DECK_PARAM) === '1') {
       window.sessionStorage.setItem(SESSION_KEY, '1')
@@ -180,10 +185,24 @@ function mount(): void {
   )
 }
 
-if (isDeckTab()) {
+function mountWhenReady(): void {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mount, { once: true })
   } else {
     mount()
   }
+}
+
+/**
+ * 뜰지 말지 정한다.
+ *
+ * 직접 지목한 탭이면 설정을 볼 것도 없이 뜬다. 홈 타임라인은 설정을 따르는데,
+ * 그 값은 저장소에서 읽어야 하므로 여기서만 한 박자 늦게 결정된다.
+ */
+if (isDeckTab()) {
+  mountWhenReady()
+} else if (isTimelineHome()) {
+  void loadSettings().then((settings) => {
+    if (settings.autoMount) mountWhenReady()
+  })
 }

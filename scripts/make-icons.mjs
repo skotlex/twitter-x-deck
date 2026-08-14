@@ -13,8 +13,9 @@ const CORNER = 0.24
 const STROKE = 0.13
 const INSET = 0.29
 
-const GRADIENT_TOP = [91, 157, 255]
-const GRADIENT_BOTTOM = [37, 99, 235]
+// x.com 의 검정 계열. 위아래로 아주 옅은 기울기만 줘서 어두운 배경에서도 면이 죽지 않게 한다.
+const GRADIENT_TOP = [26, 28, 32]
+const GRADIENT_BOTTOM = [10, 11, 14]
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v))
 

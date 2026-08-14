@@ -283,6 +283,17 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
           {tab === 'display' && (
             <div className="divide-y divide-line-soft">
               <Row
+                label="x.com 열면 덱으로"
+                hint="끄면 확장 아이콘을 눌러야 덱이 뜬다. 게시물·프로필 주소는 어느 쪽이든 원본 그대로다."
+                control={
+                  <Toggle
+                    checked={settings.autoMount}
+                    onChange={(next) => onUpdate({ autoMount: next })}
+                    label="x.com 열면 덱으로"
+                  />
+                }
+              />
+              <Row
                 label="테마"
                 control={
                   <Select

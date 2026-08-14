@@ -107,7 +107,7 @@ export function TweetDetail({ url, handle, onClose }: TweetDetailProps) {
                 href={url}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="mt-3 inline-block rounded-lg bg-accent px-3 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-accent-strong"
+                className="mt-3 inline-block rounded-lg bg-button px-3 py-1.5 text-[13px] font-semibold text-button-text transition-colors hover:bg-button-strong"
               >
                 새 탭에서 보기
               </a>

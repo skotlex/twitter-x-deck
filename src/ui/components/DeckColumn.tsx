@@ -215,7 +215,7 @@ export function DeckColumn({
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="mt-2 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-accent-strong"
+            className="mt-2 rounded-lg bg-button px-3 py-1.5 text-[13px] font-semibold text-button-text transition-colors hover:bg-button-strong"
           >
             탭 새로고침
           </button>
@@ -227,7 +227,7 @@ export function DeckColumn({
           <button
             type="button"
             onClick={scrollToTop}
-            className="animate-fade absolute inset-x-0 top-2.5 z-20 mx-auto flex w-fit items-center gap-1.5 rounded-full bg-accent px-3.5 py-1.5 text-[13px] font-semibold text-white shadow-lg shadow-black/25 transition-transform hover:scale-[1.03]"
+            className="animate-fade absolute inset-x-0 top-2.5 z-20 mx-auto flex w-fit items-center gap-1.5 rounded-full bg-button px-3.5 py-1.5 text-[13px] font-semibold text-button-text shadow-lg shadow-black/25 transition-transform hover:scale-[1.03]"
           >
             <ArrowUpIcon className="h-3.5 w-3.5" />새 게시물 {buffered}개
           </button>

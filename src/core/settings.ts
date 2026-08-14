@@ -54,6 +54,8 @@ export interface Settings {
   theme: 'system' | 'dark' | 'light'
   /** 덱 전체에 쓸 글꼴 이름. 빈 값이면 기본 글꼴. */
   fontFamily: string
+  /** x.com 홈에 들어가면 곧바로 덱을 얹는다. 끄면 확장 아이콘을 눌러야 뜬다. */
+  autoMount: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -69,6 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   holdWhileScrolled: true,
   theme: 'system',
   fontFamily: '',
+  autoMount: true,
 }
 
 export async function loadSettings(): Promise<Settings> {
