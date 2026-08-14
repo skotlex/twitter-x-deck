@@ -149,8 +149,9 @@ export function TopBar({
             type="button"
             onClick={onOpenProfile}
             // 테두리는 평소에도 둘러둔다 — 사진이 어두우면 배경과 붙어 버튼인지 안 보인다.
-            // 가리키면 그 선만 검정 계열로 진해진다.
-            className="mr-1.5 shrink-0 rounded-full border-2 border-line-strong transition-colors hover:border-button focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            // border 가 아니라 ring 을 쓰는 이유는 사진과 선 사이의 여백 때문이다.
+            // border 는 사진에 딱 붙지만 ring 은 offset 만큼 띄워 두를 수 있다.
+            className="mr-1.5 shrink-0 rounded-full ring-2 ring-line-strong ring-offset-2 ring-offset-canvas transition-shadow hover:ring-button focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
             aria-label={`${viewer.name} 프로필 보기`}
             title={`@${viewer.handle}`}
           >
