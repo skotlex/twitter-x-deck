@@ -3,7 +3,7 @@ import { clearAll } from '@core/db'
 import type { Settings } from '@core/settings'
 import { TIMELINE_KINDS, TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import { COMMON_FONTS, fontStack, loadLocalFontFamilies } from '../lib/fonts'
-import { CloseIcon } from './icons'
+import { ArchiveIcon, CloseIcon, EyeIcon, RefreshIcon, SettingsIcon } from './icons'
 
 const FIELD =
   'rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 text-[13px] text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent'
@@ -223,9 +223,9 @@ function FontPicker({ value, onChange }: { value: string; onChange: (next: strin
 }
 
 const TABS = [
-  { id: 'collect', label: '수집' },
-  { id: 'display', label: '표시' },
-  { id: 'storage', label: '보관' },
+  { id: 'collect', label: '수집', Icon: RefreshIcon },
+  { id: 'display', label: '표시', Icon: EyeIcon },
+  { id: 'storage', label: '보관', Icon: ArchiveIcon },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -255,8 +255,11 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
         aria-modal="true"
         className="animate-fade fixed inset-y-0 right-0 z-50 flex w-[min(420px,100%)] flex-col overflow-hidden border-l border-line bg-surface shadow-2xl"
       >
-        <header className="flex h-14 shrink-0 items-center border-b border-line px-4">
-          <h2 className="text-[15px] font-semibold tracking-tight">설정</h2>
+        <header className="flex h-14 shrink-0 items-center px-4">
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
+            <SettingsIcon className="h-4 w-4 text-muted" />
+            설정
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -267,20 +270,21 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
           </button>
         </header>
 
-        <nav className="flex shrink-0 gap-1 border-b border-line px-3 py-2" aria-label="설정 분류">
-          {TABS.map((entry) => {
-            const selected = entry.id === tab
+        <nav className="flex shrink-0 gap-1 px-3 py-2" aria-label="설정 분류">
+          {TABS.map(({ id, label, Icon }) => {
+            const selected = id === tab
             return (
               <button
-                key={entry.id}
+                key={id}
                 type="button"
-                onClick={() => setTab(entry.id)}
+                onClick={() => setTab(id)}
                 aria-pressed={selected}
-                className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
                   selected ? 'bg-surface-2 text-text' : 'text-muted hover:text-text'
                 }`}
               >
-                {entry.label}
+                <Icon className="h-3.5 w-3.5" />
+                {label}
               </button>
             )
           })}
