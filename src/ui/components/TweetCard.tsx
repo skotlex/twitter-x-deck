@@ -562,7 +562,9 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
           href={`https://x.com/${tweet.author.handle}`}
           target="_blank"
           rel="noreferrer noopener"
-          className="shrink-0"
+          // self-start 가 없으면 flex 가 이 링크를 카드 높이만큼 늘려, 사진 아래
+          // 빈 기둥까지 전부 프로필 링크가 된다. 거기를 눌러도 새 창이 떴다.
+          className="shrink-0 self-start"
           aria-label={`${tweet.author.name} 프로필`}
         >
           <Avatar src={tweet.author.avatarUrl} name={tweet.author.name} size={metrics.avatar} />

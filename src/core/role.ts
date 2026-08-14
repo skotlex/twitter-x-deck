@@ -1,5 +1,5 @@
 import { ROLE_PARAM } from './messages'
-import type { TimelineKind } from './types'
+import { TIMELINE_KINDS, type TimelineKind } from './types'
 
 /** iframe 의 `name` 속성에 붙이는 접두사. 프레임 안 SPA 이동에도 살아남는다. */
 export const FRAME_NAME_PREFIX = 'xdeck:'
@@ -20,8 +20,9 @@ export function isComposeFrame(): boolean {
 
 const SESSION_KEY = 'xdeck:role'
 
+/** 컬럼 종류 목록에서 직접 확인한다. 종류가 늘 때 여기를 빠뜨리면 그 프레임은 조용히 죽는다. */
 function toKind(value: string | null | undefined): TimelineKind | null {
-  return value === 'foryou' || value === 'following' ? value : null
+  return TIMELINE_KINDS.find((kind) => kind === value) ?? null
 }
 
 /**
