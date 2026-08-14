@@ -23,8 +23,11 @@ export function smallerMediaSize(size: MediaSize): MediaSize {
   return MEDIA_SIZE_ORDER[Math.max(0, index - 1)] ?? 'small'
 }
 
-/** 컬럼을 늘어놓는 방향. */
-export type DeckLayout = 'columns' | 'rows'
+/**
+ * 컬럼을 늘어놓는 방식.
+ * `tabs` 는 창 크기와 무관하게 한 번에 하나만 보여주고 상단에서 갈아 끼운다.
+ */
+export type DeckLayout = 'columns' | 'rows' | 'tabs'
 
 export interface Settings {
   /** 덱에 표시할 컬럼과 순서. */

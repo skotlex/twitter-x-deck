@@ -39,10 +39,25 @@ export function App({ hostKind, onPassthrough }: AppProps) {
   const collector = useCollector(settings, hostKind)
   const canSideBySide = useMediaQuery(ROOM_SIDE_BY_SIDE)
   const canStack = useMediaQuery(ROOM_STACKED)
-  // 한 방향이라도 자리가 나면 두 컬럼을 다 띄운다.
-  const isDeck = canSideBySide || canStack
-  // 좌우로 놓을 폭이 없으면 방향은 고민할 것도 없이 위아래다.
-  const layout: DeckLayout = canSideBySide ? settings.layout : 'rows'
+
+  /**
+   * 실제로 그릴 배치.
+   *
+   * 탭을 골랐으면 창이 아무리 넓어도 탭이다 — 그러라고 있는 선택지다.
+   * 나머지는 자리가 되는 대로 눕힌다. 좌우로 놓을 폭이 없으면 위아래로,
+   * 그마저 안 되면 탭으로 떨어진다. 저장된 설정은 건드리지 않아 창을 다시
+   * 키우면 고른 배치로 돌아온다.
+   */
+  const layout: DeckLayout =
+    settings.layout === 'tabs' ? 'tabs' : canSideBySide ? settings.layout : canStack ? 'rows' : 'tabs'
+  const isDeck = layout !== 'tabs'
+
+  /** 지금 창에서 고를 수 있는 배치. 못 쓰는 것을 눌리게 두면 눌러도 안 바뀌어 고장으로 보인다. */
+  const layoutAvailable: Record<DeckLayout, boolean> = {
+    columns: canSideBySide,
+    rows: canSideBySide || canStack,
+    tabs: true,
+  }
   const [activeColumn, setActiveColumn] = useState<TimelineKind>(hostKind)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [composing, setComposing] = useState(false)
@@ -146,8 +161,10 @@ export function App({ hostKind, onPassthrough }: AppProps) {
             onToggleTheme={toggleTheme}
             onOpenSettings={() => setSettingsOpen(true)}
             onPeek={() => setPeeking(true)}
-            canArrange={canSideBySide && settings.columns.length > 1}
-            onChangeLayout={(layout) => update({ layout })}
+            canArrange={settings.columns.length > 1}
+            layout={layout}
+            layoutAvailable={layoutAvailable}
+            onChangeLayout={(next) => update({ layout: next })}
             onCompose={() => setComposing(true)}
           />
 

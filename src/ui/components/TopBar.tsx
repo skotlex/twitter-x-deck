@@ -1,7 +1,16 @@
 import type { DeckLayout, Settings } from '@core/settings'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import type { ColumnMap } from '../hooks/useCollector'
-import { ColumnsIcon, EyeIcon, MoonIcon, QuoteIcon, RowsIcon, SettingsIcon, SunIcon } from './icons'
+import {
+  ColumnsIcon,
+  EyeIcon,
+  MoonIcon,
+  QuoteIcon,
+  RowsIcon,
+  SettingsIcon,
+  SunIcon,
+  TabsIcon,
+} from './icons'
 
 export interface TopBarProps {
   columns: ColumnMap
@@ -15,8 +24,12 @@ export interface TopBarProps {
   onOpenSettings: () => void
   /** 덱을 비켜 아래 x.com 을 보여준다. */
   onPeek: () => void
-  /** 컬럼을 두 개 이상 늘어놓을 수 있는 폭인지. 아니면 방향 선택이 의미가 없다. */
+  /** 컬럼이 둘 이상인지. 하나뿐이면 배치를 고를 이유가 없다. */
   canArrange: boolean
+  /** 지금 실제로 그리고 있는 배치. 저장된 설정과 다를 수 있다 (창이 좁으면 눕는다). */
+  layout: DeckLayout
+  /** 지금 창 크기에서 고를 수 있는 배치. 못 쓰는 것은 눌리지 않게 막는다. */
+  layoutAvailable: Record<DeckLayout, boolean>
   onChangeLayout: (layout: DeckLayout) => void
   /** 새 게시물 작성창을 연다. */
   onCompose: () => void
@@ -32,6 +45,8 @@ export function TopBar({
   onOpenSettings,
   onPeek,
   canArrange,
+  layout,
+  layoutAvailable,
   onChangeLayout,
   onCompose,
 }: TopBarProps) {
@@ -47,24 +62,33 @@ export function TopBar({
       </div>
 
       {canArrange && (
-        <div className="flex rounded-lg bg-surface-2 p-0.5" role="group" aria-label="컬럼 배치 방향">
+        <div className="flex rounded-lg bg-surface-2 p-0.5" role="group" aria-label="컬럼 배치">
           {(
             [
               { value: 'columns', label: '좌우로 나란히', Icon: ColumnsIcon },
               { value: 'rows', label: '위아래로 쌓기', Icon: RowsIcon },
+              { value: 'tabs', label: '탭으로 하나씩', Icon: TabsIcon },
             ] as const
           ).map(({ value, label, Icon }) => {
-            const selected = settings.layout === value
+            // 눌린 표시는 저장된 설정이 아니라 지금 그려지는 배치를 가리킨다.
+            // 창이 좁아 눕힌 경우, 설정을 가리키면 화면과 어긋나 고장난 것처럼 보인다.
+            const selected = layout === value
+            const enabled = layoutAvailable[value]
             return (
               <button
                 key={value}
                 type="button"
+                disabled={!enabled}
                 onClick={() => onChangeLayout(value)}
                 aria-pressed={selected}
                 aria-label={label}
-                title={label}
-                className={`grid h-7 w-8 place-items-center rounded-md transition-colors ${
-                  selected ? 'bg-surface text-text shadow-sm' : 'text-faint hover:text-text'
+                title={enabled ? label : `${label} — 지금 창 크기로는 쓸 수 없다`}
+                className={`grid h-7 w-8 place-items-center rounded-md transition-colors disabled:cursor-not-allowed ${
+                  selected
+                    ? 'bg-surface text-text shadow-sm'
+                    : enabled
+                      ? 'text-faint hover:text-text'
+                      : 'text-faint/40'
                 }`}
               >
                 <Icon className="h-4 w-4" />

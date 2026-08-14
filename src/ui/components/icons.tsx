@@ -101,6 +101,14 @@ export const RowsIcon = (props: IconProps) => (
   </Icon>
 )
 
+/** 탭으로 갈아 끼우기. 판 하나 위에 탭 하나가 솟은 모양. */
+export const TabsIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="3" y="8" width="18" height="12" rx="1.5" />
+    <path d="M4.5 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </Icon>
+)
+
 export const EyeIcon = (props: IconProps) => (
   <Icon {...props}>
     <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
