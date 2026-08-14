@@ -20,10 +20,53 @@ const INTENT = {
   like: (id: string) => `https://x.com/intent/like?tweet_id=${id}`,
 }
 
-function Avatar({ src, name, size = 'md' }: { src: string; name: string; size?: 'md' | 'sm' }) {
-  const dimension = size === 'md' ? 'h-10 w-10' : 'h-5 w-5'
+/** 미디어를 한 단계 작게. 인용글과 조밀 밀도에서 쓴다. */
+const smallerSize = (size: MediaSize): MediaSize => (size === 'large' ? 'medium' : 'small')
+
+/**
+ * 밀도별 치수를 한곳에 모아둔다.
+ * '조밀' 은 view 수만 감추는 게 아니라 사진·글자·여백·미디어를 함께 줄여
+ * 한 화면에 들어오는 글 수를 실제로 늘린다.
+ */
+interface Metrics {
+  padding: string
+  avatar: number
+  text: string
+  /** 본문을 몇 줄까지 보여줄지. 넘치면 잘린다. */
+  clamp: string
+  gap: string
+  statsMargin: string
+  showViews: boolean
+  shrinkMedia: boolean
+}
+
+const METRICS: Record<Settings['density'], Metrics> = {
+  comfortable: {
+    padding: 'px-4 py-3.5',
+    avatar: 40,
+    text: 'text-[15px] leading-[1.55]',
+    clamp: '',
+    gap: 'gap-3',
+    statsMargin: 'mt-2.5',
+    showViews: true,
+    shrinkMedia: false,
+  },
+  compact: {
+    padding: 'px-3 py-2',
+    avatar: 30,
+    text: 'text-[13.5px] leading-[1.42]',
+    clamp: 'line-clamp-6',
+    gap: 'gap-2.5',
+    statsMargin: 'mt-1',
+    showViews: false,
+    shrinkMedia: true,
+  },
+}
+
+function Avatar({ src, name, size }: { src: string; name: string; size: number }) {
+  const style = { width: size, height: size }
   if (!src) {
-    return <div className={`${dimension} shrink-0 rounded-full bg-surface-3`} aria-hidden="true" />
+    return <div style={style} className="shrink-0 rounded-full bg-surface-3" aria-hidden="true" />
   }
   return (
     <img
@@ -31,12 +74,13 @@ function Avatar({ src, name, size = 'md' }: { src: string; name: string; size?: 
       alt={name}
       loading="lazy"
       decoding="async"
-      className={`${dimension} shrink-0 rounded-full bg-surface-3 object-cover`}
+      style={style}
+      className="shrink-0 rounded-full bg-surface-3 object-cover"
     />
   )
 }
 
-function AuthorLine({ tweet, compact }: { tweet: Tweet; compact: boolean }) {
+function AuthorLine({ tweet, metrics }: { tweet: Tweet; metrics: Metrics }) {
   return (
     <div className="flex min-w-0 items-baseline gap-1.5">
       <span className="truncate font-semibold text-text">{tweet.author.name}</span>
@@ -52,7 +96,7 @@ function AuthorLine({ tweet, compact }: { tweet: Tweet; compact: boolean }) {
       >
         {formatRelative(tweet.createdAt)}
       </time>
-      {!compact && tweet.stats.views ? (
+      {metrics.showViews && tweet.stats.views ? (
         <span className="ml-auto flex shrink-0 items-center gap-1 text-[12px] text-faint">
           <ViewsIcon className="h-3.5 w-3.5" />
           {formatCount(tweet.stats.views)}
@@ -62,18 +106,20 @@ function AuthorLine({ tweet, compact }: { tweet: Tweet; compact: boolean }) {
   )
 }
 
-/** 인용된 글의 미디어는 한 단계 작게 보여 원글에 시선이 남게 한다. */
-const smallerSize = (size: MediaSize): MediaSize =>
-  size === 'large' ? 'medium' : 'small'
-
+/**
+ * 인용된 글. 배경과 테두리를 함께 줘서 원글 본문과 확실히 갈린다 —
+ * 테두리만으로는 밝은 테마에서 거의 보이지 않는다.
+ */
 function QuotedTweet({
   tweet,
   showMedia,
   mediaSize,
+  textClass,
 }: {
   tweet: Tweet
   showMedia: boolean
   mediaSize: MediaSize
+  textClass: string
 }) {
   return (
     <a
@@ -81,17 +127,17 @@ function QuotedTweet({
       target="_blank"
       rel="noreferrer noopener"
       onClick={(event) => event.stopPropagation()}
-      className="mt-2.5 block rounded-xl border border-line p-3 transition-colors hover:border-line hover:bg-surface-2"
+      className="mt-2.5 block rounded-xl border border-line bg-surface-2 p-3 transition-colors hover:border-accent/40"
     >
       <div className="flex items-center gap-1.5 text-[13px]">
-        <Avatar src={tweet.author.avatarUrl} name={tweet.author.name} size="sm" />
+        <Avatar src={tweet.author.avatarUrl} name={tweet.author.name} size={20} />
         <span className="truncate font-semibold text-text">{tweet.author.name}</span>
         <span className="truncate text-faint">@{tweet.author.handle}</span>
         <span className="text-faint">·</span>
         <span className="shrink-0 text-faint">{formatRelative(tweet.createdAt)}</span>
       </div>
       <div className="mt-1.5 text-muted">
-        <RichText text={tweet.text} />
+        <RichText text={tweet.text} className={`${textClass} line-clamp-6`} />
       </div>
       {showMedia && (
         <MediaGrid media={tweet.media} size={smallerSize(mediaSize)} sourceUrl={tweet.url} />
@@ -100,16 +146,15 @@ function QuotedTweet({
   )
 }
 
+/** 링크 미리보기. 인용글과 같은 이유로 배경을 깔아 본문과 구분한다. */
 function LinkCard({ card, mediaSize }: { card: NonNullable<Tweet['card']>; mediaSize: MediaSize }) {
   const Wrapper = card.url ? 'a' : 'div'
   const maxHeight = MEDIA_MAX_HEIGHT[mediaSize]
   return (
     <Wrapper
-      {...(card.url
-        ? { href: card.url, target: '_blank', rel: 'noreferrer noopener' as const }
-        : {})}
-      className={`mt-2.5 block overflow-hidden rounded-xl border border-line transition-colors ${
-        card.url ? 'hover:bg-surface-2' : ''
+      {...(card.url ? { href: card.url, target: '_blank', rel: 'noreferrer noopener' as const } : {})}
+      className={`mt-2.5 block overflow-hidden rounded-xl border border-line bg-surface-2 transition-colors ${
+        card.url ? 'hover:border-accent/40' : ''
       }`}
     >
       {card.imageUrl && (
@@ -169,24 +214,27 @@ export interface TweetCardProps {
 }
 
 function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
-  const compact = settings.density === 'compact'
-  const padding = compact ? 'px-3.5 py-2.5' : 'px-4 py-3.5'
+  const metrics = METRICS[settings.density]
+  const mediaSize = metrics.shrinkMedia ? smallerSize(settings.mediaSize) : settings.mediaSize
   const [lightboxAt, setLightboxAt] = useState<number | null>(null)
 
   return (
     <article
-      className={`group relative border-b border-line-soft transition-colors hover:bg-surface-2/60 ${padding} ${
+      className={`group relative border-b border-line-soft transition-colors hover:bg-surface-2/60 ${metrics.padding} ${
         animate ? 'animate-enter' : ''
       }`}
     >
       {tweet.repostedBy && (
-        <p className="mb-1.5 flex items-center gap-1.5 pl-[52px] text-[12.5px] font-medium text-faint">
+        <p
+          className="mb-1 flex items-center gap-1.5 text-[12.5px] font-medium text-faint"
+          style={{ paddingLeft: metrics.avatar + 12 }}
+        >
           <RepostIcon className="h-3.5 w-3.5" />
           <span className="truncate">{tweet.repostedBy.name} 님이 리포스트</span>
         </p>
       )}
 
-      <div className="flex gap-3">
+      <div className={`flex ${metrics.gap}`}>
         <a
           href={`https://x.com/${tweet.author.handle}`}
           target="_blank"
@@ -194,11 +242,11 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
           className="shrink-0"
           aria-label={`${tweet.author.name} 프로필`}
         >
-          <Avatar src={tweet.author.avatarUrl} name={tweet.author.name} />
+          <Avatar src={tweet.author.avatarUrl} name={tweet.author.name} size={metrics.avatar} />
         </a>
 
         <div className="min-w-0 flex-1">
-          <AuthorLine tweet={tweet} compact={compact} />
+          <AuthorLine tweet={tweet} metrics={metrics} />
 
           {tweet.replyToHandle && (
             <p className="mt-0.5 text-[13px] text-faint">
@@ -207,29 +255,30 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
           )}
 
           <div className="mt-1">
-            <RichText text={tweet.text} />
+            <RichText text={tweet.text} className={`${metrics.text} ${metrics.clamp}`} />
           </div>
 
           {settings.showMedia && (
             <MediaGrid
               media={tweet.media}
-              size={settings.mediaSize}
+              size={mediaSize}
               sourceUrl={tweet.url}
               onOpen={setLightboxAt}
             />
           )}
           {tweet.card && !tweet.media.length && settings.showMedia && (
-            <LinkCard card={tweet.card} mediaSize={settings.mediaSize} />
+            <LinkCard card={tweet.card} mediaSize={mediaSize} />
           )}
           {tweet.quoted && (
             <QuotedTweet
               tweet={tweet.quoted}
               showMedia={settings.showMedia}
-              mediaSize={settings.mediaSize}
+              mediaSize={mediaSize}
+              textClass={metrics.text}
             />
           )}
 
-          <div className={`flex items-center gap-4 ${compact ? 'mt-1.5' : 'mt-2.5'}`}>
+          <div className={`flex items-center gap-4 ${metrics.statsMargin}`}>
             <StatAction
               icon={<ReplyIcon className="h-3.5 w-3.5" />}
               value={tweet.stats.replies}

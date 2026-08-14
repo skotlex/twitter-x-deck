@@ -13,9 +13,14 @@ export const MEDIA_MAX_HEIGHT: Record<MediaSize, number | null> = {
   large: null,
 }
 
+/** 컬럼을 늘어놓는 방향. */
+export type DeckLayout = 'columns' | 'rows'
+
 export interface Settings {
-  /** 덱에 표시할 컬럼과 좌우 순서. */
+  /** 덱에 표시할 컬럼과 순서. */
   columns: TimelineKind[]
+  /** 컬럼을 좌우로 늘어놓을지, 위아래로 쌓을지. */
+  layout: DeckLayout
   /** '새 게시물 보기' 알림을 감지하면 자동으로 눌러 새 타임라인을 받아온다. */
   autoAdvance: boolean
   /** 알림이 이 시간(ms) 동안 안 뜨면 탭을 다시 눌러 강제로 갱신한다. 0 이면 사용 안 함. */
@@ -38,6 +43,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   columns: ['foryou', 'following'],
+  layout: 'columns',
   autoAdvance: true,
   idleRefreshMs: 120_000,
   retentionDays: 7,
@@ -46,7 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showMedia: true,
   mediaSize: 'medium',
   holdWhileScrolled: true,
-  theme: 'dark',
+  theme: 'system',
 }
 
 export async function loadSettings(): Promise<Settings> {

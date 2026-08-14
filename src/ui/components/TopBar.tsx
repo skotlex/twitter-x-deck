@@ -1,7 +1,7 @@
-import type { Settings } from '@core/settings'
+import type { DeckLayout, Settings } from '@core/settings'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import type { ColumnMap } from '../hooks/useCollector'
-import { EyeIcon, MoonIcon, SettingsIcon, SunIcon } from './icons'
+import { ColumnsIcon, EyeIcon, MoonIcon, RowsIcon, SettingsIcon, SunIcon } from './icons'
 
 export interface TopBarProps {
   columns: ColumnMap
@@ -15,6 +15,9 @@ export interface TopBarProps {
   onOpenSettings: () => void
   /** 덱을 비켜 아래 x.com 을 보여준다. */
   onPeek: () => void
+  /** 컬럼을 두 개 이상 늘어놓을 수 있는 폭인지. 아니면 방향 선택이 의미가 없다. */
+  canArrange: boolean
+  onChangeLayout: (layout: DeckLayout) => void
 }
 
 export function TopBar({
@@ -26,6 +29,8 @@ export function TopBar({
   onToggleTheme,
   onOpenSettings,
   onPeek,
+  canArrange,
+  onChangeLayout,
 }: TopBarProps) {
   const total = settings.columns.reduce((sum, kind) => sum + columns[kind].tweets.length, 0)
 
@@ -37,6 +42,34 @@ export function TopBar({
         </span>
         <span className="text-[15px] font-semibold tracking-tight">Deck</span>
       </div>
+
+      {canArrange && (
+        <div className="flex rounded-lg bg-surface-2 p-0.5" role="group" aria-label="컬럼 배치 방향">
+          {(
+            [
+              { value: 'columns', label: '좌우로 나란히', Icon: ColumnsIcon },
+              { value: 'rows', label: '위아래로 쌓기', Icon: RowsIcon },
+            ] as const
+          ).map(({ value, label, Icon }) => {
+            const selected = settings.layout === value
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => onChangeLayout(value)}
+                aria-pressed={selected}
+                aria-label={label}
+                title={label}
+                className={`grid h-7 w-8 place-items-center rounded-md transition-colors ${
+                  selected ? 'bg-surface text-text shadow-sm' : 'text-faint hover:text-text'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {activeColumn !== null && (
         <nav className="mx-auto flex rounded-full bg-surface-2 p-0.5" aria-label="타임라인 선택">

@@ -83,9 +83,15 @@ export function App({ hostKind, onPassthrough }: AppProps) {
             onToggleTheme={toggleTheme}
             onOpenSettings={() => setSettingsOpen(true)}
             onPeek={() => setPeeking(true)}
+            canArrange={isDeck && settings.columns.length > 1}
+            onChangeLayout={(layout) => update({ layout })}
           />
 
-          <main className="flex min-h-0 flex-1 gap-3 overflow-hidden p-0 md:p-3">
+          <main
+            className={`flex min-h-0 flex-1 gap-3 overflow-hidden p-0 md:p-3 ${
+              isDeck && settings.layout === 'rows' ? 'flex-col' : ''
+            }`}
+          >
             {visibleColumns.map((kind) => (
               <DeckColumn
                 key={kind}

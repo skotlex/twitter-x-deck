@@ -292,11 +292,17 @@ export function parseTimelinePayload(
     }
   }
 
+  // 정석 경로가 빈손인 건 두 경우다 — 새 글이 없어서 진짜 비었거나, 스키마가 바뀌어서
+  // 못 읽었거나. 전체 훑기가 실제로 뭔가 건져올 때만 '폴백' 으로 본다.
+  // 그러지 않으면 새 글 없는 평범한 응답이 전부 폴백으로 표시된다.
   let degraded = false
   let candidates = rawTweets
   if (candidates.length === 0) {
-    degraded = true
-    candidates = deepCollectTweets(payload)
+    const scanned = deepCollectTweets(payload)
+    if (scanned.length > 0) {
+      degraded = true
+      candidates = scanned
+    }
   }
 
   const tweets: Tweet[] = []

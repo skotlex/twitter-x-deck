@@ -135,10 +135,8 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     // timeline: 파싱 → 저장 → 새로 들어온 것만 화면에 반영
     const capturedAt = Date.now()
     const { tweets, degraded } = parseTimelinePayload(message.body, kind, capturedAt)
-    if (tweets.length === 0) {
-      if (degraded) setColumns((prev) => ({ ...prev, [kind]: { ...prev[kind], degraded: true } }))
-      return
-    }
+    // 게시물이 하나도 없는 응답은 파싱 상태의 근거가 못 된다 — 판정을 그대로 유지한다.
+    if (tweets.length === 0) return
 
     void saveTweets(tweets).then((inserted) => {
       setColumns((prev) => {

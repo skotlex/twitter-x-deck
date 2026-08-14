@@ -61,7 +61,7 @@ function tokenToNode(token: string, key: number): ReactNode {
   )
 }
 
-export function RichText({ text }: { text: string }) {
+export function RichText({ text, className = '' }: { text: string; className?: string }) {
   if (!text) return null
 
   const nodes: ReactNode[] = []
@@ -76,5 +76,5 @@ export function RichText({ text }: { text: string }) {
   }
   if (cursor < text.length) nodes.push(text.slice(cursor))
 
-  return <p className="whitespace-pre-wrap break-words text-[15px] leading-[1.55]">{nodes}</p>
+  return <p className={`whitespace-pre-wrap break-words ${className}`}>{nodes}</p>
 }

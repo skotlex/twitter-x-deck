@@ -79,6 +79,20 @@ export const PlayIcon = (props: IconProps) => (
   </Icon>
 )
 
+export const ColumnsIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="3" y="4" width="7.5" height="16" rx="1.5" />
+    <rect x="13.5" y="4" width="7.5" height="16" rx="1.5" />
+  </Icon>
+)
+
+export const RowsIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="4" y="3" width="16" height="7.5" rx="1.5" />
+    <rect x="4" y="13.5" width="16" height="7.5" rx="1.5" />
+  </Icon>
+)
+
 export const EyeIcon = (props: IconProps) => (
   <Icon {...props}>
     <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
