@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { MEDIA_MAX_HEIGHT, type MediaMode, type MediaSize } from '@core/settings'
 import type { TweetMedia } from '@core/types'
 import { aspectRatio } from '../lib/format'
+import { applyVolume, rememberVolume } from '../lib/volume'
 import { ImageIcon, PlayIcon } from './icons'
 
 /** 장수별 격자 배치. x.com 과 같은 규칙을 따른다. */
@@ -33,6 +34,7 @@ function MediaItem({
   const playable = media.kind !== 'photo' && Boolean(media.playbackUrl)
 
   if (playing && media.playbackUrl && !failed) {
+    const silent = media.kind === 'animated_gif'
     return (
       <video
         src={media.playbackUrl}
@@ -41,8 +43,10 @@ function MediaItem({
         autoPlay
         playsInline
         preload="metadata"
-        loop={media.kind === 'animated_gif'}
-        muted={media.kind === 'animated_gif'}
+        // GIF 는 소리가 없다. 나머지 영상만 덱이 함께 쓰는 소리 크기를 따른다.
+        {...(silent
+          ? { loop: true, muted: true }
+          : { ref: applyVolume, onVolumeChange: (event) => rememberVolume(event.currentTarget) })}
         // 재생이 막히면 원문으로 넘기는 길을 열어준다.
         onError={() => setFailed(true)}
         className="h-full w-full bg-black object-contain"

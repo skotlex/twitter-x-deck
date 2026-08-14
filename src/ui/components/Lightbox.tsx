@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { TweetMedia } from '@core/types'
 import { originalMediaUrl } from '../lib/format'
+import { applyVolume, rememberVolume } from '../lib/volume'
 import { CloseIcon } from './icons'
 
 export interface LightboxProps {
@@ -91,7 +92,14 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
             controls
             autoPlay
             playsInline
-            loop={current.kind === 'animated_gif'}
+            // GIF 는 소리가 없다. 나머지 영상만 덱이 함께 쓰는 소리 크기를 따른다.
+            {...(current.kind === 'animated_gif'
+              ? { loop: true, muted: true }
+              : {
+                  ref: applyVolume,
+                  onVolumeChange: (event: React.SyntheticEvent<HTMLVideoElement>) =>
+                    rememberVolume(event.currentTarget),
+                })}
             onClick={(event) => event.stopPropagation()}
             className="max-h-full max-w-full object-contain"
           />
