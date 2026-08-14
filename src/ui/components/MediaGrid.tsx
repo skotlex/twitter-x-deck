@@ -72,21 +72,20 @@ function MediaItem({
         if (playable) setPlaying(true)
         else onOpen()
       }}
-      className="group relative block h-full w-full cursor-zoom-in overflow-hidden bg-surface-2"
+      className="group/media relative block h-full w-full cursor-zoom-in overflow-hidden bg-surface-2"
       aria-label={media.altText ?? (playable ? '동영상 재생' : '이미지 원본 보기')}
     >
+      {/* 확대 효과는 두지 않는다. 카드 어디에 마우스를 올려도 섬네일이 들썩여 읽기를 방해한다. */}
       <img
         src={media.previewUrl}
         alt={media.altText ?? ''}
         loading="lazy"
         decoding="async"
-        className={`h-full w-full transition-transform duration-500 group-hover:scale-[1.02] ${
-          fit === 'cover' ? 'object-cover' : 'object-contain'
-        }`}
+        className={`h-full w-full ${fit === 'cover' ? 'object-cover' : 'object-contain'}`}
       />
       {playable && (
         <span className="absolute inset-0 grid place-items-center">
-          <span className="grid h-12 w-12 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm transition group-hover:bg-black/70">
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm transition group-hover/media:bg-black/70">
             <PlayIcon className="h-5 w-5 translate-x-[1px]" />
           </span>
         </span>

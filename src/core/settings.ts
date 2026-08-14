@@ -3,14 +3,24 @@ import type { TimelineKind } from './types'
 
 const STORAGE_KEY = 'x-deck:settings'
 
-/** 미디어 표시 크기. `large` 는 원본 비율 그대로라 높이 제한이 없다. */
-export type MediaSize = 'small' | 'medium' | 'large'
+/** 미디어 표시 크기. `full` 은 원본 비율 그대로라 높이 제한이 없다. */
+export type MediaSize = 'small' | 'medium' | 'large' | 'full'
+
+/** 작은 것부터의 순서. 한 단계 줄일 때 기준으로 쓴다. */
+export const MEDIA_SIZE_ORDER: readonly MediaSize[] = ['small', 'medium', 'large', 'full']
 
 /** 크기별 최대 높이(px). `null` 이면 제한 없음. */
 export const MEDIA_MAX_HEIGHT: Record<MediaSize, number | null> = {
   small: 180,
   medium: 340,
-  large: null,
+  large: 520,
+  full: null,
+}
+
+/** 미디어를 한 단계 작게. 인용글과 조밀 밀도에서 쓴다. */
+export function smallerMediaSize(size: MediaSize): MediaSize {
+  const index = MEDIA_SIZE_ORDER.indexOf(size)
+  return MEDIA_SIZE_ORDER[Math.max(0, index - 1)] ?? 'small'
 }
 
 /** 컬럼을 늘어놓는 방향. */

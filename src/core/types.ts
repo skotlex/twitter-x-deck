@@ -55,6 +55,12 @@ export interface TweetCard {
   imageUrl?: string
 }
 
+/** 내 계정이 이 게시물에 이미 반응했는지. 저장 이전 기록에는 없을 수 있다. */
+export interface ViewerState {
+  liked: boolean
+  reposted: boolean
+}
+
 /** 정규화된 게시물. IndexedDB 에 이 형태 그대로 저장한다. */
 export interface Tweet {
   id: string
@@ -72,6 +78,8 @@ export interface Tweet {
   quoted?: Tweet
   /** 답글이면 대상 핸들. */
   replyToHandle?: string
+  /** 내 반응 상태. 하트·리포스트 버튼의 초기값. */
+  viewer?: ViewerState
   /** x.com 원문 링크. */
   url: string
   /** 어느 컬럼에서 수집됐는지. */

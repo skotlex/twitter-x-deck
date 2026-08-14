@@ -162,7 +162,14 @@ function normalize(
     const original = normalize(repostSource, source, capturedAt, depth)
     if (!original) return null
     const by = parseAuthor(tweet.core?.user_results?.result)
-    return by.handle ? { ...original, repostedBy: by } : original
+    if (!by.handle) return original
+    // 리포스트 여부는 겉 껍데기에 실려 온다. 원본 쪽 값으로는 알 수 없다.
+    const reposted = Boolean(tweet.legacy?.retweeted) || Boolean(original.viewer?.reposted)
+    return {
+      ...original,
+      repostedBy: by,
+      viewer: { liked: Boolean(original.viewer?.liked), reposted },
+    }
   }
 
   const legacy = tweet.legacy ?? {}
@@ -189,6 +196,7 @@ function normalize(
     url: `https://x.com/${author.handle || 'i'}/status/${id}`,
     source,
     capturedAt,
+    viewer: { liked: Boolean(legacy.favorited), reposted: Boolean(legacy.retweeted) },
   }
 
   if (legacy.lang && legacy.lang !== 'und') result.lang = legacy.lang

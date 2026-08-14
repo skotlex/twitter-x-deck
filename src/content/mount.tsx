@@ -107,6 +107,9 @@ function mount(): void {
       onPassthrough={(enabled) => {
         // 덱을 통과 모드로 두면 아래 x.com 을 그대로 쓸 수 있다 (로그인·원본 확인용).
         host.style.pointerEvents = enabled ? 'none' : 'auto'
+        // 덱이 화면을 덮고 있는 동안에는 x.com 본문 스크롤을 잠근다. 그러지 않으면
+        // 아래 타임라인 길이만큼 아무 데도 닿지 않는 스크롤바가 페이지에 남는다.
+        document.documentElement.style.overflow = enabled ? '' : 'hidden'
       }}
     />,
   )

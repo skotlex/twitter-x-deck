@@ -1,27 +1,17 @@
 import { memo, useState } from 'react'
 import type { Tweet } from '@core/types'
-import { MEDIA_MAX_HEIGHT, type MediaSize, type Settings } from '@core/settings'
+import {
+  MEDIA_MAX_HEIGHT,
+  smallerMediaSize,
+  type MediaSize,
+  type Settings,
+} from '@core/settings'
+import { openReplyComposer, runTweetAction, type TweetAction } from '../../content/actions'
 import { formatCount, formatRelative, formatStamp } from '../lib/format'
 import { Lightbox } from './Lightbox'
 import { MediaGrid } from './MediaGrid'
 import { RichText } from './RichText'
 import { LikeIcon, ReplyIcon, RepostIcon, VerifiedIcon, ViewsIcon } from './icons'
-
-/**
- * 답글·리포스트·마음에 들어요는 x.com 공식 intent 페이지로 넘긴다.
- *
- * 내부 GraphQL 뮤테이션을 직접 호출하면 덱 안에서 처리할 수는 있지만, 그건 읽기만 하던
- * 확장이 사용자 계정으로 쓰기를 하는 것이고 계정 잠금 위험을 진다.
- * intent 페이지는 x.com 이 공개한 경로이고 최종 확인도 x.com 화면에서 이뤄진다.
- */
-const INTENT = {
-  reply: (id: string) => `https://x.com/intent/post?in_reply_to=${id}`,
-  repost: (id: string) => `https://x.com/intent/retweet?tweet_id=${id}`,
-  like: (id: string) => `https://x.com/intent/like?tweet_id=${id}`,
-}
-
-/** 미디어를 한 단계 작게. 인용글과 조밀 밀도에서 쓴다. */
-const smallerSize = (size: MediaSize): MediaSize => (size === 'large' ? 'medium' : 'small')
 
 /**
  * 밀도별 치수를 한곳에 모아둔다.
@@ -140,7 +130,7 @@ function QuotedTweet({
         <RichText text={tweet.text} className={`${textClass} line-clamp-6`} />
       </div>
       {showMedia && (
-        <MediaGrid media={tweet.media} size={smallerSize(mediaSize)} sourceUrl={tweet.url} />
+        <MediaGrid media={tweet.media} size={smallerMediaSize(mediaSize)} sourceUrl={tweet.url} />
       )}
     </a>
   )
@@ -158,14 +148,20 @@ function LinkCard({ card, mediaSize }: { card: NonNullable<Tweet['card']>; media
       }`}
     >
       {card.imageUrl && (
-        <img
-          src={card.imageUrl}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          style={maxHeight === null ? undefined : { maxHeight }}
-          className="aspect-[1.91/1] w-full object-cover"
-        />
+        // 높이는 감싼 상자가 정한다. 이미지에 max-height 만 걸면 aspect-ratio 와 다퉈
+        // 크기 설정이 먹지 않는다.
+        <div
+          className="overflow-hidden"
+          style={{ aspectRatio: 1.91, ...(maxHeight === null ? {} : { maxHeight }) }}
+        >
+          <img
+            src={card.imageUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover"
+          />
+        </div>
       )}
       <div className="px-3 py-2.5">
         {card.domain && <p className="text-[12px] text-faint">{card.domain}</p>}
@@ -176,33 +172,107 @@ function LinkCard({ card, mediaSize }: { card: NonNullable<Tweet['card']>; media
   )
 }
 
-/** 통계이면서 동시에 동작 버튼. 누르면 x.com intent 페이지가 새 탭으로 열린다. */
-function StatAction({
+const ACTION_BASE =
+  '-mx-1.5 flex items-center gap-1.5 rounded-full px-1.5 py-1 text-[12.5px] tabular-nums transition-colors disabled:cursor-progress'
+
+/** 개수만 보여주고 누르면 새 창을 여는 동작 (답글). */
+function LinkAction({
   icon,
   value,
   label,
-  href,
   tone,
+  onPress,
 }: {
   icon: React.ReactNode
   value: number
   label: string
-  href: string
   tone: string
+  onPress: () => void
 }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer noopener"
+    <button
+      type="button"
       title={label}
       aria-label={`${label} (${value.toLocaleString('ko-KR')})`}
-      onClick={(event) => event.stopPropagation()}
-      className={`-mx-1.5 flex items-center gap-1.5 rounded-full px-1.5 py-1 text-[12.5px] tabular-nums text-faint transition-colors ${tone}`}
+      onClick={(event) => {
+        event.stopPropagation()
+        onPress()
+      }}
+      className={`${ACTION_BASE} text-faint ${tone}`}
     >
       {icon}
       {formatCount(value)}
-    </a>
+    </button>
+  )
+}
+
+/**
+ * 켜고 끌 수 있는 동작 (하트·리포스트).
+ * 화면은 즉시 바꾸고, 실제 반영은 보이지 않는 x.com 페이지에서 진행한다.
+ * 실패하면 표시를 되돌리고 이유를 툴팁에 남긴다.
+ */
+function ToggleAction({
+  icon,
+  value,
+  label,
+  tone,
+  activeClass,
+  initial,
+  tweetUrl,
+  on,
+  off,
+}: {
+  icon: React.ReactNode
+  value: number
+  label: string
+  tone: string
+  activeClass: string
+  initial: boolean
+  tweetUrl: string
+  on: TweetAction
+  off: TweetAction
+}) {
+  const [active, setActive] = useState(initial)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // 낙관적 표시. 서버 개수는 다음 수집분에서 따라온다.
+  const shown = value + (active === initial ? 0 : active ? 1 : -1)
+
+  const press = async () => {
+    if (busy) return
+    const next = !active
+    setActive(next)
+    setBusy(true)
+    setError(null)
+    try {
+      await runTweetAction(tweetUrl, next ? on : off)
+    } catch (cause) {
+      setActive(!next)
+      setError(cause instanceof Error ? cause.message : '실패했다')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      aria-pressed={active}
+      title={error ? `${label} 실패 — ${error}` : label}
+      aria-label={`${label} (${shown.toLocaleString('ko-KR')})`}
+      onClick={(event) => {
+        event.stopPropagation()
+        void press()
+      }}
+      className={`${ACTION_BASE} ${tone} ${
+        error ? 'text-danger' : active ? activeClass : 'text-faint'
+      } ${busy ? 'opacity-60' : ''}`}
+    >
+      {icon}
+      {formatCount(shown)}
+    </button>
   )
 }
 
@@ -215,12 +285,12 @@ export interface TweetCardProps {
 
 function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
   const metrics = METRICS[settings.density]
-  const mediaSize = metrics.shrinkMedia ? smallerSize(settings.mediaSize) : settings.mediaSize
+  const mediaSize = metrics.shrinkMedia ? smallerMediaSize(settings.mediaSize) : settings.mediaSize
   const [lightboxAt, setLightboxAt] = useState<number | null>(null)
 
   return (
     <article
-      className={`group relative border-b border-line-soft transition-colors hover:bg-surface-2/60 ${metrics.padding} ${
+      className={`group/card relative border-b border-line-soft transition-colors hover:bg-surface-2/60 ${metrics.padding} ${
         animate ? 'animate-enter' : ''
       }`}
     >
@@ -279,32 +349,40 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
           )}
 
           <div className={`flex items-center gap-4 ${metrics.statsMargin}`}>
-            <StatAction
+            <LinkAction
               icon={<ReplyIcon className="h-3.5 w-3.5" />}
               value={tweet.stats.replies}
               label="답글 달기"
-              href={INTENT.reply(tweet.id)}
               tone="hover:bg-accent-soft hover:text-accent"
+              onPress={() => openReplyComposer(tweet.id)}
             />
-            <StatAction
+            <ToggleAction
               icon={<RepostIcon className="h-3.5 w-3.5" />}
               value={tweet.stats.reposts}
               label="리포스트"
-              href={INTENT.repost(tweet.id)}
               tone="hover:bg-success/12 hover:text-success"
+              activeClass="text-success"
+              initial={Boolean(tweet.viewer?.reposted)}
+              tweetUrl={tweet.url}
+              on="repost"
+              off="unrepost"
             />
-            <StatAction
+            <ToggleAction
               icon={<LikeIcon className="h-3.5 w-3.5" />}
               value={tweet.stats.likes}
               label="마음에 들어요"
-              href={INTENT.like(tweet.id)}
               tone="hover:bg-danger/12 hover:text-danger"
+              activeClass="text-danger"
+              initial={Boolean(tweet.viewer?.liked)}
+              tweetUrl={tweet.url}
+              on="like"
+              off="unlike"
             />
             <a
               href={tweet.url}
               target="_blank"
               rel="noreferrer noopener"
-              className="ml-auto text-[12.5px] text-faint opacity-0 transition-opacity hover:text-accent focus-visible:opacity-100 group-hover:opacity-100"
+              className="ml-auto text-[12.5px] text-faint opacity-0 transition-opacity hover:text-accent focus-visible:opacity-100 group-hover/card:opacity-100"
             >
               원문 보기
             </a>

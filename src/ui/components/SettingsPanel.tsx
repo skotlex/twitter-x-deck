@@ -250,7 +250,8 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
                     options={[
                       { value: 'small', label: '작게' },
                       { value: 'medium', label: '보통' },
-                      { value: 'large', label: '원본 비율' },
+                      { value: 'large', label: '크게' },
+                      { value: 'full', label: '원본 비율' },
                     ]}
                   />
                 }

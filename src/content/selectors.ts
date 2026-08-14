@@ -137,6 +137,33 @@ function readCount(text: string | null): number | null {
   return digits ? Number.parseInt(digits, 10) : null
 }
 
+/**
+ * 게시물 상세 페이지의 **첫 번째** 게시물에서 동작 버튼을 찾는다.
+ * 상세 페이지에는 답글도 함께 뜨므로 반드시 첫 article 안으로 범위를 좁혀야 한다.
+ */
+export function findPrimaryTweetAction(doc: Document, testIds: string[]): HTMLElement | null {
+  const article =
+    doc.querySelector('[data-testid="primaryColumn"] article') ?? doc.querySelector('article')
+  if (!article) return null
+  for (const id of testIds) {
+    const found = article.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+    if (found) return found
+  }
+  return null
+}
+
+/**
+ * 리포스트 확인 메뉴는 article 밖(문서 최상단)에 그려진다.
+ * 그래서 범위를 좁히지 않고 문서 전체에서 찾는다.
+ */
+export function findMenuItem(doc: Document, testIds: string[]): HTMLElement | null {
+  for (const id of testIds) {
+    const found = doc.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+    if (found) return found
+  }
+  return null
+}
+
 /** 로그인이 풀렸는지 판단한다. /home 밖으로 튕겼거나 로그인 UI 가 보이면 참. */
 export function isLoggedOut(): boolean {
   const path = window.location.pathname
