@@ -383,6 +383,17 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
                 }
               />
               <Row
+                label="컬럼 테두리"
+                hint="컬럼 상자를 두르는 선입니다. 끄면 컬럼끼리 경계 없이 이어져 보입니다."
+                control={
+                  <Toggle
+                    checked={settings.columnBorder}
+                    onChange={(next) => onUpdate({ columnBorder: next })}
+                    label="컬럼 테두리"
+                  />
+                }
+              />
+              <Row
                 label="미디어 표시"
                 hint="끄면 이미지·동영상을 불러오지 않아 트래픽이 줄어듭니다."
                 control={
