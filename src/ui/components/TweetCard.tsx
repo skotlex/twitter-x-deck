@@ -147,17 +147,50 @@ function QuotedTweet({
   )
 }
 
-/** 링크 미리보기. 인용글과 같은 이유로 배경을 깔아 본문과 구분한다. */
+/**
+ * 링크 미리보기. 인용글과 같은 이유로 배경을 깔아 본문과 구분한다.
+ *
+ * 크기를 '작게' 로 두면 사진만 납작해지는 게 아니라 배치 자체가 바뀐다 —
+ * 섬네일을 왼쪽으로 돌리고 제목을 그 옆에 붙여 카드 한 장의 높이를 확 줄인다.
+ * 사진 높이만 깎으면 제목·설명·여백이 그대로 남아 실제로는 별로 짧아지지 않는다.
+ */
 function LinkCard({ card, mediaSize }: { card: NonNullable<Tweet['card']>; mediaSize: MediaSize }) {
   const Wrapper = card.url ? 'a' : 'div'
   const maxHeight = MEDIA_MAX_HEIGHT[mediaSize]
+  const linkProps = card.url
+    ? { href: card.url, target: '_blank', rel: 'noreferrer noopener' as const }
+    : {}
+  const shell = `mt-2.5 overflow-hidden rounded-xl border border-line bg-surface-2 transition-colors ${
+    card.url ? 'hover:border-accent/40' : ''
+  }`
+
+  if (mediaSize === 'small') {
+    return (
+      <Wrapper {...linkProps} className={`${shell} flex min-h-[62px] items-stretch`}>
+        {card.imageUrl && (
+          // 글 높이에 맞춰 늘어나야 하므로 칸을 먼저 잡고 그 안을 사진으로 채운다.
+          <div className="relative w-[92px] shrink-0 self-stretch overflow-hidden bg-surface-3">
+            <img
+              src={card.imageUrl}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          </div>
+        )}
+        <div className="min-w-0 flex-1 px-3 py-2">
+          {card.domain && <p className="truncate text-[12px] text-faint">{card.domain}</p>}
+          <p className="mt-0.5 line-clamp-2 text-[13.5px] font-medium leading-snug text-text">
+            {card.title}
+          </p>
+        </div>
+      </Wrapper>
+    )
+  }
+
   return (
-    <Wrapper
-      {...(card.url ? { href: card.url, target: '_blank', rel: 'noreferrer noopener' as const } : {})}
-      className={`mt-2.5 block overflow-hidden rounded-xl border border-line bg-surface-2 transition-colors ${
-        card.url ? 'hover:border-accent/40' : ''
-      }`}
-    >
+    <Wrapper {...linkProps} className={`${shell} block`}>
       {card.imageUrl && (
         // 높이는 감싼 상자가 정한다. 이미지에 max-height 만 걸면 aspect-ratio 와 다퉈
         // 크기 설정이 먹지 않는다.
