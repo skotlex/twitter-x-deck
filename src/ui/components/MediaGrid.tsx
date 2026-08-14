@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { MEDIA_MAX_HEIGHT, type MediaMode, type MediaSize } from '@core/settings'
 import type { TweetMedia } from '@core/types'
-import { distanceFromCenter, reportCandidate } from '../lib/autoplay'
 import { aspectRatio } from '../lib/format'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { ImageIcon, PlayIcon } from './icons'
@@ -23,7 +22,7 @@ function MediaItem({
   fit,
   sourceUrl,
   hoverPlay,
-  siblings,
+  leads,
   onOpen,
 }: {
   media: TweetMedia
@@ -31,38 +30,32 @@ function MediaItem({
   fit: 'cover' | 'contain'
   sourceUrl: string
   hoverPlay: boolean
-  /** 같은 카드에 붙은 미디어 수. 하나뿐이면 누가 도는지 겨룰 것도 없다. */
-  siblings: number
+  /** 이 카드에서 맨 앞에 오는 영상인지. 카드만 가리켰을 때 돌 대상을 하나로 정한다. */
+  leads: boolean
   onOpen: () => void
 }) {
   const [failed, setFailed] = useState(false)
   const [hovered, setHovered] = useState(false)
   /** 이 영상이 실린 카드를 지금 가리키고 있거나 그 안에 포커스가 있는지. */
   const [cardActive, setCardActive] = useState(false)
-  /** 겨룸에서 이겨 저절로 돌고 있는 상태. */
-  const [centered, setCentered] = useState(false)
-  /** 사용자가 눌러 소리를 켠 상태. 한 번 켜면 화면을 벗어나도 계속 돈다. */
+  /** 사용자가 눌러 소리를 켠 상태. 한 번 켜면 마우스가 떠나도 계속 돈다. */
   const [engaged, setEngaged] = useState(false)
   const hostRef = useRef<HTMLButtonElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
   const playable = media.kind !== 'photo' && Boolean(media.playbackUrl)
   const silent = media.kind === 'animated_gif'
-  /** 같은 카드에 미디어가 여럿일 때만 누가 돌지 겨룬다. */
-  const contested = siblings > 1
 
   /**
    * 돌아야 하는지.
    *
    *   1순위 — 이 영상을 직접 가리켰다.
    *   2순위 — 이 영상이 실린 카드를 가리켰거나 그 안에 포커스가 있다.
-   *           카드에 미디어가 여럿이면 그중 화면 가운데에 가장 가까운 하나만.
+   *           카드에 영상이 여럿이면 맨 앞 하나만 돈다.
    *   그리고 한 번 소리를 켠 영상은 조건과 무관하게 계속 돈다.
    */
   const showVideo =
-    playable &&
-    !failed &&
-    (engaged || (hoverPlay && (hovered || (cardActive && (!contested || centered)))))
+    playable && !failed && (engaged || (hoverPlay && (hovered || (cardActive && leads))))
 
   /**
    * 이 영상이 실린 카드를 지금 보고 있는지 지켜본다.
@@ -90,49 +83,6 @@ function MediaItem({
       card.removeEventListener('focusout', leave)
     }
   }, [hoverPlay, playable])
-
-  /**
-   * 미디어가 여럿인 카드에서 누가 돌지 겨룬다. 화면 가운데에 가장 가까운 하나가 이긴다.
-   *
-   * 하나뿐인 카드는 여기까지 오지 않는다 — 겨룰 상대가 없는데 관찰자를 붙이면
-   * 그 응답을 기다리는 만큼 재생이 늦고, 그 경로가 어긋나면 카드를 가리켜도 영영
-   * 돌지 않는다. 목록에 깔리는 관찰자 수도 그만큼 줄어든다.
-   *
-   * 관찰자는 조상의 잘림까지 셈에 넣으므로 컬럼 밖으로 밀려난 카드는 저절로 빠진다.
-   * 문턱을 촘촘히 두는 것은 스크롤 도중에도 승자가 따라 바뀌게 하기 위해서다.
-   */
-  useEffect(() => {
-    const node = hostRef.current
-    if (!hoverPlay || !playable || !contested || !cardActive || !node) {
-      setCentered(false)
-      return
-    }
-
-    const token = {}
-    const group = node.closest('.scroll-thin')
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry?.isIntersecting) {
-          reportCandidate(token, null)
-          setCentered(false)
-          return
-        }
-        reportCandidate(token, {
-          group,
-          distance: distanceFromCenter(entry.boundingClientRect),
-          visible: entry.intersectionRatio,
-          play: setCentered,
-        })
-      },
-      { threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1] },
-    )
-    observer.observe(node)
-    return () => {
-      observer.disconnect()
-      reportCandidate(token, null)
-      setCentered(false)
-    }
-  }, [hoverPlay, playable, contested, cardActive])
 
   /**
    * 소리는 요소를 바꾸지 않고 켠다. 눌렀다고 새 영상을 갈아 끼우면 보던 위치가
@@ -323,6 +273,8 @@ export function MediaGrid({ media, size, sourceUrl, hoverPlay, onOpen }: MediaGr
 
   // 높이를 자르는 크기에서는 여백이 생기지 않도록 채워서 자른다.
   const fit: 'cover' | 'contain' = maxHeight === null && single ? 'contain' : 'cover'
+  // 카드만 가리켰을 때 돌 하나. 영상이 여럿이면 맨 앞의 것으로 정한다.
+  const firstPlayable = media.findIndex((item) => item.kind !== 'photo' && item.playbackUrl)
 
   return (
     <div
@@ -336,7 +288,7 @@ export function MediaGrid({ media, size, sourceUrl, hoverPlay, onOpen }: MediaGr
             fit={fit}
             sourceUrl={sourceUrl}
             hoverPlay={hoverPlay}
-            siblings={media.length}
+            leads={index === firstPlayable}
             onOpen={() => onOpen?.(index)}
           />
         </div>
