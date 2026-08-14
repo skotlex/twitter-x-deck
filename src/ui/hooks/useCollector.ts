@@ -78,6 +78,17 @@ function byKind<T>(make: (kind: TimelineKind) => T): Record<TimelineKind, T> {
 
 const initialColumns = (): ColumnMap => byKind(emptyColumn)
 
+/**
+ * 이 컬럼에 실제로 보여줄 항목만 남긴다.
+ *
+ * 멘션은 게시물만 담는다. 알림 화면은 전체 목록과 멘션 목록을 둘 다 불러오므로
+ * 귀속이 한 번 빗나가면 두 컬럼이 똑같아진다. 받을 때만 거르면 그전에 저장된
+ * 기록은 그대로 남으므로, 읽어 올릴 때도 같은 잣대를 댄다.
+ */
+function visibleFor(kind: TimelineKind, items: StoredItem[]): StoredItem[] {
+  return kind === 'mentions' ? items.filter((item) => !isNotification(item)) : items
+}
+
 /** id 중복 없이 새 항목을 앞에 붙이고 렌더 상한까지 자른다. */
 function prepend(incoming: StoredItem[], current: StoredItem[]): StoredItem[] {
   if (incoming.length === 0) return current
@@ -190,10 +201,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     const capturedAt = Date.now()
     const parsed = parseTimelinePayload(message.body, kind, capturedAt)
     const { degraded } = parsed
-    // 멘션 컬럼은 게시물만 담는다. 알림 목록 응답이 이 컬럼으로 흘러와도 두 컬럼이
-    // 똑같아지지 않게 막는 두 번째 잠금이다.
-    const items =
-      kind === 'mentions' ? parsed.items.filter((item) => !isNotification(item)) : parsed.items
+    const items = visibleFor(kind, parsed.items as StoredItem[])
     // 건진 게 하나도 없는 응답은 파싱 상태의 근거가 못 된다 — 판정을 그대로 유지한다.
     if (items.length === 0) {
       if (columnsRef.current[kind].refreshing) settleRefresh(kind, '새 글 없음')
@@ -252,8 +260,12 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
       if (cancelled) return
       setColumns((prev) => {
         const next = { ...prev }
-        for (const [kind, tweets] of results) {
-          next[kind] = { ...next[kind], tweets, hasMore: tweets.length === PAGE_SIZE }
+        for (const [kind, stored] of results) {
+          next[kind] = {
+            ...next[kind],
+            tweets: visibleFor(kind, stored),
+            hasMore: stored.length === PAGE_SIZE,
+          }
         }
         return next
       })
@@ -379,7 +391,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
       setColumns((prev) => {
         const column = prev[kind]
         const known = new Set(column.tweets.map((t) => t.key))
-        const fresh = older.filter((t) => !known.has(t.key))
+        const fresh = visibleFor(kind, older).filter((t) => !known.has(t.key))
         return {
           ...prev,
           [kind]: {

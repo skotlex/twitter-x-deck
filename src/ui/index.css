@@ -12,6 +12,8 @@
   --surface-3: #22262e;
   --line: #23272f;
   --line-soft: #1a1e25;
+  /* 눈에 보여야 뜻이 있는 선. 컬럼 상자처럼 '있다/없다' 를 고르는 자리에 쓴다. */
+  --line-strong: #3a4150;
   --text: #e9ebee;
   --muted: #99a1ad;
   --faint: #6a7280;
@@ -41,6 +43,7 @@
   --surface-3: #e8ebef;
   --line: #e0e4ea;
   --line-soft: #eceff3;
+  --line-strong: #c7cfd9;
   --text: #16181c;
   --muted: #5a6470;
   --faint: #8b95a2;
@@ -65,6 +68,7 @@
   --color-surface-3: var(--surface-3);
   --color-line: var(--line);
   --color-line-soft: var(--line-soft);
+  --color-line-strong: var(--line-strong);
   --color-text: var(--text);
   --color-muted: var(--muted);
   --color-faint: var(--faint);

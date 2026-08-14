@@ -126,8 +126,8 @@ export function DeckColumn({
         setOver(false)
         reorder?.onDrop(kind)
       }}
-      className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-line bg-surface transition-[opacity,box-shadow] md:rounded-2xl ${
-        settings.columnBorder ? 'md:border' : ''
+      className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface transition-[opacity,box-shadow] md:rounded-2xl ${
+        settings.columnBorder ? 'border-line-strong md:border' : ''
       } ${dragging === kind ? 'opacity-40' : ''} ${over && dropTarget ? 'ring-2 ring-accent' : ''}`}
     >
       <header

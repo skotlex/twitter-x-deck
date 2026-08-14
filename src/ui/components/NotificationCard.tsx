@@ -8,6 +8,22 @@ import { TweetDetail } from './TweetDetail'
 /** 얼굴을 몇 개까지 늘어놓을지. 넘치면 숫자로 접는다. */
 const FACE_LIMIT = 6
 
+/** x.com 이 생기기 전(2006). 이보다 이른 시각은 못 읽은 값으로 본다. */
+const PLAUSIBLE_FROM = Date.UTC(2006, 0, 1)
+
+/**
+ * 화면에 쓸 시각.
+ *
+ * 저장된 기록에는 시각을 못 읽어 0 이 박힌 것이 섞여 있다. 그대로 그리면
+ * '1970년 1월 1일' 이 뜬다. 대상 게시물의 시각이 있으면 그쪽이, 없으면 관측 시각이
+ * 훨씬 사실에 가깝다.
+ */
+function displayTime(notification: DeckNotification): number {
+  if (notification.createdAt >= PLAUSIBLE_FROM) return notification.createdAt
+  const target = notification.target?.createdAt
+  return target && target >= PLAUSIBLE_FROM ? target : notification.capturedAt
+}
+
 /** 팔로우 알림용. 여기서만 쓰는 그림이라 공용 아이콘 모음에 두지 않는다. */
 const PersonAddIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -71,6 +87,7 @@ function NotificationCardBase({ notification, settings, animate = false }: Notif
   const { Glyph, tone } = ICONS[notification.icon]
   const compact = settings.density === 'compact'
   const target = notification.target
+  const when = displayTime(notification)
   const faces = notification.actors.slice(0, FACE_LIMIT)
   const rest = notification.actors.length - faces.length
 
@@ -106,11 +123,11 @@ function NotificationCardBase({ notification, settings, animate = false }: Notif
           )}
 
           <time
-            dateTime={new Date(notification.createdAt).toISOString()}
-            title={formatStamp(notification.createdAt)}
+            dateTime={new Date(when).toISOString()}
+            title={formatStamp(when)}
             className="mt-1.5 block text-[12px] text-faint"
           >
-            {formatRelative(notification.createdAt)}
+            {formatRelative(when)}
           </time>
         </div>
       </div>
