@@ -10,6 +10,7 @@ import {
   SettingsIcon,
   SunIcon,
   TabsIcon,
+  XLogoIcon,
 } from './icons'
 
 export interface TopBarProps {
@@ -55,8 +56,8 @@ export function TopBar({
   return (
     <header className="z-30 flex h-14 shrink-0 items-center gap-3 border-b border-line bg-canvas/85 px-3 backdrop-blur-xl sm:px-4">
       <div className="flex items-center gap-2">
-        <span className="grid h-7 w-7 place-items-center rounded-lg bg-text text-[13px] font-black text-canvas">
-          X
+        <span className="grid h-7 w-7 place-items-center rounded-lg bg-text text-canvas">
+          <XLogoIcon className="h-4 w-4" />
         </span>
         <span className="text-[15px] font-semibold tracking-tight">Deck</span>
       </div>

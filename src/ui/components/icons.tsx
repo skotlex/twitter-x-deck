@@ -129,6 +129,13 @@ export const MoonIcon = (props: IconProps) => (
   </Icon>
 )
 
+/** x.com 로고 마크. 획 끝이 비스듬히 잘려 있어 닫기 버튼과 구분된다. 확장 아이콘과 같은 형태다. */
+export const XLogoIcon = (props: IconProps) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+)
+
 export const VerifiedIcon = (props: IconProps) => (
   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
     <path d="M12 1.6 14.2 4l3.2-.4 1 3.1 3 1.3-1.2 3 1.2 3-3 1.3-1 3.1-3.2-.4L12 22.4 9.8 20l-3.2.4-1-3.1-3-1.3 1.2-3-1.2-3 3-1.3 1-3.1L9.8 4 12 1.6Zm-1.1 13.7 5.3-5.3-1.4-1.4-3.9 3.9-1.8-1.8-1.4 1.4 3.2 3.2Z" />
