@@ -19,7 +19,6 @@ import { App } from '../ui/App'
 import { setHostCollector } from '../ui/hostCollector'
 import { startCollector } from './collector'
 import { watchFrameBlocks } from './frameBlock'
-import { ensureRuleScope } from './ruleScope'
 
 const SESSION_KEY = 'xdeck:deck'
 const OVERLAY_ID = 'x-deck-overlay'
@@ -159,9 +158,6 @@ function mount(): void {
 
   // 프레임이 막히는 순간을 놓치지 않으려면 첫 프레임을 만들기 전에 걸어둬야 한다.
   watchFrameBlocks()
-  // 헤더 제거 규칙도 지금 청해둔다. 수집 프레임이 없는 화면(컬럼 하나)에서도
-  // 작성창·상세 창은 프레임으로 뜨므로, 아무도 청하지 않는 상태로 두면 안 된다.
-  void ensureRuleScope()
 
   const hostKind: TimelineKind = readFrameRole() ?? 'foryou'
   const { host, mountPoint } = createOverlay()

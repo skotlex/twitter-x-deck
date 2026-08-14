@@ -13,7 +13,6 @@
  * 부모가 x.com 이라 프레임 문서를 직접 조작할 수 있어 content script 를 거칠 필요가 없다.
  */
 import { describeFrameBlock, refreshRuleReport } from './frameBlock'
-import { ensureRuleScope } from './ruleScope'
 import { findFocalArticle, findMenuItem, findPrimaryTweetAction, simulateClick } from './selectors'
 
 /** 상세 페이지가 그려질 때까지 기다리는 한계. */
@@ -130,8 +129,6 @@ async function attempt(
  */
 export async function runTweetAction(tweetUrl: string, action: TweetAction): Promise<void> {
   const plan = PLAN[action]
-  // 헤더 제거 규칙이 선 뒤에 띄운다. 먼저 나간 요청은 그대로 막힌다.
-  await ensureRuleScope()
   const frame = createHiddenFrame(tweetUrl)
 
   try {

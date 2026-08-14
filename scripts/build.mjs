@@ -31,6 +31,7 @@ async function copyStatic() {
   manifest.version = pkg.version
   await writeFile(resolve(dist, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
 
+  await cp(resolve(root, 'rules.json'), resolve(dist, 'rules.json'))
   if (existsSync(resolve(root, 'icons'))) {
     await cp(resolve(root, 'icons'), resolve(dist, 'icons'), { recursive: true })
   }
