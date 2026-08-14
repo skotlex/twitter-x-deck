@@ -56,3 +56,46 @@ Claude Code가 이 저장소에서 작업할 때 자동으로 읽는 컨텍스�
   `scripts/build.mjs` 가 빌드 시 여기서 주입하므로 저장소의 `manifest.json` 값은 손대지 않는다
 - minor/major 를 올리는 큰 릴리스는 사용자에게 확인
 - Keep a Changelog 형식 엄수
+
+---
+
+## 3. README 동기화 점검
+
+[README.md](README.md) 는 GitHub 첫 화면에 노출되는 문서다. **소스를 수정한 작업은
+예외 없이 마지막에 README 를 열어 어긋난 곳이 없는지 확인**한다 (요청자가 따로 말하지
+않아도 수행). CHANGELOG 와 달리 "사용자 체감 변경" 여부를 따지지 않는다 — 내부 구조
+변경도 README 의 구조·기술 설명과 어긋나면 고쳐야 한다.
+
+### 3.1 점검 절차
+
+1. 이번 작업에서 **건드린 파일 목록**을 뽑는다 (`git diff --name-only`)
+2. 아래 대응표에서 그 파일을 출처로 삼는 README 절이 있는지 본다
+3. 해당 절을 열어 실제 코드와 대조하고, 어긋나면 그 자리에서 고친다
+4. 고칠 것이 없어도 **"README 확인함, 변경 없음"을 사용자 보고에 한 줄 남긴다** —
+   점검을 건너뛴 것과 구별되게
+
+### 3.2 출처 대응표
+
+| 소스 | 영향받는 README 절 |
+| --- | --- |
+| `src/core/types.ts` (컬럼 종류·수집 경로) | 주요 기능 › 여러 타임라인을 동시에, 수집 경로 |
+| `src/core/settings.ts` · `src/ui/components/SettingsPanel.tsx` | 사용법 › 설정 항목 |
+| `src/ui/components/TopBar.tsx` | 사용법 › 상단 바 |
+| `src/ui/App.tsx` (배치 임계값 상수) | 사용법 › 창 크기와 배치 |
+| `src/content/mount.tsx` · `collector.ts` · `actions.ts` · `interceptor.ts` | 동작 방식 |
+| `src/` 파일 추가·삭제·역할 변경 | 프로젝트 구조 |
+| `manifest.json` · `rules.json` | 권한 안내, 요구 사항(최소 크롬 버전) |
+| `package.json` (의존성·스크립트) · `scripts/*.mjs` · `vite.config.ts` | 설치와 빌드, 기술 스택 |
+| 새 기능 자체 | 주요 기능, 사용법 |
+
+표에 없는 파일을 고쳤더라도 README 에 그 동작을 설명한 문장이 있으면 함께 고친다.
+표는 자주 어긋나는 자리를 모아둔 것이지 전부가 아니다.
+
+### 3.3 작성 규칙
+
+- **문체는 `~합니다`체**. 이 파일·CHANGELOG 와 다르다 — README 는 외부 사용자용이다
+- 코드에서 확인한 사실만 적는다. 셀렉터 추측·미검증 동작은 README 에 올리지 않는다
+- 수치(임계값·최소 버전·상한)는 상수를 직접 읽어 옮긴다. 기억으로 쓰지 않는다
+- 절 구성을 바꿨으면 상단 목차의 링크도 함께 손본다
+- README 수정은 **소스 커밋과 같은 커밋에 포함**한다 (규칙 1). README 만 고친 작업은
+  문서 수정이므로 commit 하지 않는다
