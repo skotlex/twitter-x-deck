@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { isDeletedMessage } from '@core/messages'
 import { parseDeletedId } from '@core/parser'
 import { PAGE_FRAME_NAME } from '@core/role'
+import { describeFrameBlock, refreshRuleReport } from '../../content/frameBlock'
 import { HIDE_X_CHROME_CSS } from '../../content/selectors'
 import { CloseIcon } from './icons'
 
@@ -30,6 +31,8 @@ export interface XPageModalProps {
 export function XPageModal({ url, handle, label = '님의 게시물', onClose }: XPageModalProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const [blocked, setBlocked] = useState(false)
+  /** 막혔을 때 왜 막혔는지. 규칙이 안 걸린 것과 조건이 비껴간 것은 손볼 자리가 다르다. */
+  const [why, setWhy] = useState<string | null>(null)
 
   useEffect(() => {
     // 오버레이가 키 이벤트를 x.com 쪽으로 못 가게 끊으므로 캡처 단계로 받는다.
@@ -71,6 +74,8 @@ export function XPageModal({ url, handle, label = '님의 게시물', onClose }:
     }
     if (!doc) {
       setBlocked(true)
+      // 규칙 상태는 요청이 나간 뒤에 물어야 의미가 있다.
+      void refreshRuleReport().then(() => setWhy(describeFrameBlock()))
       return
     }
     setBlocked(false)
@@ -127,6 +132,7 @@ export function XPageModal({ url, handle, label = '님의 게시물', onClose }:
           <div className="grid flex-1 place-items-center px-8 text-center">
             <div>
               <p className="text-[14px] text-text">덱 안에 띄우지 못했습니다.</p>
+              {why && <p className="mt-1.5 text-[12px] leading-relaxed text-faint">{why}</p>}
               <a
                 href={url}
                 target="_blank"
