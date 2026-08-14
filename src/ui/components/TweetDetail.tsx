@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { HIDE_X_CHROME_CSS } from '../../content/selectors'
 import { CloseIcon } from './icons'
 
+/**
+ * 창 폭. x.com 게시물 칸(600px) 에 스크롤바와 여백만 더한 값이다.
+ * 더 넓혀도 그만큼이 빈 자리로 남을 뿐이다 — 칸의 폭은 x.com 이 정한다.
+ */
+const WIDTH = 'w-[648px]'
+
 export interface TweetDetailProps {
   /** 게시물 원문 주소. 이 페이지에 답글이 전부 딸려 온다. */
   url: string
@@ -69,7 +75,7 @@ export function TweetDetail({ url, handle, onClose }: TweetDetailProps) {
     >
       <div
         onClick={(event) => event.stopPropagation()}
-        className="flex h-[880px] max-h-full w-[720px] max-w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl shadow-black/40"
+        className={`flex h-[880px] max-h-full ${WIDTH} max-w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl shadow-black/40`}
       >
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
           <span className="truncate text-[14px] font-semibold text-text">

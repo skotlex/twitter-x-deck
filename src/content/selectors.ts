@@ -188,12 +188,16 @@ export function findMenuItem(doc: Document, testIds: string[]): HTMLElement | nu
  * 게시물 상세를 프레임으로 띄우면 좌측 내비게이션과 우측 추천 칸까지 따라온다.
  * 좁은 창에서는 정작 볼 게시물과 답글이 밀려나므로 본문만 남긴다.
  * 실패해도 잃는 건 화면이 조금 지저분해지는 것뿐이라 조용히 넘어가도 된다.
+ *
+ * 게시물 칸의 **폭은 건드리지 않는다**. x.com 은 조상 요소들에 폭을 고정해두어
+ * 여기서 100% 를 줘봐야 그 고정값을 따라갈 뿐이고, 억지로 늘리면 반응형 규칙과
+ * 다투다 안쪽 내용이 잘린다. 창 크기를 이 칸에 맞추는 쪽이 훨씬 튼튼하다.
  */
 export const HIDE_X_CHROME_CSS = `
 header[role="banner"],
 [data-testid="sidebarColumn"],
 [data-testid="BottomBar"] { display: none !important; }
-[data-testid="primaryColumn"] { width: 100% !important; max-width: none !important; border: 0 !important; }
+[data-testid="primaryColumn"] { max-width: 100% !important; border: 0 !important; margin: 0 auto !important; }
 `
 
 /** 로그인이 풀렸는지 판단한다. /home 밖으로 튕겼거나 로그인 UI 가 보이면 참. */
