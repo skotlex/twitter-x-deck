@@ -78,10 +78,13 @@ export function App({ hostKind, onPassthrough }: AppProps) {
 
   useEffect(() => {
     onPassthrough(passthrough)
-    // 이 문서를 사용자에게 돌려주는 동안에는 수집기도 손을 뗀다. 그러지 않으면
-    // 사용자가 고른 탭을 우리가 계속 되돌려 서로 싸운다.
-    pauseHostCollector(passthrough)
-  }, [onPassthrough, passthrough])
+    // 사용자가 직접 비켜달라고 한 동안에만 손을 뗀다. 그러지 않으면 사용자가 고른
+    // 탭을 우리가 계속 되돌려 서로 싸운다.
+    //
+    // 로그인 때문에 비켜난 경우에는 멈추면 안 된다. 멈춘 수집기는 다시 판단하지
+    // 않으므로, 한 번 로그인 필요로 새면 로그인이 멀쩡해도 그 상태에 갇힌다.
+    pauseHostCollector(peeking)
+  }, [onPassthrough, passthrough, peeking])
 
   // 'system' 은 여기서 실제 값으로 풀어 항상 명시한다 (CSS 에 분기를 두지 않기 위해).
   useEffect(() => {

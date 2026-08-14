@@ -268,14 +268,18 @@ export function findViewer(): ViewerInfo | null {
   return { handle, name: name || handle, avatarUrl }
 }
 
-/** 로그인이 풀렸는지 판단한다. /home 밖으로 튕겼거나 로그인 UI 가 보이면 참. */
+/**
+ * 로그인이 풀렸는지 판단한다.
+ *
+ * 로그인 화면으로 옮겨갔거나 로그인 UI 가 실제로 그려졌을 때만 참이다.
+ * '무엇이 아직 안 보인다' 는 근거로 삼지 않는다 — 문서가 뜬 직후에는 로그인
+ * 여부와 상관없이 아무 것도 안 그려져 있어서, 그걸 로그아웃으로 읽으면 멀쩡히
+ * 로그인한 사람에게 로그인하라는 화면을 띄우게 된다.
+ */
 export function isLoggedOut(): boolean {
   const path = window.location.pathname
   if (path.startsWith('/i/flow/login') || path === '/login' || path === '/i/flow/signup') return true
-  if (document.querySelector('[data-testid="loginButton"], [data-testid="signupButton"]')) return true
-  // 홈으로 보냈는데 홈이 아니면 로그아웃 상태의 랜딩으로 밀려난 것이다.
-  if (path === '/' && !document.querySelector('[data-testid="primaryColumn"]')) return true
-  return false
+  return Boolean(document.querySelector('[data-testid="loginButton"], [data-testid="signupButton"]'))
 }
 
 /**
