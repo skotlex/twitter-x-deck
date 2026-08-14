@@ -406,12 +406,17 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
               />
               <Row
                 label="미디어 표시"
-                hint="끄면 이미지·동영상을 불러오지 않아 트래픽이 줄어듭니다."
+                hint="라벨은 무엇이 붙어 있는지만 알려주고, 누르면 그 자리에서 펼칩니다. 숨김은 아예 불러오지 않아 트래픽이 줄어듭니다."
                 control={
-                  <Toggle
-                    checked={settings.showMedia}
-                    onChange={(next) => onUpdate({ showMedia: next })}
+                  <Select
                     label="미디어 표시"
+                    value={settings.mediaMode}
+                    onChange={(next) => onUpdate({ mediaMode: next })}
+                    options={[
+                      { value: 'show', label: '바로 표시' },
+                      { value: 'label', label: '라벨만' },
+                      { value: 'hide', label: '숨김' },
+                    ]}
                   />
                 }
               />

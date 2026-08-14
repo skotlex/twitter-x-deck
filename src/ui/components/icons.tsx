@@ -109,6 +109,15 @@ export const TabsIcon = (props: IconProps) => (
   </Icon>
 )
 
+/** 사진. 액자 안의 산과 해. */
+export const ImageIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="3" y="4.5" width="18" height="15" rx="2" />
+    <circle cx="8.5" cy="9.5" r="1.5" />
+    <path d="M4 17l4.5-4.5 3 3L15 12l5 5" />
+  </Icon>
+)
+
 /** 보관량. 뚜껑 덮인 상자. */
 export const ArchiveIcon = (props: IconProps) => (
   <Icon {...props}>

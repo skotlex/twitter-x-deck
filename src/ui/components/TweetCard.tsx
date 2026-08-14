@@ -3,13 +3,14 @@ import type { Tweet, TweetMedia } from '@core/types'
 import {
   MEDIA_MAX_HEIGHT,
   smallerMediaSize,
+  type MediaMode,
   type MediaSize,
   type Settings,
 } from '@core/settings'
 import { runTweetAction, type ComposeMode, type TweetAction } from '../../content/actions'
 import { formatCount, formatRelative, formatStamp } from '../lib/format'
 import { Lightbox } from './Lightbox'
-import { MediaGrid } from './MediaGrid'
+import { MediaSlot } from './MediaGrid'
 import { PostComposer } from './PostComposer'
 import { RichText } from './RichText'
 import { XPageModal } from './XPageModal'
@@ -115,14 +116,14 @@ function opensDetail(event: React.MouseEvent<HTMLElement>): boolean {
  */
 function QuotedTweet({
   tweet,
-  showMedia,
+  mediaMode,
   mediaSize,
   textClass,
   onOpenMedia,
   onOpenDetail,
 }: {
   tweet: Tweet
-  showMedia: boolean
+  mediaMode: MediaMode
   mediaSize: MediaSize
   textClass: string
   onOpenMedia: (index: number) => void
@@ -154,14 +155,13 @@ function QuotedTweet({
       <div className="mt-1.5 text-muted">
         <RichText text={tweet.text} className={`${textClass} line-clamp-6`} />
       </div>
-      {showMedia && (
-        <MediaGrid
-          media={tweet.media}
-          size={smallerMediaSize(mediaSize)}
-          sourceUrl={tweet.url}
-          onOpen={onOpenMedia}
-        />
-      )}
+      <MediaSlot
+        media={tweet.media}
+        mode={mediaMode}
+        size={smallerMediaSize(mediaSize)}
+        sourceUrl={tweet.url}
+        onOpen={onOpenMedia}
+      />
     </div>
   )
 }
@@ -589,21 +589,20 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
             <RichText text={tweet.text} className={`${metrics.text} ${metrics.clamp}`} />
           </div>
 
-          {settings.showMedia && (
-            <MediaGrid
-              media={tweet.media}
-              size={mediaSize}
-              sourceUrl={tweet.url}
-              onOpen={(index) => setLightbox({ media: tweet.media, index, sourceUrl: tweet.url })}
-            />
-          )}
-          {tweet.card && !tweet.media.length && settings.showMedia && (
+          <MediaSlot
+            media={tweet.media}
+            mode={settings.mediaMode}
+            size={mediaSize}
+            sourceUrl={tweet.url}
+            onOpen={(index) => setLightbox({ media: tweet.media, index, sourceUrl: tweet.url })}
+          />
+          {tweet.card && !tweet.media.length && settings.mediaMode !== 'hide' && (
             <LinkCard card={tweet.card} mediaSize={mediaSize} />
           )}
           {quoted && (
             <QuotedTweet
               tweet={quoted}
-              showMedia={settings.showMedia}
+              mediaMode={settings.mediaMode}
               mediaSize={mediaSize}
               textClass={metrics.text}
               onOpenMedia={(index) => setLightbox({ media: quoted.media, index, sourceUrl: quoted.url })}

@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { MEDIA_MAX_HEIGHT, type MediaSize } from '@core/settings'
+import { MEDIA_MAX_HEIGHT, type MediaMode, type MediaSize } from '@core/settings'
 import type { TweetMedia } from '@core/types'
 import { aspectRatio } from '../lib/format'
-import { PlayIcon } from './icons'
+import { ImageIcon, PlayIcon } from './icons'
 
 /** 장수별 격자 배치. x.com 과 같은 규칙을 따른다. */
 function layoutClass(count: number): string {
@@ -101,6 +101,65 @@ function MediaItem({
       )}
     </button>
   )
+}
+
+/** 무엇이 몇 개 붙어 있는지 한 줄로. 없는 종류는 아예 적지 않는다. */
+function summarize(media: TweetMedia[]): string {
+  const count = (kind: TweetMedia['kind']) => media.filter((item) => item.kind === kind).length
+  return (
+    [
+      count('photo') && `사진 ${count('photo')}`,
+      count('video') && `동영상 ${count('video')}`,
+      count('animated_gif') && `GIF ${count('animated_gif')}`,
+    ]
+      .filter(Boolean)
+      .join(' · ') || `첨부 ${media.length}`
+  )
+}
+
+/**
+ * 미디어가 들어갈 자리.
+ *
+ * 라벨 모드에서는 무엇이 붙어 있는지만 알려주고, 눌러야 그 자리에서 펼친다.
+ * 펼친 상태는 카드마다 따로 기억한다 — 하나 열었다고 목록 전체가 열리면
+ * 라벨로 둔 뜻이 없어진다.
+ */
+export function MediaSlot({
+  media,
+  mode,
+  size,
+  sourceUrl,
+  onOpen,
+}: {
+  media: TweetMedia[]
+  mode: MediaMode
+  size: MediaSize
+  sourceUrl: string
+  onOpen?: (index: number) => void
+}) {
+  const [revealed, setRevealed] = useState(false)
+
+  if (mode === 'hide' || media.length === 0) return null
+
+  if (mode === 'label' && !revealed) {
+    const playable = media.some((item) => item.kind !== 'photo')
+    const Glyph = playable ? PlayIcon : ImageIcon
+    return (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation()
+          setRevealed(true)
+        }}
+        className="mt-2.5 flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-3 py-1 text-[12.5px] font-medium text-muted transition-colors hover:border-button hover:text-text"
+      >
+        <Glyph className="h-3.5 w-3.5" />
+        {summarize(media)} 보기
+      </button>
+    )
+  }
+
+  return <MediaGrid media={media} size={size} sourceUrl={sourceUrl} onOpen={onOpen} />
 }
 
 export interface MediaGridProps {

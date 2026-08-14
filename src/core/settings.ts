@@ -29,6 +29,13 @@ export function smallerMediaSize(size: MediaSize): MediaSize {
  */
 export type DeckLayout = 'columns' | 'rows' | 'tabs'
 
+/**
+ * 미디어를 다루는 방식.
+ * `label` 은 무엇이 붙어 있는지만 알려주고 눌러야 그 자리에서 펼친다 —
+ * 목록을 훑을 때는 조용하고, 보고 싶은 것만 골라 열 수 있다.
+ */
+export type MediaMode = 'show' | 'label' | 'hide'
+
 export interface Settings {
   /** 덱에 표시할 컬럼과 순서. */
   columns: TimelineKind[]
@@ -48,8 +55,8 @@ export interface Settings {
   columnBorder: boolean
   /** 카드 사이에 구분선을 그을지. 끄면 목록이 하나로 이어져 보인다. */
   cardDivider: boolean
-  /** 이미지·동영상 표시 여부. */
-  showMedia: boolean
+  /** 이미지·동영상을 어떻게 다룰지. */
+  mediaMode: MediaMode
   /** 미디어가 차지하는 최대 높이. 작을수록 한 화면에 글이 많이 들어온다. */
   mediaSize: MediaSize
   /** 목록을 위로 올려둔 동안에는 새 글을 끼워넣지 않고 상단 알림으로만 모아둔다. */
@@ -72,7 +79,7 @@ export const DEFAULT_SETTINGS: Settings = {
   density: 'comfortable',
   columnBorder: true,
   cardDivider: true,
-  showMedia: true,
+  mediaMode: 'show',
   mediaSize: 'medium',
   holdWhileScrolled: true,
   theme: 'system',
@@ -80,11 +87,22 @@ export const DEFAULT_SETTINGS: Settings = {
   autoMount: true,
 }
 
+/** 예전 저장값을 지금 모양으로 옮긴다. 뜻이 담긴 값은 기본값으로 덮어버리면 안 된다. */
+function migrate(value: Partial<Settings> | undefined): Partial<Settings> {
+  if (!value) return {}
+  // 미디어 표시가 켬/끔 두 갈래이던 시절의 값. 껐던 사람이 켜진 채로 뜨면 안 된다.
+  const legacy = value as Partial<Settings> & { showMedia?: boolean }
+  if (legacy.mediaMode === undefined && legacy.showMedia !== undefined) {
+    return { ...value, mediaMode: legacy.showMedia ? 'show' : 'hide' }
+  }
+  return value
+}
+
 export async function loadSettings(): Promise<Settings> {
   const stored = await chrome.storage.local.get(STORAGE_KEY)
   const value = stored[STORAGE_KEY] as Partial<Settings> | undefined
   // 필드가 늘어나도 기존 저장값이 깨지지 않도록 항상 기본값 위에 덮는다.
-  return { ...DEFAULT_SETTINGS, ...(value ?? {}) }
+  return { ...DEFAULT_SETTINGS, ...migrate(value) }
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
