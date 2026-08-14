@@ -66,16 +66,27 @@ export function XPageModal({ url, handle, label = '님의 게시물', onClose }:
 
   // 같은 오리진이라 프레임 문서에 스타일을 직접 얹을 수 있다.
   const handleLoad = useCallback(() => {
+    const frame = frameRef.current
     let doc: Document | null = null
+    /**
+     * 못 읽은 사정을 그대로 들고 있는다.
+     *
+     * 문서를 못 읽는 경우는 둘인데 겉으로는 같아 보인다 — 프레임이 다른 오리진으로
+     * 떨어져 접근이 거부된 것(예외가 뜬다)과, 문서 자체가 서지 않은 것(null 이 온다).
+     * 앞은 임베드가 막힌 것이고 뒤는 요청이 아예 실패한 것이라 손볼 자리가 다르다.
+     */
+    let detail = ''
     try {
-      doc = frameRef.current?.contentDocument ?? null
-    } catch {
+      doc = frame?.contentDocument ?? null
+      if (!doc) detail = `문서 없음 (창 ${frame?.contentWindow ? '있음' : '없음'})`
+    } catch (error) {
       doc = null
+      detail = `접근 거부: ${error instanceof Error ? error.message : String(error)}`
     }
     if (!doc) {
       setBlocked(true)
       // 규칙 상태는 요청이 나간 뒤에 물어야 의미가 있다.
-      void refreshRuleReport().then(() => setWhy(describeFrameBlock()))
+      void refreshRuleReport().then(() => setWhy(`${detail} · ${describeFrameBlock()}`))
       return
     }
     setBlocked(false)
