@@ -53,6 +53,8 @@ function roleFromOperation(operation: string): TimelineKind | null {
 
 export interface CollectorHandle {
   command: (kind: TimelineKind, command: DeckCommand['command']) => void
+  /** 잠시 손을 뗀다. 사용자가 이 문서의 x.com 을 직접 쓰는 동안에는 탭을 건드리면 안 된다. */
+  setPaused: (paused: boolean) => void
   /** 담당 컬럼 목록을 바꾼다. 둘 이상이면 교대 수집으로 넘어간다. */
   setKinds: (kinds: TimelineKind[]) => void
   /** 담당이 아닌 탭을 한 번만 들렀다 온다. 응답 한 건을 받으면 곧바로 원래 탭으로 복귀. */
@@ -76,6 +78,11 @@ export function startCollector(
   let lastForcedRefreshAt = Date.now()
   /** 강제 갱신 사다리의 현재 칸. 새 응답이 들어오면 0 으로 되돌린다. */
   let escalation = 0
+  /**
+   * 손을 뗀 상태. 사용자가 이 문서의 x.com 을 직접 보고 있다는 뜻이다.
+   * 그동안 탭을 되돌리거나 대타로 옮겨 다니면 사용자의 조작과 정면으로 싸운다.
+   */
+  let paused = false
   /** 대타로 들러 있는 타임라인. 없으면 null. */
   let priming: TimelineKind | null = null
   let primingUntil = 0
@@ -155,7 +162,7 @@ export function startCollector(
    * 담당 컬럼의 상태는 건드리지 않는다 — 어디까지나 대타다.
    */
   function prime(kind: TimelineKind): void {
-    if (priming || kinds.includes(kind)) return
+    if (paused || priming || kinds.includes(kind)) return
     const tab = findTab(kind)
     if (!tab) return
     const now = Date.now()
@@ -276,6 +283,10 @@ export function startCollector(
   function tick(): void {
     const now = Date.now()
 
+    // 손을 뗀 동안에는 아무 것도 누르지 않는다. 응답이 들어오면 받기는 한다 —
+    // 사용자가 직접 넘긴 타임라인도 우리 것으로 쌓인다.
+    if (paused) return
+
     if (isLoggedOut()) {
       for (const kind of kinds) setPending(kind, null)
       setState('login-required')
@@ -365,6 +376,16 @@ export function startCollector(
   return {
     command,
     prime,
+    setPaused(next) {
+      if (paused === next) return
+      paused = next
+      if (!next) return
+      // 대타 방문 중이었어도 탭을 되돌리는 클릭은 하지 않는다. 손을 떼는 마당에
+      // 마지막으로 한 번 누르면 그게 바로 사용자와 싸우는 그 클릭이다.
+      if (priming) setPending(priming, null)
+      priming = null
+      primeNudgeAt = 0
+    },
     setKinds(next) {
       if (next.length === 0) return
       kinds = [...next]

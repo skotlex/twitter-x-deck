@@ -39,6 +39,14 @@ export function primeHostCollector(kind: TimelineKind): void {
   handle.prime(kind)
 }
 
+/**
+ * 최상위 문서의 수집기를 멈추거나 다시 돌린다.
+ * 사용자가 그 문서의 x.com 을 직접 쓰는 동안(통과 모드) 탭을 건드리지 않기 위한 통로.
+ */
+export function pauseHostCollector(paused: boolean): void {
+  handle?.setPaused(paused)
+}
+
 export function hostOwns(kind: TimelineKind): boolean {
   return owned.includes(kind)
 }

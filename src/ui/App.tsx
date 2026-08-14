@@ -7,6 +7,7 @@ import { PostComposer } from './components/PostComposer'
 import { SettingsPanel } from './components/SettingsPanel'
 import { TopBar } from './components/TopBar'
 import { useCollector } from './hooks/useCollector'
+import { pauseHostCollector } from './hostCollector'
 import { fontStack } from './lib/fonts'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import { useSettings } from './hooks/useSettings'
@@ -70,6 +71,9 @@ export function App({ hostKind, onPassthrough }: AppProps) {
 
   useEffect(() => {
     onPassthrough(passthrough)
+    // 이 문서를 사용자에게 돌려주는 동안에는 수집기도 손을 뗀다. 그러지 않으면
+    // 사용자가 고른 탭을 우리가 계속 되돌려 서로 싸운다.
+    pauseHostCollector(passthrough)
   }, [onPassthrough, passthrough])
 
   // 'system' 은 여기서 실제 값으로 풀어 항상 명시한다 (CSS 에 분기를 두지 않기 위해).
@@ -234,7 +238,8 @@ function PassthroughBanner({
   canReturn: boolean
 }) {
   return (
-    <div className="pointer-events-none flex justify-center p-3">
+    // 화면 아래로 내린다. 위에 두면 x.com 의 추천·팔로잉 탭을 정확히 덮는다.
+    <div className="pointer-events-none fixed inset-x-0 bottom-4 flex justify-center px-3">
       <div className="animate-fade pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-surface/95 px-4 py-2 shadow-lg shadow-black/25 backdrop-blur-xl">
         <span className="text-[13px] text-text">
           {reason
