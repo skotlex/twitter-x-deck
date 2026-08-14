@@ -1,9 +1,7 @@
-import { useState } from 'react'
 import type { DeckLayout, Settings } from '@core/settings'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import type { ViewerInfo } from '../../content/selectors'
 import type { ColumnMap } from '../hooks/useCollector'
-import { XPageModal } from './XPageModal'
 import {
   ColumnsIcon,
   EyeIcon,
@@ -39,6 +37,14 @@ export interface TopBarProps {
   onCompose: () => void
   /** 지금 로그인한 계정. 아직 못 읽었으면 null. */
   viewer: ViewerInfo | null
+  /**
+   * 내 프로필 창을 연다.
+   *
+   * 창은 이 상단 바가 아니라 덱 뿌리에서 그린다. 상단 바에는 backdrop-blur 가
+   * 걸려 있는데, 그런 요소는 그 안의 fixed 자식에게 기준 상자가 되어버린다 —
+   * 화면 전체를 덮어야 할 창이 56px 짜리 머리글 안에 갇힌다.
+   */
+  onOpenProfile: () => void
 }
 
 export function TopBar({
@@ -56,9 +62,9 @@ export function TopBar({
   onChangeLayout,
   onCompose,
   viewer,
+  onOpenProfile,
 }: TopBarProps) {
   const total = settings.columns.reduce((sum, kind) => sum + columns[kind].tweets.length, 0)
-  const [profileOpen, setProfileOpen] = useState(false)
 
   return (
     // 아래 선은 두지 않는다. 컬럼 상자가 배경과 이미 갈려 있어 한 겹 더 그으면
@@ -138,6 +144,30 @@ export function TopBar({
           {total.toLocaleString('ko-KR')}건 보관
         </span>
 
+        {viewer && (
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            // 테두리는 평소에도 둘러둔다 — 사진이 어두우면 배경과 붙어 버튼인지 안 보인다.
+            // 가리키면 그 선만 검정 계열로 진해진다.
+            className="mr-1.5 shrink-0 rounded-full border-2 border-line-strong transition-colors hover:border-button focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            aria-label={`${viewer.name} 프로필 보기`}
+            title={`@${viewer.handle}`}
+          >
+            {viewer.avatarUrl ? (
+              <img
+                src={viewer.avatarUrl}
+                alt={viewer.name}
+                className="block h-8 w-8 rounded-full bg-surface-2 object-cover"
+              />
+            ) : (
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-surface-2 text-[12px] font-semibold text-muted">
+                {viewer.handle.slice(0, 2).toUpperCase()}
+              </span>
+            )}
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onCompose}
@@ -147,28 +177,6 @@ export function TopBar({
           <QuoteIcon className="h-4 w-4" />
           <span className="hidden sm:block">글쓰기</span>
         </button>
-
-        {viewer && (
-          <button
-            type="button"
-            onClick={() => setProfileOpen(true)}
-            className="mr-1 shrink-0 rounded-full ring-offset-2 ring-offset-canvas transition-shadow hover:ring-2 hover:ring-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-            aria-label={`${viewer.name} 프로필 보기`}
-            title={`@${viewer.handle}`}
-          >
-            {viewer.avatarUrl ? (
-              <img
-                src={viewer.avatarUrl}
-                alt={viewer.name}
-                className="h-8 w-8 rounded-full bg-surface-2 object-cover"
-              />
-            ) : (
-              <span className="grid h-8 w-8 place-items-center rounded-full bg-surface-2 text-[12px] font-semibold text-muted">
-                {viewer.handle.slice(0, 2).toUpperCase()}
-              </span>
-            )}
-          </button>
-        )}
 
         <button
           type="button"
@@ -198,15 +206,6 @@ export function TopBar({
           <SettingsIcon className="h-4 w-4" />
         </button>
       </div>
-
-      {profileOpen && viewer && (
-        <XPageModal
-          url={`https://x.com/${viewer.handle}`}
-          handle={viewer.handle}
-          label="님의 프로필"
-          onClose={() => setProfileOpen(false)}
-        />
-      )}
     </header>
   )
 }

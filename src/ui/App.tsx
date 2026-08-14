@@ -6,6 +6,7 @@ import { DeckColumn, type ColumnReorder } from './components/DeckColumn'
 import { PostComposer } from './components/PostComposer'
 import { SettingsPanel } from './components/SettingsPanel'
 import { TopBar } from './components/TopBar'
+import { XPageModal } from './components/XPageModal'
 import { useCollector } from './hooks/useCollector'
 import { pauseHostCollector } from './hostCollector'
 import { fontStack } from './lib/fonts'
@@ -64,6 +65,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
   const [activeColumn, setActiveColumn] = useState<TimelineKind>(hostKind)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [composing, setComposing] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [peeking, setPeeking] = useState(false)
   const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>('dark')
   const [dragKind, setDragKind] = useState<TimelineKind | null>(null)
@@ -173,6 +175,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
             onChangeLayout={(next) => update({ layout: next })}
             onCompose={() => setComposing(true)}
             viewer={viewer}
+            onOpenProfile={() => setProfileOpen(true)}
           />
 
           <main
@@ -209,6 +212,15 @@ export function App({ hostKind, onPassthrough }: AppProps) {
               mode="post"
               onPosted={handleActed}
               onClose={() => setComposing(false)}
+            />
+          )}
+
+          {profileOpen && viewer && (
+            <XPageModal
+              url={`https://x.com/${viewer.handle}`}
+              handle={viewer.handle}
+              label="님의 프로필"
+              onClose={() => setProfileOpen(false)}
             />
           )}
         </>
