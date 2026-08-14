@@ -118,6 +118,9 @@ function opensDetail(event: React.MouseEvent<HTMLElement>): boolean {
  * 상자 전체를 링크로 두지는 않는다. 그러면 사진을 눌러 확대하려 해도 x.com 새 창이
  * 떠버려서, 덱 안에서 끝내자는 원칙과 정면으로 부딪힌다.
  * 원문으로 나가는 길은 작성자 줄에만 둔다 — 원글 카드의 프로필 링크와 같은 규칙이다.
+ *
+ * 카드에 마우스가 올라가면 카드 배경이 surface-2 쪽으로 밝아진다. 인용 상자가 같은
+ * 색이면 그 순간 경계가 사라지므로, 그때는 한 단계 더 진한 색으로 내려앉힌다.
  */
 function QuotedTweet({
   tweet,
@@ -142,7 +145,7 @@ function QuotedTweet({
         event.stopPropagation()
         onOpenDetail()
       }}
-      className="mt-2.5 rounded-xl border border-line bg-surface-2 p-3 transition-colors hover:border-line-soft"
+      className="mt-2.5 rounded-xl border border-line bg-surface-2 p-3 transition-colors group-hover/card:bg-surface-3 hover:border-accent/40"
     >
       <a
         href={tweet.url}
@@ -196,7 +199,8 @@ function LinkCard({ card, mediaSize }: { card: NonNullable<Tweet['card']>; media
   const linkProps = card.url
     ? { href: card.url, target: '_blank', rel: 'noreferrer noopener' as const }
     : {}
-  const shell = `mt-2.5 overflow-hidden rounded-xl border border-line bg-surface-2 transition-colors ${
+  // 인용 상자와 같은 이유로, 카드가 밝아지는 동안에는 한 단계 더 진하게 둔다.
+  const shell = `mt-2.5 overflow-hidden rounded-xl border border-line bg-surface-2 transition-colors group-hover/card:bg-surface-3 ${
     card.url ? 'hover:border-accent/40' : ''
   }`
 
