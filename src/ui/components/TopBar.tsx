@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import type { DeckLayout, Settings } from '@core/settings'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import type { ViewerInfo } from '../../content/selectors'
 import type { ColumnMap } from '../hooks/useCollector'
 import {
+  ArchiveIcon,
   ColumnsIcon,
   EyeIcon,
   MoonIcon,
@@ -65,6 +67,7 @@ export function TopBar({
   onOpenProfile,
 }: TopBarProps) {
   const total = settings.columns.reduce((sum, kind) => sum + columns[kind].tweets.length, 0)
+  const [stashOpen, setStashOpen] = useState(false)
 
   return (
     // 아래 선은 두지 않는다. 컬럼 상자가 배경과 이미 갈려 있어 한 겹 더 그으면
@@ -140,9 +143,6 @@ export function TopBar({
       )}
 
       <div className="ml-auto flex items-center gap-1">
-        <span className="mr-1 hidden text-[12.5px] tabular-nums text-faint sm:block">
-          {total.toLocaleString('ko-KR')}건 보관
-        </span>
 
         {viewer && (
           <button
@@ -178,6 +178,34 @@ export function TopBar({
           <QuoteIcon className="h-4 w-4" />
           <span className="hidden sm:block">글쓰기</span>
         </button>
+
+        {/*
+          말풍선은 fixed 가 아니라 absolute 로 띄운다. 상단 바에 backdrop-blur 가
+          걸려 있어 fixed 는 이 머리글 안에 갇힌다. 바깥을 눌러 닫는 것도 덮개 대신
+          버튼의 포커스가 떠나는 것으로 받는다 — 그 덮개 역시 갇히기 때문이다.
+        */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setStashOpen((prev) => !prev)}
+            onBlur={() => setStashOpen(false)}
+            aria-expanded={stashOpen}
+            className="grid h-9 w-9 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            aria-label="보관량 보기"
+            title="보관량 보기"
+          >
+            <ArchiveIcon className="h-4 w-4" />
+          </button>
+
+          {stashOpen && (
+            <div
+              role="status"
+              className="animate-fade absolute right-0 top-full z-50 mt-2 whitespace-nowrap rounded-lg border border-line bg-surface px-3 py-1.5 text-[12.5px] tabular-nums text-text shadow-lg shadow-black/20"
+            >
+              {total.toLocaleString('ko-KR')}건 보관
+            </div>
+          )}
+        </div>
 
         <button
           type="button"

@@ -109,6 +109,15 @@ export const TabsIcon = (props: IconProps) => (
   </Icon>
 )
 
+/** 보관량. 뚜껑 덮인 상자. */
+export const ArchiveIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="3" y="4" width="18" height="4.5" rx="1" />
+    <path d="M4.5 8.5V19a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5V8.5" />
+    <path d="M10 12.5h4" />
+  </Icon>
+)
+
 export const EyeIcon = (props: IconProps) => (
   <Icon {...props}>
     <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
