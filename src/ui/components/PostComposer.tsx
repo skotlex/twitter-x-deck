@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { isComposedMessage } from '@core/messages'
+import { COMPOSE_FRAME_NAME } from '@core/role'
 import {
   composerUrl,
   openComposerPopup,
@@ -42,6 +44,22 @@ export function PostComposer({ mode, target, handle, onClose }: PostComposerProp
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
+  }, [onClose])
+
+  /**
+   * 글이 올라가면 스스로 닫는다.
+   *
+   * x.com 의 작성 화면은 게시를 마쳐도 그 자리에 남아 홈 타임라인을 보여준다.
+   * 그대로 두면 볼일이 끝난 창에 남의 타임라인이 떠 있게 된다.
+   * 판단 근거는 DOM 이 아니라 게시 뮤테이션 자체다 — 화면이 개편돼도 흔들리지 않는다.
+   */
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || !isComposedMessage(event.data)) return
+      onClose()
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
   }, [onClose])
 
   // 프레임이 끝내 안 뜨면 사용자를 세워두지 않고 새 창으로 가는 길을 알려준다.
@@ -109,6 +127,7 @@ export function PostComposer({ mode, target, handle, onClose }: PostComposerProp
         ) : (
           <iframe
             ref={frameRef}
+            name={COMPOSE_FRAME_NAME}
             src={composerUrl(mode, target)}
             title={mode === 'quote' ? '인용 작성' : '답글 작성'}
             className="min-h-0 flex-1 border-0 bg-canvas"

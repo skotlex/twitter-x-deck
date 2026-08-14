@@ -17,6 +17,9 @@ export const TIMELINE_OPERATION: Record<TimelineKind, string> = {
   following: 'HomeLatestTimeline',
 }
 
+/** 글이 실제로 올라갔을 때 x.com 이 부르는 뮤테이션. 작성창을 닫을 근거로 쓴다. */
+export const CREATE_TWEET_OPERATION = 'CreateTweet'
+
 export type MediaKind = 'photo' | 'video' | 'animated_gif'
 
 export interface TweetMedia {

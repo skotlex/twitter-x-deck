@@ -23,7 +23,7 @@
     },
     "condition": {
       "requestDomains": ["x.com"],
-      "resourceTypes": ["main_frame", "sub_frame"]
+      "resourceTypes": ["sub_frame"]
     }
   }
 ]

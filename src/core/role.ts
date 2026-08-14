@@ -4,6 +4,20 @@ import type { TimelineKind } from './types'
 /** iframe 의 `name` 속성에 붙이는 접두사. 프레임 안 SPA 이동에도 살아남는다. */
 export const FRAME_NAME_PREFIX = 'xdeck:'
 
+/**
+ * 답글·인용 작성창 프레임의 이름.
+ *
+ * 쿼리 파라미터로 표시하면 intent 주소가 홈으로 리다이렉트되는 순간 날아간다.
+ * `window.name` 은 그 이동을 건너 살아남으므로 여기서도 같은 수를 쓴다.
+ * 'compose' 는 컬럼 이름이 아니라 `readFrameRole` 은 계속 null 을 준다 — 수집기가
+ * 작성창에서 깨어나는 일은 없다.
+ */
+export const COMPOSE_FRAME_NAME = `${FRAME_NAME_PREFIX}compose`
+
+export function isComposeFrame(): boolean {
+  return window.name === COMPOSE_FRAME_NAME
+}
+
 const SESSION_KEY = 'xdeck:role'
 
 function toKind(value: string | null | undefined): TimelineKind | null {

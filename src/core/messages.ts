@@ -47,6 +47,12 @@ export type FrameMessage =
       count: number | null
     }
 
+/** 작성창 프레임 → 덱. 글이 실제로 올라갔다는 신호. */
+export interface ComposedMessage {
+  channel: typeof CHANNEL
+  type: 'composed'
+}
+
 /** 덱 페이지 → 브리지. */
 export type DeckCommand =
   | { channel: typeof CHANNEL; type: 'command'; command: 'refresh' }
@@ -70,6 +76,15 @@ export function isDeckCommand(value: unknown): value is DeckCommand {
     value !== null &&
     (value as { channel?: unknown }).channel === CHANNEL &&
     (value as { type?: unknown }).type === 'command'
+  )
+}
+
+export function isComposedMessage(value: unknown): value is ComposedMessage {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { channel?: unknown }).channel === CHANNEL &&
+    (value as { type?: unknown }).type === 'composed'
   )
 }
 

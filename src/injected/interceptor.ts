@@ -6,8 +6,8 @@
  * 페이지 컨텍스트라 chrome API 를 못 쓰므로 결과는 postMessage 로 브리지에 넘긴다.
  */
 import { CHANNEL, type CapturedPayload } from '@core/messages'
-import { readFrameRole } from '@core/role'
-import { TIMELINE_OPERATION } from '@core/types'
+import { isComposeFrame, readFrameRole } from '@core/role'
+import { CREATE_TWEET_OPERATION, TIMELINE_OPERATION } from '@core/types'
 
 const GUARD = '__xDeckInterceptorInstalled'
 const OPERATION_RE = /\/i\/api\/graphql\/[^/]+\/([A-Za-z0-9_]+)/
@@ -129,11 +129,18 @@ function spoofVisibility(): void {
 function main(): void {
   const globals = window as unknown as Record<string, unknown>
   if (globals[GUARD]) return
+
+  const collecting = readFrameRole() !== null
+  const composing = isComposeFrame()
   // 덱이 띄운 프레임/탭이 아니면 사용자의 x.com 을 건드리지 않는다.
-  if (!readFrameRole()) return
+  if (!collecting && !composing) return
   globals[GUARD] = true
 
-  spoofVisibility()
+  // 작성창은 글이 올라간 순간만 알면 된다. 타임라인을 계속 받을 이유가 없다.
+  if (composing) WATCHED.add(CREATE_TWEET_OPERATION)
+  // 사람이 보고 있는 작성창은 숨길 이유가 없으므로 가시성도 손대지 않는다.
+  if (collecting) spoofVisibility()
+
   installFetchHook()
   installXhrHook()
 }
