@@ -52,7 +52,14 @@ function scopedRules(tabIds: number[]): chrome.declarativeNetRequest.Rule[] {
       condition: {
         requestDomains: ['x.com'],
         tabIds,
-        resourceTypes: ['sub_frame' as chrome.declarativeNetRequest.ResourceType],
+        // 프레임 요청이 어느 종류로 잡히든 놓치지 않게 넓게 둔다. 탭 안으로 이미
+        // 좁혀 두었으므로 종류를 더 조여서 얻을 것이 없다.
+        resourceTypes: [
+          'main_frame',
+          'sub_frame',
+          'xmlhttprequest',
+          'other',
+        ] as chrome.declarativeNetRequest.ResourceType[],
       },
     },
     {
@@ -146,18 +153,28 @@ async function openDeck(): Promise<void> {
  * 것인지는 밖에서 구별할 방법이 없다. 이 API 는 배경 워커에서만 부를 수 있어
  * 덱이 물어보면 대신 조회해준다.
  */
-async function ruleReport(): Promise<string> {
+async function ruleReport(tabId?: number): Promise<string> {
   const parts: string[] = []
   try {
     const tabIds = await scopedTabIds()
-    parts.push(`규칙 적용 탭 [${tabIds.join(', ') || '없음'}]`)
+    parts.push(`규칙 적용 탭 [${tabIds.join(', ') || '없음'}]${tabId === undefined ? '' : ` · 여기 ${tabId}`}`)
   } catch {
     parts.push('세션 규칙 조회 실패')
   }
   try {
-    const { rulesMatchedInfo } = await chrome.declarativeNetRequest.getMatchedRules({})
-    const ids = rulesMatchedInfo.map((hit) => hit.rule.ruleId)
-    parts.push(`매칭 ${ids.length}건${ids.length ? ` (규칙 ${[...new Set(ids)].join(',')})` : ''}`)
+    // 물어본 탭의 것만 본다. 매칭이 몇 건인지보다 **방금 그 요청**에 걸렸는지가
+    // 중요하고, 그건 마지막 매칭이 얼마나 오래됐는지로만 알 수 있다.
+    const { rulesMatchedInfo } = await chrome.declarativeNetRequest.getMatchedRules(
+      tabId === undefined ? {} : { tabId },
+    )
+    if (rulesMatchedInfo.length === 0) {
+      parts.push('매칭 0건')
+    } else {
+      const newest = Math.max(...rulesMatchedInfo.map((hit) => hit.timeStamp))
+      const ago = Math.round((Date.now() - newest) / 1000)
+      const ids = [...new Set(rulesMatchedInfo.map((hit) => hit.rule.ruleId))]
+      parts.push(`매칭 ${rulesMatchedInfo.length}건 (규칙 ${ids.join(',')}, 마지막 ${ago}초 전)`)
+    }
   } catch {
     parts.push('매칭 조회 불가')
   }
@@ -168,7 +185,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   const type = (message as { type?: string } | null)?.type
 
   if (type === RULE_REPORT) {
-    void ruleReport().then(sendResponse)
+    void ruleReport(sender.tab?.id).then(sendResponse)
     // 비동기로 답하겠다는 신호.
     return true
   }
