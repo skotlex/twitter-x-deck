@@ -49,6 +49,8 @@ export interface Settings {
   holdWhileScrolled: boolean
   /** 화면 테마. */
   theme: 'system' | 'dark' | 'light'
+  /** 덱 전체에 쓸 글꼴 이름. 빈 값이면 기본 글꼴. */
+  fontFamily: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -63,6 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mediaSize: 'medium',
   holdWhileScrolled: true,
   theme: 'system',
+  fontFamily: '',
 }
 
 export async function loadSettings(): Promise<Settings> {

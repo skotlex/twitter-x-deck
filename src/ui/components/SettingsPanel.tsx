@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { clearAll } from '@core/db'
 import type { Settings } from '@core/settings'
+import { COMMON_FONTS, fontStack, loadLocalFontFamilies } from '../lib/fonts'
 import { CloseIcon } from './icons'
+
+const FIELD =
+  'rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 text-[13px] text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent'
 
 function Row({ label, hint, control }: { label: string; hint?: string; control: React.ReactNode }) {
   return (
@@ -76,7 +80,7 @@ function Select<T extends string | number>({
         const picked = options.find((option) => String(option.value) === event.target.value)
         if (picked) onChange(picked.value)
       }}
-      className="rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 text-[13px] text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      className={FIELD}
     >
       {options.map((option) => (
         <option key={String(option.value)} value={String(option.value)}>
@@ -84,6 +88,86 @@ function Select<T extends string | number>({
         </option>
       ))}
     </select>
+  )
+}
+
+/**
+ * 글꼴 고르기.
+ *
+ * 목록은 미리 채워둘 수 없다 — 브라우저가 로컬 글꼴을 사용자가 직접 누른 순간에만,
+ * 그것도 허락을 받아야 내준다. 그래서 처음에는 흔한 글꼴 몇 개만 놓고, 누르면
+ * 그 자리에서 진짜 목록으로 갈아끼운다.
+ */
+function FontPicker({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const [families, setFamilies] = useState<string[] | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  // 고른 글꼴이 후보에 없을 수도 있다 (목록을 바꾸기 전에 저장해둔 값). 항상 남겨둔다.
+  const listed = families ?? COMMON_FONTS
+  const options = value && !listed.includes(value) ? [value, ...listed] : listed
+
+  const load = () => {
+    setLoading(true)
+    setNote(null)
+    void loadLocalFontFamilies().then((result) => {
+      setLoading(false)
+      if (result.ok) {
+        setFamilies(result.families)
+        setNote(`${result.families.length.toLocaleString('ko-KR')}개를 불러왔다.`)
+        return
+      }
+      setNote(
+        result.reason === 'unsupported'
+          ? '이 브라우저는 설치된 글꼴 목록을 내주지 않는다. 아래 후보에서 고를 수 있다.'
+          : '글꼴 목록 접근이 거절됐다. 주소창의 권한 설정에서 허용하면 다시 시도할 수 있다.',
+      )
+    })
+  }
+
+  return (
+    <div className="py-3.5">
+      <p className="text-[14px] font-medium text-text">글꼴</p>
+      <p className="mt-0.5 text-[12.5px] leading-relaxed text-faint">
+        덱 전체에 쓸 글꼴. 이 PC 에 설치된 글꼴을 불러와 고를 수 있다.
+      </p>
+
+      <div className="mt-2.5 flex items-center gap-2">
+        <select
+          aria-label="글꼴"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={`min-w-0 flex-1 ${FIELD}`}
+        >
+          <option value="">기본</option>
+          {options.map((family) => (
+            <option key={family} value={family}>
+              {family}
+            </option>
+          ))}
+        </select>
+
+        {families === null && (
+          <button
+            type="button"
+            onClick={load}
+            disabled={loading}
+            className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-[13px] font-medium text-text transition-colors hover:bg-surface-2 disabled:cursor-progress disabled:text-faint"
+          >
+            {loading ? '읽는 중' : '내 글꼴 불러오기'}
+          </button>
+        )}
+      </div>
+
+      <p
+        className="mt-2 truncate rounded-lg bg-surface-2 px-2.5 py-2 text-[14px] text-muted"
+        style={{ fontFamily: fontStack(value) }}
+      >
+        다람쥐 헌 쳇바퀴에 타고파 — Sphinx of black quartz 0123
+      </p>
+
+      {note && <p className="mt-1.5 text-[12px] leading-relaxed text-faint">{note}</p>}
+    </div>
   )
 }
 
@@ -212,6 +296,10 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
                     ]}
                   />
                 }
+              />
+              <FontPicker
+                value={settings.fontFamily}
+                onChange={(next) => onUpdate({ fontFamily: next })}
               />
               <Row
                 label="카드 밀도"

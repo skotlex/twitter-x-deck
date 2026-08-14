@@ -6,6 +6,7 @@ import { PostComposer } from './components/PostComposer'
 import { SettingsPanel } from './components/SettingsPanel'
 import { TopBar } from './components/TopBar'
 import { useCollector } from './hooks/useCollector'
+import { fontStack } from './lib/fonts'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import { useSettings } from './hooks/useSettings'
 
@@ -113,6 +114,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
       className={`xdeck flex h-full flex-col ${passthrough ? 'pointer-events-none' : ''}`}
       data-theme={resolvedTheme}
       data-passthrough={passthrough ? 'true' : 'false'}
+      style={{ fontFamily: fontStack(settings.fontFamily) }}
     >
       {passthrough ? (
         <PassthroughBanner
