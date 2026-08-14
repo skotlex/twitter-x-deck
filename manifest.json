@@ -12,15 +12,6 @@
     "declarativeNetRequestFeedback"
   ],
   "host_permissions": ["https://x.com/*"],
-  "declarative_net_request": {
-    "rule_resources": [
-      {
-        "id": "embed",
-        "enabled": true,
-        "path": "rules.json"
-      }
-    ]
-  },
   "background": {
     "service_worker": "background.js"
   },

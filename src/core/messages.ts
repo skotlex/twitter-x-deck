@@ -12,6 +12,15 @@ export const DECK_PARAM = 'xdeck'
 /** 덱 → 배경 워커. 헤더 제거 규칙이 살아 있는지 물어본다 (진단용). */
 export const RULE_REPORT = 'xdeck:rule-report'
 
+/**
+ * 덱 → 배경 워커. 이 탭에 헤더 제거 규칙을 걸어달라고 청한다.
+ *
+ * 규칙을 정적 파일로 두면 브라우저 전체에 걸려, 아무 사이트나 x.com 을 프레임에
+ * 실을 수 있게 된다. 덱이 뜬 탭에만 거는 편이 맞고, 탭 번호는 메시지를 받은
+ * 워커만 알 수 있다.
+ */
+export const RULE_SCOPE = 'xdeck:rule-scope'
+
 /** MAIN world 인터셉터 → ISOLATED world 브리지 (같은 프레임 안). */
 export interface CapturedPayload {
   channel: typeof CHANNEL

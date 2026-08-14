@@ -1,15 +1,17 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ROLE_PARAM } from '@core/messages'
 import { FRAME_NAME_PREFIX } from '@core/role'
 import { TIMELINE_LABEL, TIMELINE_PATH, type TimelineKind } from '@core/types'
 import { describeFrameBlock, refreshRuleReport } from '../../content/frameBlock'
+import { ensureRuleScope } from '../../content/ruleScope'
 
 /**
  * 최상위 문서가 맡지 않는 컬럼을 채우는 x.com 프레임.
  *
  * 부모가 x.com 이라 `frame-ancestors 'self'` 를 그대로 만족하고 쿠키도 same-site 로 실린다.
  * 다만 `X-Frame-Options: DENY` 는 동일 출처까지 막으므로 그 헤더는 확장이 걷어낸다
- * (`rules.json`, sub_frame 요청에 한해서만).
+ * (배경 워커가 이 탭에만 거는 세션 규칙, sub_frame 요청에 한해서만).
+ * 규칙이 서기 전에는 프레임을 만들지 않는다 — 먼저 나간 요청은 그대로 막힌다.
  *
  * 평소에는 `opacity: 0` 으로 감춘다. `display:none` 이나 화면 밖 배치는 렌더링이
  * 멈추거나 스로틀링돼서 타임라인이 갱신되지 않는다. 투명하게만 두면 문서는 정상적으로
@@ -26,6 +28,12 @@ export interface CollectorFrameProps {
 
 export function CollectorFrame({ kind, register, onReport }: CollectorFrameProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
+  const [scoped, setScoped] = useState(false)
+
+  useEffect(() => {
+    // 규칙을 못 걸었더라도 프레임은 띄운다. 그래야 왜 막혔는지가 진단에 남는다.
+    void ensureRuleScope().then(() => setScoped(true))
+  }, [])
 
   const ref = useCallback(
     (element: HTMLIFrameElement | null) => {
@@ -53,6 +61,8 @@ export function CollectorFrame({ kind, register, onReport }: CollectorFrameProps
       onReport(kind, `프레임이 교차 출처로 떨어졌습니다 — 임베드 차단 (${describeFrameBlock()})`)
     }
   }, [kind, onReport])
+
+  if (!scoped) return null
 
   return (
     <iframe

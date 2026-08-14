@@ -223,6 +223,7 @@ src/
 | [src/content/selectors.ts](src/content/selectors.ts) | x.com DOM 선택자 **전부**. UI 개편 시 이 파일만 고칩니다 |
 | [src/content/actions.ts](src/content/actions.ts) | 하트 · 리포스트 수행, 작성 화면 주소 |
 | [src/content/frameBlock.ts](src/content/frameBlock.ts) | 프레임이 막힌 원인(CSP vs X-Frame-Options)을 가려내는 관측점 |
+| [src/content/ruleScope.ts](src/content/ruleScope.ts) | 이 탭에 헤더 제거 규칙을 걸어달라고 배경 워커에 청합니다 |
 | [src/injected/interceptor.ts](src/injected/interceptor.ts) | 타임라인 응답만 복제해 넘기고, 문서를 '보임' 상태로 유지합니다 |
 | [src/core/parser.ts](src/core/parser.ts) | GraphQL 응답을 `Tweet` · `DeckNotification` 으로 정규화합니다 |
 | [src/core/db.ts](src/core/db.ts) | IndexedDB 영속 저장과 보관 정책 |
@@ -244,7 +245,7 @@ src/
 | `declarativeNetRequestFeedback` | 프레임이 막혔을 때 규칙이 실제로 적용되었는지 진단합니다 |
 | `host_permissions: https://x.com/*` | 덱과 수집기가 도는 유일한 도메인입니다 |
 
-헤더 제거 규칙은 [rules.json](rules.json) 에 전부 적혀 있으며, x.com 도메인에만 적용됩니다.
+헤더 제거 규칙은 정적 규칙 파일이 아니라 **덱이 뜬 탭에만 거는 세션 규칙** 입니다([service-worker.ts](src/background/service-worker.ts)). 덱을 열면 그 탭 번호로 규칙이 서고, 탭을 닫으면 함께 걷힙니다. 다른 탭이나 다른 사이트가 x.com 을 프레임에 싣는 경우에는 원래 헤더가 그대로 남으므로, 이 확장을 설치해도 x.com 의 클릭재킹 방어가 약해지지 않습니다.
 
 ---
 
