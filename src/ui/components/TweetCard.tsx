@@ -12,7 +12,7 @@ import { Lightbox } from './Lightbox'
 import { MediaGrid } from './MediaGrid'
 import { PostComposer } from './PostComposer'
 import { RichText } from './RichText'
-import { TweetDetail } from './TweetDetail'
+import { XPageModal } from './XPageModal'
 import { LikeIcon, QuoteIcon, ReplyIcon, RepostIcon, VerifiedIcon, ViewsIcon } from './icons'
 
 /**
@@ -502,10 +502,11 @@ interface LightboxTarget {
   sourceUrl: string
 }
 
-/** 상세 창으로 띄울 게시물. 원글이냐 인용글이냐는 어디를 눌렀는지가 정한다. */
+/** 덱 안 창으로 띄울 x.com 페이지. 어디를 눌렀는지가 게시물이냐 프로필이냐를 정한다. */
 interface DetailTarget {
   url: string
   handle: string
+  label?: string
 }
 
 export interface TweetCardProps {
@@ -541,13 +542,25 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
       } ${metrics.padding} ${animate ? 'animate-enter' : ''}`}
     >
       {tweet.repostedBy && (
-        <p
+        <div
           className="mb-1 flex items-center gap-1.5 text-[12.5px] font-medium text-faint"
           style={{ paddingLeft: metrics.avatar + 12 }}
         >
-          <RepostIcon className="h-3.5 w-3.5" />
-          <span className="truncate">{tweet.repostedBy.name} 님이 리포스트</span>
-        </p>
+          <RepostIcon className="h-3.5 w-3.5 shrink-0" />
+          <button
+            type="button"
+            onClick={() =>
+              setDetail({
+                url: `https://x.com/${tweet.repostedBy?.handle ?? ''}`,
+                handle: tweet.repostedBy?.handle ?? '',
+                label: '님의 프로필',
+              })
+            }
+            className="truncate hover:text-text hover:underline"
+          >
+            {tweet.repostedBy.name} 님이 리포스트
+          </button>
+        </div>
       )}
 
       <div className={`flex ${metrics.gap}`}>
@@ -657,7 +670,12 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
       </div>
 
       {detail && (
-        <TweetDetail url={detail.url} handle={detail.handle} onClose={() => setDetail(null)} />
+        <XPageModal
+          url={detail.url}
+          handle={detail.handle}
+          label={detail.label}
+          onClose={() => setDetail(null)}
+        />
       )}
 
       {composer && (

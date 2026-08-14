@@ -11,6 +11,7 @@ import { pauseHostCollector } from './hostCollector'
 import { fontStack } from './lib/fonts'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import { useSettings } from './hooks/useSettings'
+import { useViewer } from './hooks/useViewer'
 
 /**
  * 두 컬럼을 늘어놓을 자리가 있는지 재는 두 자.
@@ -38,6 +39,7 @@ export interface AppProps {
 export function App({ hostKind, onPassthrough }: AppProps) {
   const { settings, update } = useSettings()
   const collector = useCollector(settings, hostKind)
+  const viewer = useViewer()
   const canSideBySide = useMediaQuery(ROOM_SIDE_BY_SIDE)
   const canStack = useMediaQuery(ROOM_STACKED)
 
@@ -170,6 +172,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
             layoutAvailable={layoutAvailable}
             onChangeLayout={(next) => update({ layout: next })}
             onCompose={() => setComposing(true)}
+            viewer={viewer}
           />
 
           <main

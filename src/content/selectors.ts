@@ -239,6 +239,35 @@ export function hasComposerAttachment(doc: Document): boolean {
   return doc.querySelector('[data-testid="attachments"]') !== null
 }
 
+export interface ViewerInfo {
+  handle: string
+  name: string
+  avatarUrl: string
+}
+
+/**
+ * 지금 로그인한 계정. x.com 사이드바에서 읽어낸다.
+ *
+ * 핸들은 프로필 링크의 주소가 가장 확실하다 — 화면이 좁아 이름이 안 그려져도 링크는 남는다.
+ * 아직 안 그려졌으면 null 을 준다. 부르는 쪽이 잠시 뒤 다시 물어보면 된다.
+ */
+export function findViewer(): ViewerInfo | null {
+  const link = document.querySelector<HTMLAnchorElement>('[data-testid="AppTabBar_Profile_Link"]')
+  const handle = (link?.getAttribute('href') ?? '').replace(/^\//, '').split('/')[0] ?? ''
+  if (!handle) return null
+
+  const switcher = document.querySelector<HTMLElement>(
+    '[data-testid="SideNav_AccountSwitcher_Button"]',
+  )
+  const avatarUrl = (switcher ?? link)?.querySelector<HTMLImageElement>('img')?.src ?? ''
+  // 이름은 계정 전환 버튼 안에 있다. 좁은 화면에서는 아예 없으므로 핸들로 대신한다.
+  const name = [...(switcher?.querySelectorAll('span') ?? [])]
+    .map((span) => span.textContent?.trim() ?? '')
+    .find((text) => text && !text.startsWith('@'))
+
+  return { handle, name: name || handle, avatarUrl }
+}
+
 /** 로그인이 풀렸는지 판단한다. /home 밖으로 튕겼거나 로그인 UI 가 보이면 참. */
 export function isLoggedOut(): boolean {
   const path = window.location.pathname

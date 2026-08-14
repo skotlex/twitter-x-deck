@@ -8,21 +8,23 @@ import { CloseIcon } from './icons'
  */
 const WIDTH = 'w-[648px]'
 
-export interface TweetDetailProps {
-  /** 게시물 원문 주소. 이 페이지에 답글이 전부 딸려 온다. */
+export interface XPageModalProps {
+  /** 띄울 x.com 주소. 게시물 상세이거나 프로필이다. */
   url: string
   handle: string
+  /** 머리글에서 핸들 뒤에 붙일 말. */
+  label?: string
   onClose: () => void
 }
 
 /**
- * 게시물 상세.
+ * x.com 페이지를 덱 안 창에 그대로 띄운다.
  *
- * 답글 트리를 우리가 다시 만들지 않는다 — x.com 의 상세 페이지를 그대로 띄우면
- * 답글·인용·미디어·더 보기까지 전부 따라오고, UI 가 개편돼도 저절로 따라간다.
- * 대신 좌우 껍데기는 지워 본문과 답글만 남긴다.
+ * 게시물의 답글 트리도, 프로필 화면도 우리가 다시 만들지 않는다 — 저쪽 페이지를
+ * 그대로 띄우면 인용·미디어·더 보기·팔로우까지 전부 따라오고, UI 가 개편돼도
+ * 저절로 따라간다. 대신 좌우 껍데기는 지워 본문만 남긴다.
  */
-export function TweetDetail({ url, handle, onClose }: TweetDetailProps) {
+export function XPageModal({ url, handle, label = '님의 게시물', onClose }: XPageModalProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const [blocked, setBlocked] = useState(false)
 
@@ -69,7 +71,7 @@ export function TweetDetail({ url, handle, onClose }: TweetDetailProps) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`@${handle} 님의 게시물과 답글`}
+      aria-label={`@${handle} ${label}`}
       onClick={onClose}
       className="animate-fade fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4 backdrop-blur-sm"
     >
@@ -79,7 +81,7 @@ export function TweetDetail({ url, handle, onClose }: TweetDetailProps) {
       >
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
           <span className="truncate text-[14px] font-semibold text-text">
-            <span className="text-accent">@{handle}</span> 님의 게시물
+            <span className="text-accent">@{handle}</span> {label}
           </span>
           <a
             href={url}
@@ -102,7 +104,7 @@ export function TweetDetail({ url, handle, onClose }: TweetDetailProps) {
         {blocked ? (
           <div className="grid flex-1 place-items-center px-8 text-center">
             <div>
-              <p className="text-[14px] text-text">게시물을 덱 안에 띄우지 못했습니다.</p>
+              <p className="text-[14px] text-text">덱 안에 띄우지 못했습니다.</p>
               <a
                 href={url}
                 target="_blank"
@@ -117,7 +119,7 @@ export function TweetDetail({ url, handle, onClose }: TweetDetailProps) {
           <iframe
             ref={frameRef}
             src={url}
-            title="게시물과 답글"
+            title={`@${handle} ${label}`}
             onLoad={handleLoad}
             className="min-h-0 flex-1 border-0 bg-canvas"
           />

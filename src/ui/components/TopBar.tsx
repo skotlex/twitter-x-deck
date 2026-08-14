@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import type { DeckLayout, Settings } from '@core/settings'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
+import type { ViewerInfo } from '../../content/selectors'
 import type { ColumnMap } from '../hooks/useCollector'
+import { XPageModal } from './XPageModal'
 import {
   ColumnsIcon,
   EyeIcon,
@@ -34,6 +37,8 @@ export interface TopBarProps {
   onChangeLayout: (layout: DeckLayout) => void
   /** 새 게시물 작성창을 연다. */
   onCompose: () => void
+  /** 지금 로그인한 계정. 아직 못 읽었으면 null. */
+  viewer: ViewerInfo | null
 }
 
 export function TopBar({
@@ -50,8 +55,10 @@ export function TopBar({
   layoutAvailable,
   onChangeLayout,
   onCompose,
+  viewer,
 }: TopBarProps) {
   const total = settings.columns.reduce((sum, kind) => sum + columns[kind].tweets.length, 0)
+  const [profileOpen, setProfileOpen] = useState(false)
 
   return (
     // 아래 선은 두지 않는다. 컬럼 상자가 배경과 이미 갈려 있어 한 겹 더 그으면
@@ -141,6 +148,28 @@ export function TopBar({
           <span className="hidden sm:block">글쓰기</span>
         </button>
 
+        {viewer && (
+          <button
+            type="button"
+            onClick={() => setProfileOpen(true)}
+            className="mr-1 shrink-0 rounded-full ring-offset-2 ring-offset-canvas transition-shadow hover:ring-2 hover:ring-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            aria-label={`${viewer.name} 프로필 보기`}
+            title={`@${viewer.handle}`}
+          >
+            {viewer.avatarUrl ? (
+              <img
+                src={viewer.avatarUrl}
+                alt={viewer.name}
+                className="h-8 w-8 rounded-full bg-surface-2 object-cover"
+              />
+            ) : (
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-surface-2 text-[12px] font-semibold text-muted">
+                {viewer.handle.slice(0, 2).toUpperCase()}
+              </span>
+            )}
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onPeek}
@@ -169,6 +198,15 @@ export function TopBar({
           <SettingsIcon className="h-4 w-4" />
         </button>
       </div>
+
+      {profileOpen && viewer && (
+        <XPageModal
+          url={`https://x.com/${viewer.handle}`}
+          handle={viewer.handle}
+          label="님의 프로필"
+          onClose={() => setProfileOpen(false)}
+        />
+      )}
     </header>
   )
 }

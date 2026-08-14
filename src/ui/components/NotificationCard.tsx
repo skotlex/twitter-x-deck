@@ -3,7 +3,7 @@ import type { Settings } from '@core/settings'
 import type { DeckNotification, NotificationIcon, TweetAuthor } from '@core/types'
 import { formatRelative, formatStamp } from '../lib/format'
 import { LikeIcon, RepostIcon, ReplyIcon } from './icons'
-import { TweetDetail } from './TweetDetail'
+import { XPageModal } from './XPageModal'
 
 /** 얼굴을 몇 개까지 늘어놓을지. 넘치면 숫자로 접는다. */
 const FACE_LIMIT = 6
@@ -135,7 +135,7 @@ function NotificationCardBase({ notification, settings, animate = false }: Notif
       </div>
 
       {detail && target && (
-        <TweetDetail
+        <XPageModal
           url={target.url}
           handle={target.author.handle}
           onClose={() => setDetail(false)}
