@@ -26,7 +26,14 @@ function isVisible(el: Element): boolean {
   return rect.width > 0 && rect.height > 0
 }
 
-/** React 합성 이벤트까지 확실히 태우기 위해 포인터 시퀀스를 통째로 발생시킨다. */
+/**
+ * React 합성 이벤트까지 확실히 태우기 위해 포인터 시퀀스를 통째로 발생시킨다.
+ *
+ * click 은 **한 번만** 보낸다. 여기서 `el.click()` 을 덧붙이면 클릭이 두 번 나가는데,
+ * 탭처럼 몇 번을 눌러도 같은 곳은 멀쩡해도 하트·리포스트 같은 토글은 눌렀다가
+ * 곧바로 취소돼 버린다. React 는 루트에서 click 을 듣기 때문에 디스패치한 이벤트
+ * 하나로 충분하다.
+ */
 export function simulateClick(el: Element): void {
   const options = { bubbles: true, cancelable: true, composed: true, view: window }
   el.dispatchEvent(new PointerEvent('pointerdown', options))
@@ -34,7 +41,6 @@ export function simulateClick(el: Element): void {
   el.dispatchEvent(new PointerEvent('pointerup', options))
   el.dispatchEvent(new MouseEvent('mouseup', options))
   el.dispatchEvent(new MouseEvent('click', options))
-  if (el instanceof HTMLElement) el.click()
 }
 
 export function primaryColumn(): HTMLElement | null {
@@ -138,12 +144,24 @@ function readCount(text: string | null): number | null {
 }
 
 /**
- * 게시물 상세 페이지의 **첫 번째** 게시물에서 동작 버튼을 찾는다.
- * 상세 페이지에는 답글도 함께 뜨므로 반드시 첫 article 안으로 범위를 좁혀야 한다.
+ * 상세 페이지에서 **주인공 게시물**의 article 을 고른다.
+ *
+ * 첫 article 을 그냥 집으면 안 된다 — 답글의 상세 페이지에는 원글이 위에 먼저
+ * 그려져서 엉뚱한 글에 하트를 누르게 된다. 주인공은 시각 표시가 링크로 감싸여
+ * 있지 않다는 점으로 가려낸다 (위아래 다른 글들은 시각이 자기 페이지로 가는 링크다).
  */
+export function findFocalArticle(doc: Document): HTMLElement | null {
+  const articles = [...doc.querySelectorAll<HTMLElement>('[data-testid="primaryColumn"] article')]
+  const focal = articles.find((article) => {
+    const time = article.querySelector('time')
+    return time !== null && time.closest('a') === null
+  })
+  return focal ?? articles[0] ?? doc.querySelector<HTMLElement>('article')
+}
+
+/** 주인공 게시물에서 동작 버튼을 찾는다. */
 export function findPrimaryTweetAction(doc: Document, testIds: string[]): HTMLElement | null {
-  const article =
-    doc.querySelector('[data-testid="primaryColumn"] article') ?? doc.querySelector('article')
+  const article = findFocalArticle(doc)
   if (!article) return null
   for (const id of testIds) {
     const found = article.querySelector<HTMLElement>(`[data-testid="${id}"]`)

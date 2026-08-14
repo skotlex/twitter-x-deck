@@ -270,7 +270,13 @@ function LinkAction({
  * 화면은 즉시 바꾸고, 실제 반영은 보이지 않는 x.com 페이지에서 진행한다.
  * 실패하면 표시를 되돌리고 이유를 남긴다.
  */
-function useToggleAction(initial: boolean, tweetUrl: string, on: TweetAction, off: TweetAction) {
+function useToggleAction(
+  initial: boolean,
+  tweetUrl: string,
+  on: TweetAction,
+  off: TweetAction,
+  report: (message: string | null) => void,
+) {
   const [active, setActive] = useState(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -281,11 +287,14 @@ function useToggleAction(initial: boolean, tweetUrl: string, on: TweetAction, of
     setActive(next)
     setBusy(true)
     setError(null)
+    report(null)
     try {
       await runTweetAction(tweetUrl, next ? on : off)
     } catch (cause) {
+      const message = cause instanceof Error ? cause.message : '실패했다'
       setActive(!next)
-      setError(cause instanceof Error ? cause.message : '실패했다')
+      setError(message)
+      report(message)
     } finally {
       setBusy(false)
     }
@@ -309,6 +318,7 @@ function ToggleAction({
   tweetUrl,
   on,
   off,
+  report,
 }: {
   icon: React.ReactNode
   value: number
@@ -319,8 +329,10 @@ function ToggleAction({
   tweetUrl: string
   on: TweetAction
   off: TweetAction
+  /** 실패 이유를 카드 쪽에 올려 눈에 보이게 한다. */
+  report: (message: string | null) => void
 }) {
-  const { active, busy, error, toggle } = useToggleAction(initial, tweetUrl, on, off)
+  const { active, busy, error, toggle } = useToggleAction(initial, tweetUrl, on, off, report)
   const shown = shownCount(value, initial, active)
 
   return (
@@ -378,14 +390,22 @@ function RepostAction({
   initial,
   tweetUrl,
   onQuote,
+  report,
 }: {
   value: number
   initial: boolean
   tweetUrl: string
   onQuote: () => void
+  report: (message: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
-  const { active, busy, error, toggle } = useToggleAction(initial, tweetUrl, 'repost', 'unrepost')
+  const { active, busy, error, toggle } = useToggleAction(
+    initial,
+    tweetUrl,
+    'repost',
+    'unrepost',
+    report,
+  )
   const shown = shownCount(value, initial, active)
 
   return (
@@ -464,6 +484,8 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
   const mediaSize = metrics.shrinkMedia ? smallerMediaSize(settings.mediaSize) : settings.mediaSize
   const [lightbox, setLightbox] = useState<LightboxTarget | null>(null)
   const [composer, setComposer] = useState<ComposeMode | null>(null)
+  // 동작 실패 이유. 툴팁에만 두면 아무도 모른 채 숫자만 되돌아간다.
+  const [actionError, setActionError] = useState<string | null>(null)
   const quoted = tweet.quoted
 
   return (
@@ -540,6 +562,7 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
               initial={Boolean(tweet.viewer?.reposted)}
               tweetUrl={tweet.url}
               onQuote={() => setComposer('quote')}
+              report={setActionError}
             />
             <ToggleAction
               icon={<LikeIcon className="h-3.5 w-3.5" />}
@@ -551,6 +574,7 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
               tweetUrl={tweet.url}
               on="like"
               off="unlike"
+              report={setActionError}
             />
             <a
               href={tweet.url}
@@ -561,6 +585,12 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
               원문 보기
             </a>
           </div>
+
+          {actionError && (
+            <p className="mt-1.5 text-[12px] text-danger" role="status">
+              x.com 에 반영하지 못했다 — {actionError}
+            </p>
+          )}
         </div>
       </div>
 

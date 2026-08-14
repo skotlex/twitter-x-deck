@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import { ROLE_PARAM } from '@core/messages'
 import { FRAME_NAME_PREFIX } from '@core/role'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
+import { describeFrameBlock, refreshRuleReport } from '../../content/frameBlock'
 
 /**
  * 최상위 문서가 맡지 않는 컬럼을 채우는 x.com 프레임.
@@ -41,12 +42,15 @@ export function CollectorFrame({ kind, register, onReport }: CollectorFrameProps
     try {
       const doc = frame.contentDocument
       if (!doc) {
-        onReport(kind, '프레임 문서를 읽을 수 없다 — 임베드가 차단됐다.')
+        // 규칙이 요청에 걸렸는지는 요청이 나간 뒤에 물어야 의미가 있다.
+        void refreshRuleReport().then(() => {
+          onReport(kind, `프레임 문서를 읽을 수 없다 — 임베드 차단 (${describeFrameBlock()})`)
+        })
         return
       }
       onReport(kind, `프레임 로드: ${doc.location.pathname}${doc.location.search} (${doc.readyState})`)
     } catch {
-      onReport(kind, '프레임이 교차 출처로 떨어졌다 — 임베드가 차단됐다.')
+      onReport(kind, `프레임이 교차 출처로 떨어졌다 — 임베드 차단 (${describeFrameBlock()})`)
     }
   }, [kind, onReport])
 

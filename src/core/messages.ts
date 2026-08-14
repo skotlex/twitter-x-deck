@@ -9,6 +9,9 @@ export const ROLE_PARAM = 'xdeck_role'
 /** 이 탭에 덱 UI 를 띄우라는 표시. 확장 아이콘으로 열린 탭에만 붙는다. */
 export const DECK_PARAM = 'xdeck'
 
+/** 덱 → 배경 워커. 헤더 제거 규칙이 살아 있는지 물어본다 (진단용). */
+export const RULE_REPORT = 'xdeck:rule-report'
+
 /** MAIN world 인터셉터 → ISOLATED world 브리지 (같은 프레임 안). */
 export interface CapturedPayload {
   channel: typeof CHANNEL

@@ -17,6 +17,7 @@ import type { TimelineKind } from '@core/types'
 import { App } from '../ui/App'
 import { setHostCollector } from '../ui/hostCollector'
 import { startCollector } from './collector'
+import { watchFrameBlocks } from './frameBlock'
 
 const SESSION_KEY = 'xdeck:deck'
 const OVERLAY_ID = 'x-deck-overlay'
@@ -35,6 +36,31 @@ function isDeckTab(): boolean {
   } catch {
     // 세션 저장소가 막힌 환경이면 최초 파라미터만 믿는다.
     return new URLSearchParams(window.location.search).get(DECK_PARAM) === '1'
+  }
+}
+
+/**
+ * 덱이 화면을 덮는 동안 아래 x.com 의 스크롤을 잠근다.
+ *
+ * 인라인 style 로 걸면 x.com 이 자기 모달을 여닫으며 같은 속성을 다시 써서 풀어버린다.
+ * 구성된 스타일시트에 `!important` 로 넣으면 페이지의 인라인 선언보다 우선하고,
+ * style 요소가 아니라서 페이지 CSP 의 style-src 에도 걸리지 않는다.
+ */
+function createScrollLock(): (locked: boolean) => void {
+  const sheet = new CSSStyleSheet()
+  sheet.replaceSync('html,body{overflow:hidden!important}')
+
+  return (locked) => {
+    const current = document.adoptedStyleSheets
+    const applied = current.includes(sheet)
+    if (locked !== applied) {
+      document.adoptedStyleSheets = locked
+        ? [...current, sheet]
+        : current.filter((item) => item !== sheet)
+    }
+    // 구성된 스타일시트가 막힌 환경을 대비한 보조 장치. 이쪽만으로는 x.com 이
+    // 덮어쓸 수 있어 믿지 않지만, 있으면 최초 화면에서 한 번은 확실히 듣는다.
+    document.documentElement.style.overflow = locked ? 'hidden' : ''
   }
 }
 
@@ -98,8 +124,14 @@ function createOverlay(): { host: HTMLDivElement; mountPoint: HTMLDivElement } {
 function mount(): void {
   if (document.getElementById(OVERLAY_ID)) return
 
+  // 프레임이 막히는 순간을 놓치지 않으려면 첫 프레임을 만들기 전에 걸어둬야 한다.
+  watchFrameBlocks()
+
   const hostKind: TimelineKind = readFrameRole() ?? 'foryou'
   const { host, mountPoint } = createOverlay()
+  const setScrollLock = createScrollLock()
+  // 첫 화면부터 잠근다. React 가 붙기 전에도 아래 타임라인의 스크롤바가 보이면 안 된다.
+  setScrollLock(true)
 
   // 최상위 문서가 담당하는 컬럼은 이 자리에서 직접 수집한다.
   // 결과를 window 로 되던져 자식 프레임과 똑같은 경로로 덱에 도달하게 한다.
@@ -114,9 +146,8 @@ function mount(): void {
       onPassthrough={(enabled) => {
         // 덱을 통과 모드로 두면 아래 x.com 을 그대로 쓸 수 있다 (로그인·원본 확인용).
         host.style.pointerEvents = enabled ? 'none' : 'auto'
-        // 덱이 화면을 덮고 있는 동안에는 x.com 본문 스크롤을 잠근다. 그러지 않으면
-        // 아래 타임라인 길이만큼 아무 데도 닿지 않는 스크롤바가 페이지에 남는다.
-        document.documentElement.style.overflow = enabled ? '' : 'hidden'
+        // 통과 모드에서는 아래 x.com 을 실제로 굴려야 하므로 잠금을 푼다.
+        setScrollLock(!enabled)
       }}
     />,
   )

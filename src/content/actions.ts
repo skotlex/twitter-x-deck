@@ -12,12 +12,17 @@
  *
  * 부모가 x.com 이라 프레임 문서를 직접 조작할 수 있어 content script 를 거칠 필요가 없다.
  */
-import { findMenuItem, findPrimaryTweetAction, simulateClick } from './selectors'
+import { describeFrameBlock, refreshRuleReport } from './frameBlock'
+import { findFocalArticle, findMenuItem, findPrimaryTweetAction, simulateClick } from './selectors'
 
 /** 상세 페이지가 그려질 때까지 기다리는 한계. */
 const LOAD_TIMEOUT_MS = 20_000
+/** 게시물이 뜬 뒤 동작 버튼이 붙을 때까지 기다리는 한계. */
+const BUTTON_TIMEOUT_MS = 8_000
 /** 버튼 상태가 바뀔 때까지 기다리는 한계. */
 const SETTLE_TIMEOUT_MS = 8_000
+/** 버튼이 그려진 뒤 x.com 이 핸들러를 붙일 틈. 이 전에 누르면 클릭이 그냥 삼켜진다. */
+const HYDRATE_MS = 600
 const POLL_MS = 120
 
 export type TweetAction = 'like' | 'unlike' | 'repost' | 'unrepost'
@@ -50,8 +55,9 @@ async function waitFor<T>(probe: () => T | null, timeoutMs: number): Promise<T |
 function createHiddenFrame(url: string): HTMLIFrameElement {
   const frame = document.createElement('iframe')
   // 화면 밖으로 밀지 않는다 — 밖에 두면 렌더링이 멈춰 버튼이 그려지지 않는다.
+  // 폭은 x.com 이 넓은 화면 배치를 쓰도록 넉넉히 준다. 좁으면 배치가 통째로 달라진다.
   frame.style.cssText =
-    'position:fixed;left:0;top:0;width:600px;height:900px;opacity:0;pointer-events:none;border:0;z-index:-1'
+    'position:fixed;left:0;top:0;width:1100px;height:900px;opacity:0;pointer-events:none;border:0;z-index:-1'
   frame.setAttribute('aria-hidden', 'true')
   frame.src = url
   document.documentElement.append(frame)
@@ -59,6 +65,58 @@ function createHiddenFrame(url: string): HTMLIFrameElement {
 }
 
 export class TweetActionError extends Error {}
+
+/**
+ * 프레임이 어떤 상태로 멈춰 있는지 한 줄로 요약한다.
+ * 임베드가 막힌 것인지, 떴는데 안 그려진 것인지, 엉뚱한 곳으로 튕긴 것인지를 가른다.
+ */
+function describeFrame(frame: HTMLIFrameElement): string {
+  let doc: Document | null
+  try {
+    doc = frame.contentDocument
+  } catch {
+    return `교차 출처로 떨어졌다 · 임베드 차단 — ${describeFrameBlock()}`
+  }
+  if (!doc) return `문서를 읽을 수 없다 · 임베드 차단 — ${describeFrameBlock()}`
+  if (doc.location.href === 'about:blank') return `아직 빈 문서 (${doc.readyState})`
+  return `${doc.location.pathname} · ${doc.readyState} · article ${doc.querySelectorAll('article').length}개`
+}
+
+/** 시도 결과. 실패는 어느 단계에서 멈췄는지까지 들고 온다 — 사용자에게 그대로 보여준다. */
+type Attempt = 'done' | '확인 메뉴가 뜨지 않았다' | '눌러도 버튼이 그대로다' | '버튼이 사라졌다'
+
+/** 원하는 상태에 도달했는지. done 버튼이 생겼거나, 누를 버튼이 사라졌으면 된 것이다. */
+function reached(doc: Document, plan: { press: string[]; done: string[] }): boolean {
+  if (findPrimaryTweetAction(doc, plan.done)) return true
+  // 우리가 모르는 testid 로 바뀌었어도, 누를 버튼이 없어졌다면 눌린 것이다.
+  return findFocalArticle(doc) !== null && !findPrimaryTweetAction(doc, plan.press)
+}
+
+/**
+ * 버튼을 한 번 누르고 상태가 바뀌는지까지 지켜본다.
+ *
+ * 시작할 때 누를 버튼이 남아 있는지부터 본다 — 이미 원하는 상태라면 아무 것도
+ * 건드리지 않는다. 재시도가 방금 성공한 동작을 되돌리지 않게 하는 잠금이다.
+ */
+async function attempt(
+  doc: Document,
+  plan: { press: string[]; confirm?: string[]; done: string[] },
+): Promise<Attempt> {
+  if (reached(doc, plan)) return 'done'
+
+  const button = findPrimaryTweetAction(doc, plan.press)
+  if (!button) return '버튼이 사라졌다'
+  simulateClick(button)
+
+  if (plan.confirm) {
+    const confirm = await waitFor(() => findMenuItem(doc, plan.confirm ?? []), SETTLE_TIMEOUT_MS)
+    if (!confirm) return '확인 메뉴가 뜨지 않았다'
+    simulateClick(confirm)
+  }
+
+  const settled = await waitFor(() => (reached(doc, plan) ? true : null), SETTLE_TIMEOUT_MS)
+  return settled ? 'done' : '눌러도 버튼이 그대로다'
+}
 
 /**
  * 게시물 하나에 동작 하나를 수행한다.
@@ -70,35 +128,44 @@ export async function runTweetAction(tweetUrl: string, action: TweetAction): Pro
   const frame = createHiddenFrame(tweetUrl)
 
   try {
+    // 단계를 나눠 기다린다. 어디서 멈췄는지가 그대로 실패 메시지가 된다.
     // 같은 오리진이라 프레임 문서를 그대로 읽는다. 못 읽으면 임베드가 막힌 것이다.
     const doc = await waitFor(() => {
       try {
         const candidate = frame.contentDocument
-        return candidate && findPrimaryTweetAction(candidate, plan.press.concat(plan.done))
-          ? candidate
-          : null
+        return candidate && findFocalArticle(candidate) ? candidate : null
       } catch {
         return null
       }
     }, LOAD_TIMEOUT_MS)
 
-    if (!doc) throw new TweetActionError('게시물 페이지를 열지 못했다')
-
-    // 이미 원하는 상태면 할 일이 없다 (다른 곳에서 먼저 눌렀을 때).
-    if (findPrimaryTweetAction(doc, plan.done) && !findPrimaryTweetAction(doc, plan.press)) return
-
-    const button = findPrimaryTweetAction(doc, plan.press)
-    if (!button) throw new TweetActionError('버튼을 찾지 못했다')
-    simulateClick(button)
-
-    if (plan.confirm) {
-      const confirm = await waitFor(() => findMenuItem(doc, plan.confirm ?? []), SETTLE_TIMEOUT_MS)
-      if (!confirm) throw new TweetActionError('확인 메뉴가 뜨지 않았다')
-      simulateClick(confirm)
+    if (!doc) {
+      // 규칙이 요청에 걸렸는지는 요청이 나간 뒤에 물어야 의미가 있다.
+      await refreshRuleReport()
+      throw new TweetActionError(`게시물 페이지가 뜨지 않았다 (${describeFrame(frame)})`)
+    }
+    // isLoggedOut 은 자기 문서만 보므로 프레임 문서는 여기서 직접 확인한다.
+    if (doc.querySelector('[data-testid="loginButton"], [data-testid="signupButton"]')) {
+      throw new TweetActionError('x.com 로그인이 풀렸다')
     }
 
-    const settled = await waitFor(() => findPrimaryTweetAction(doc, plan.done), SETTLE_TIMEOUT_MS)
-    if (!settled) throw new TweetActionError('반영을 확인하지 못했다')
+    const ready = await waitFor(
+      () => findPrimaryTweetAction(doc, plan.press.concat(plan.done)),
+      BUTTON_TIMEOUT_MS,
+    )
+    if (!ready) throw new TweetActionError('동작 버튼을 찾지 못했다')
+
+    // 버튼이 그려진 것과 누를 수 있는 것은 다르다. 핸들러가 붙을 틈을 준다.
+    await sleep(HYDRATE_MS)
+
+    // 첫 클릭이 삼켜졌으면 한 번 더 눌러본다. 누를 버튼이 아직 남아 있을 때만
+    // 다시 누르므로, 이미 반영된 동작을 되돌릴 일은 없다.
+    const first = await attempt(doc, plan)
+    if (first === 'done') return
+    const second = await attempt(doc, plan)
+    if (second === 'done') return
+
+    throw new TweetActionError(second)
   } finally {
     frame.remove()
   }
