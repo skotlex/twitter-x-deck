@@ -86,8 +86,17 @@ const initialColumns = (): ColumnMap => byKind(emptyColumn)
  * 기록은 그대로 남으므로, 읽어 올릴 때도 같은 잣대를 댄다.
  */
 function visibleFor(kind: TimelineKind, items: StoredItem[]): StoredItem[] {
-  return kind === 'mentions' ? items.filter((item) => !isNotification(item)) : items
+  const kept = kind === 'mentions' ? items.filter((item) => !isNotification(item)) : items
+  return [...kept].sort(byNewest)
 }
+
+/**
+ * 최신이 앞. 스트림에서의 자리는 관측 시각이 정하고, 같은 뭉치 안에서는 글 자체의
+ * 시각으로 가른다 — 한 응답으로 들어온 것들은 관측 시각이 모두 같아 그것만으로는
+ * 차례가 정해지지 않는다. 알림은 id 마저 시간 순서를 담고 있지 않아 더 그렇다.
+ */
+const byNewest = (a: StoredItem, b: StoredItem): number =>
+  b.capturedAt - a.capturedAt || b.createdAt - a.createdAt
 
 /** id 중복 없이 새 항목을 앞에 붙이고 렌더 상한까지 자른다. */
 function prepend(incoming: StoredItem[], current: StoredItem[]): StoredItem[] {
@@ -95,7 +104,7 @@ function prepend(incoming: StoredItem[], current: StoredItem[]): StoredItem[] {
   const known = new Set(current.map((t) => t.key))
   const fresh = incoming.filter((t) => !known.has(t.key))
   if (fresh.length === 0) return current
-  return [...fresh, ...current].slice(0, RENDER_CAP)
+  return [...fresh, ...current].sort(byNewest).slice(0, RENDER_CAP)
 }
 
 export interface Collector {
@@ -396,7 +405,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
           ...prev,
           [kind]: {
             ...column,
-            tweets: [...column.tweets, ...fresh],
+            tweets: [...column.tweets, ...fresh].sort(byNewest),
             hasMore: older.length === PAGE_SIZE,
           },
         }
