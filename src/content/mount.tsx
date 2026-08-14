@@ -73,6 +73,13 @@ function createOverlay(): { host: HTMLDivElement; mountPoint: HTMLDivElement } {
     'wheel',
     'touchstart',
     'touchend',
+    // 컬럼을 끌어 옮기는 동안 x.com 의 첨부 드롭 영역이 깨어나지 않도록 함께 끊는다.
+    'dragstart',
+    'dragenter',
+    'dragover',
+    'dragleave',
+    'drop',
+    'dragend',
   ]
   for (const type of CONTAINED) {
     host.addEventListener(type, (event) => event.stopPropagation())

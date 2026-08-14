@@ -1,5 +1,5 @@
 import { memo, useState } from 'react'
-import type { Tweet } from '@core/types'
+import type { Tweet, TweetMedia } from '@core/types'
 import {
   MEDIA_MAX_HEIGHT,
   smallerMediaSize,
@@ -99,40 +99,51 @@ function AuthorLine({ tweet, metrics }: { tweet: Tweet; metrics: Metrics }) {
 /**
  * 인용된 글. 배경과 테두리를 함께 줘서 원글 본문과 확실히 갈린다 —
  * 테두리만으로는 밝은 테마에서 거의 보이지 않는다.
+ *
+ * 상자 전체를 링크로 두지는 않는다. 그러면 사진을 눌러 확대하려 해도 x.com 새 창이
+ * 떠버려서, 덱 안에서 끝내자는 원칙과 정면으로 부딪힌다.
+ * 원문으로 나가는 길은 작성자 줄에만 둔다 — 원글 카드의 프로필 링크와 같은 규칙이다.
  */
 function QuotedTweet({
   tweet,
   showMedia,
   mediaSize,
   textClass,
+  onOpenMedia,
 }: {
   tweet: Tweet
   showMedia: boolean
   mediaSize: MediaSize
   textClass: string
+  onOpenMedia: (index: number) => void
 }) {
   return (
-    <a
-      href={tweet.url}
-      target="_blank"
-      rel="noreferrer noopener"
-      onClick={(event) => event.stopPropagation()}
-      className="mt-2.5 block rounded-xl border border-line bg-surface-2 p-3 transition-colors hover:border-accent/40"
-    >
-      <div className="flex items-center gap-1.5 text-[13px]">
+    <div className="mt-2.5 rounded-xl border border-line bg-surface-2 p-3">
+      <a
+        href={tweet.url}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="flex items-center gap-1.5 text-[13px] hover:text-accent"
+        aria-label={`${tweet.author.name} 님의 인용된 게시물 원문 보기`}
+      >
         <Avatar src={tweet.author.avatarUrl} name={tweet.author.name} size={20} />
         <span className="truncate font-semibold text-text">{tweet.author.name}</span>
         <span className="truncate text-faint">@{tweet.author.handle}</span>
         <span className="text-faint">·</span>
         <span className="shrink-0 text-faint">{formatRelative(tweet.createdAt)}</span>
-      </div>
+      </a>
       <div className="mt-1.5 text-muted">
         <RichText text={tweet.text} className={`${textClass} line-clamp-6`} />
       </div>
       {showMedia && (
-        <MediaGrid media={tweet.media} size={smallerMediaSize(mediaSize)} sourceUrl={tweet.url} />
+        <MediaGrid
+          media={tweet.media}
+          size={smallerMediaSize(mediaSize)}
+          sourceUrl={tweet.url}
+          onOpen={onOpenMedia}
+        />
       )}
-    </a>
+    </div>
   )
 }
 
@@ -276,6 +287,13 @@ function ToggleAction({
   )
 }
 
+/** 원본 보기로 띄울 대상. 원글과 인용글이 각자의 사진 묶음을 갖는다. */
+interface LightboxTarget {
+  media: TweetMedia[]
+  index: number
+  sourceUrl: string
+}
+
 export interface TweetCardProps {
   tweet: Tweet
   settings: Settings
@@ -286,7 +304,8 @@ export interface TweetCardProps {
 function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
   const metrics = METRICS[settings.density]
   const mediaSize = metrics.shrinkMedia ? smallerMediaSize(settings.mediaSize) : settings.mediaSize
-  const [lightboxAt, setLightboxAt] = useState<number | null>(null)
+  const [lightbox, setLightbox] = useState<LightboxTarget | null>(null)
+  const quoted = tweet.quoted
 
   return (
     <article
@@ -333,18 +352,19 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
               media={tweet.media}
               size={mediaSize}
               sourceUrl={tweet.url}
-              onOpen={setLightboxAt}
+              onOpen={(index) => setLightbox({ media: tweet.media, index, sourceUrl: tweet.url })}
             />
           )}
           {tweet.card && !tweet.media.length && settings.showMedia && (
             <LinkCard card={tweet.card} mediaSize={mediaSize} />
           )}
-          {tweet.quoted && (
+          {quoted && (
             <QuotedTweet
-              tweet={tweet.quoted}
+              tweet={quoted}
               showMedia={settings.showMedia}
               mediaSize={mediaSize}
               textClass={metrics.text}
+              onOpenMedia={(index) => setLightbox({ media: quoted.media, index, sourceUrl: quoted.url })}
             />
           )}
 
@@ -390,12 +410,12 @@ function TweetCardBase({ tweet, settings, animate = false }: TweetCardProps) {
         </div>
       </div>
 
-      {lightboxAt !== null && (
+      {lightbox && (
         <Lightbox
-          media={tweet.media}
-          startIndex={lightboxAt}
-          sourceUrl={tweet.url}
-          onClose={() => setLightboxAt(null)}
+          media={lightbox.media}
+          startIndex={lightbox.index}
+          sourceUrl={lightbox.sourceUrl}
+          onClose={() => setLightbox(null)}
         />
       )}
     </article>

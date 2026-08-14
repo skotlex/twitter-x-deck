@@ -28,6 +28,18 @@ const STATE_LABEL: Record<CollectorState, string> = {
   error: '오류',
 }
 
+/**
+ * 컬럼을 드래그로 재배치하기 위한 연결. 재배치가 무의미한 화면(한 컬럼·좁은 폭)에서는 null.
+ * 손잡이는 머리글이고, 놓는 자리는 컬럼 전체다.
+ */
+export interface ColumnReorder {
+  /** 지금 끌고 있는 컬럼. 없으면 null. */
+  dragging: TimelineKind | null
+  onStart: (kind: TimelineKind) => void
+  onEnd: () => void
+  onDrop: (kind: TimelineKind) => void
+}
+
 export interface DeckColumnProps {
   kind: TimelineKind
   column: ColumnState
@@ -38,6 +50,7 @@ export interface DeckColumnProps {
   onLoadMore: (kind: TimelineKind) => void
   /** 최상위 문서가 탭을 교대로 방문하며 수집하는 중인지. */
   rotating: boolean
+  reorder: ColumnReorder | null
 }
 
 export function DeckColumn({
@@ -49,9 +62,12 @@ export function DeckColumn({
   onRefresh,
   onLoadMore,
   rotating,
+  reorder,
 }: DeckColumnProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [atTop, setAtTop] = useState(true)
+  // 이 컬럼 위에 다른 컬럼이 떠 있는지. 놓을 자리를 눈에 보이게 한다.
+  const [over, setOver] = useState(false)
   // 첫 렌더에 쌓여 있던 글까지 애니메이션이 터지지 않게 최초 목록은 제외한다.
   const settledRef = useRef(false)
 
@@ -82,11 +98,60 @@ export function DeckColumn({
 
   const { state, pendingCount } = column.status
   const buffered = column.buffered.length
+  const dragging = reorder?.dragging ?? null
+  // 자기 자신 위로는 놓을 수 없다 — 표시도 하지 않는다.
+  const dropTarget = dragging !== null && dragging !== kind
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-line bg-surface md:rounded-2xl md:border">
-      <header className="sticky top-0 z-10 flex items-center gap-2.5 border-b border-line bg-surface/85 px-4 py-3 backdrop-blur-xl">
-        <h2 className="text-[15px] font-semibold tracking-tight">{TIMELINE_LABEL[kind]}</h2>
+    <section
+      onDragOver={(event) => {
+        if (!dropTarget) return
+        // 기본 동작을 막아야 이 자리가 '놓을 수 있는 곳' 이 된다.
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'move'
+        setOver(true)
+      }}
+      onDragLeave={(event) => {
+        // 안쪽 요소 사이를 오갈 때도 leave 가 오므로 컬럼 밖으로 나간 것만 본다.
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+        setOver(false)
+      }}
+      onDrop={(event) => {
+        if (!dropTarget) return
+        event.preventDefault()
+        setOver(false)
+        reorder?.onDrop(kind)
+      }}
+      className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-line bg-surface transition-[opacity,box-shadow] md:rounded-2xl md:border ${
+        dragging === kind ? 'opacity-40' : ''
+      } ${over && dropTarget ? 'ring-2 ring-accent' : ''}`}
+    >
+      <header
+        draggable={reorder !== null}
+        onDragStart={(event) => {
+          // 머리글 안의 버튼을 누른 것까지 드래그로 삼지 않는다.
+          if (event.target instanceof HTMLElement && event.target.closest('button')) {
+            event.preventDefault()
+            return
+          }
+          event.dataTransfer.effectAllowed = 'move'
+          event.dataTransfer.setData('text/plain', kind)
+          reorder?.onStart(kind)
+        }}
+        onDragEnd={() => {
+          setOver(false)
+          reorder?.onEnd()
+        }}
+        className={`sticky top-0 z-10 flex select-none items-center gap-2.5 border-b border-line bg-surface/85 px-4 py-3 backdrop-blur-xl ${
+          reorder ? 'cursor-grab active:cursor-grabbing' : ''
+        }`}
+      >
+        <h2
+          className="text-[15px] font-semibold tracking-tight"
+          title={reorder ? '끌어서 컬럼 순서 바꾸기' : undefined}
+        >
+          {TIMELINE_LABEL[kind]}
+        </h2>
 
         <span
           className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted"

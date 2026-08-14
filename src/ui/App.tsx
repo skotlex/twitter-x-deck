@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import { CollectorFrame } from './components/CollectorFrame'
-import { DeckColumn } from './components/DeckColumn'
+import { DeckColumn, type ColumnReorder } from './components/DeckColumn'
 import { SettingsPanel } from './components/SettingsPanel'
 import { TopBar } from './components/TopBar'
 import { useCollector } from './hooks/useCollector'
@@ -26,6 +26,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [peeking, setPeeking] = useState(false)
   const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>('dark')
+  const [dragKind, setDragKind] = useState<TimelineKind | null>(null)
 
   // 로그인이 필요하면 덱을 비켜준다 — 아래에 x.com 공식 로그인 화면이 이미 떠 있다.
   const passthrough = peeking || collector.loginNeededFor !== null
@@ -57,6 +58,34 @@ export function App({ hostKind, onPassthrough }: AppProps) {
   )
 
   const visibleColumns = isDeck ? settings.columns : settings.columns.filter((kind) => kind === activeColumn)
+
+  /**
+   * 끌어온 컬럼을 놓은 컬럼 자리에 꽂는다.
+   * 오른쪽으로 끌었으면 대상 뒤, 왼쪽으로 끌었으면 대상 앞 — 컬럼이 둘이면 자리 맞바꿈이다.
+   */
+  const moveColumn = (from: TimelineKind, to: TimelineKind) => {
+    if (from === to) return
+    const forward = settings.columns.indexOf(from) < settings.columns.indexOf(to)
+    const rest = settings.columns.filter((kind) => kind !== from)
+    const at = rest.indexOf(to)
+    if (at < 0) return
+    rest.splice(forward ? at + 1 : at, 0, from)
+    update({ columns: rest })
+  }
+
+  // 컬럼이 하나뿐이거나 한 번에 하나만 보이는 폭에서는 순서를 바꿀 자리가 없다.
+  const reorder: ColumnReorder | null =
+    isDeck && settings.columns.length > 1
+      ? {
+          dragging: dragKind,
+          onStart: setDragKind,
+          onEnd: () => setDragKind(null),
+          onDrop: (target) => {
+            if (dragKind) moveColumn(dragKind, target)
+            setDragKind(null)
+          },
+        }
+      : null
   // 교대 수집으로 넘어갔으면 프레임은 더 이상 쓸모가 없다.
   const collectorKinds = collector.rotating ? [] : settings.columns.filter((kind) => kind !== hostKind)
 
@@ -103,6 +132,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
                 onRefresh={collector.refresh}
                 onLoadMore={handleLoadMore}
                 rotating={collector.rotating}
+                reorder={reorder}
               />
             ))}
           </main>
