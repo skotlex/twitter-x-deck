@@ -111,6 +111,39 @@
 }
 
 @layer base {
+  /*
+   * Tailwind 는 자기 내부 변수들의 초기값을 `@property` 로 정한다. 그런데 `@property`
+   * 는 그림자 DOM 에 넣은 스타일시트에서 등록되지 않는다. 등록이 안 되면 값 없는
+   * `var()` 가 무효가 되고, 그 속성은 통째로 초기값으로 떨어진다 —
+   * `border-style: var(--tw-border-style)` 는 none 이 되어 **모든 테두리가 사라지고**,
+   * 그림자·링·translate 유틸리티도 같은 이유로 아무 일을 하지 않는다.
+   *
+   * 그래서 등록됐을 때의 초기값을 여기서 직접 심는다. 원소마다 심는 이유는 이 변수들이
+   * 원래 상속되지 않기 때문이다 — `.xdeck` 한 곳에만 두면 자식이 부모의 링·그림자를
+   * 물려받아 엉뚱한 곳에 그려진다. 유틸리티는 뒤 레이어라 필요할 때 그대로 덮어쓴다.
+   */
+  .xdeck,
+  .xdeck *,
+  .xdeck *::before,
+  .xdeck *::after {
+    --tw-border-style: solid;
+    --tw-outline-style: solid;
+    --tw-shadow: 0 0 #0000;
+    --tw-inset-shadow: 0 0 #0000;
+    --tw-ring-shadow: 0 0 #0000;
+    --tw-inset-ring-shadow: 0 0 #0000;
+    --tw-ring-offset-shadow: 0 0 #0000;
+    --tw-ring-offset-width: 0;
+    --tw-ring-offset-color: #fff;
+    --tw-shadow-alpha: 100%;
+    --tw-inset-shadow-alpha: 100%;
+    --tw-drop-shadow-alpha: 100%;
+    --tw-divide-y-reverse: 0;
+    --tw-translate-x: 0;
+    --tw-translate-y: 0;
+    --tw-translate-z: 0;
+  }
+
   .xdeck {
     height: 100%;
     background: var(--canvas);
