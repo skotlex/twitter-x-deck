@@ -46,6 +46,8 @@ export interface Settings {
   density: 'comfortable' | 'compact'
   /** 컬럼 상자에 테두리를 두를지. 끄면 컬럼끼리 경계 없이 이어져 보인다. */
   columnBorder: boolean
+  /** 카드 사이에 구분선을 그을지. 끄면 목록이 하나로 이어져 보인다. */
+  cardDivider: boolean
   /** 이미지·동영상 표시 여부. */
   showMedia: boolean
   /** 미디어가 차지하는 최대 높이. 작을수록 한 화면에 글이 많이 들어온다. */
@@ -69,6 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxPerColumn: 2_000,
   density: 'comfortable',
   columnBorder: true,
+  cardDivider: true,
   showMedia: true,
   mediaSize: 'medium',
   holdWhileScrolled: true,

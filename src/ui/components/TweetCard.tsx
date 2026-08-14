@@ -534,9 +534,9 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
   return (
     <article
       onClick={openDetail}
-      className={`group/card relative cursor-pointer border-b border-line-soft transition-colors hover:bg-surface-2/60 ${metrics.padding} ${
-        animate ? 'animate-enter' : ''
-      }`}
+      className={`group/card relative cursor-pointer transition-colors hover:bg-surface-2/60 ${
+        settings.cardDivider ? 'border-b border-line-soft' : ''
+      } ${metrics.padding} ${animate ? 'animate-enter' : ''}`}
     >
       {tweet.repostedBy && (
         <p

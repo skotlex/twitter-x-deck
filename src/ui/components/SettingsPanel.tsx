@@ -394,6 +394,17 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
                 }
               />
               <Row
+                label="카드 구분선"
+                hint="게시물 사이를 가르는 선입니다. 끄면 목록이 하나로 이어져 보입니다."
+                control={
+                  <Toggle
+                    checked={settings.cardDivider}
+                    onChange={(next) => onUpdate({ cardDivider: next })}
+                    label="카드 구분선"
+                  />
+                }
+              />
+              <Row
                 label="미디어 표시"
                 hint="끄면 이미지·동영상을 불러오지 않아 트래픽이 줄어듭니다."
                 control={

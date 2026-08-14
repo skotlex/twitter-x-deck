@@ -146,7 +146,7 @@ export function DeckColumn({
           setOver(false)
           reorder?.onEnd()
         }}
-        className={`sticky top-0 z-10 flex select-none items-center gap-2.5 border-b border-line bg-surface/85 px-4 py-3 backdrop-blur-xl ${
+        className={`sticky top-0 z-10 flex select-none items-center gap-2.5 bg-surface/85 px-4 py-3 backdrop-blur-xl ${
           reorder ? 'cursor-grab active:cursor-grabbing' : ''
         }`}
       >

@@ -97,9 +97,11 @@ function NotificationCardBase({ notification, settings, animate = false }: Notif
         if (!target || window.getSelection()?.toString()) return
         setDetail(true)
       }}
-      className={`group/card relative border-b border-line-soft transition-colors hover:bg-surface-2/60 ${
-        compact ? 'px-3 py-2' : 'px-4 py-3.5'
-      } ${target ? 'cursor-pointer' : ''} ${animate ? 'animate-enter' : ''}`}
+      className={`group/card relative transition-colors hover:bg-surface-2/60 ${
+        settings.cardDivider ? 'border-b border-line-soft' : ''
+      } ${compact ? 'px-3 py-2' : 'px-4 py-3.5'} ${target ? 'cursor-pointer' : ''} ${
+        animate ? 'animate-enter' : ''
+      }`}
     >
       <div className={`flex ${compact ? 'gap-2.5' : 'gap-3'}`}>
         <Glyph className={`mt-0.5 h-5 w-5 shrink-0 ${tone}`} />
