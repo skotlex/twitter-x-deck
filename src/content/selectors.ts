@@ -229,65 +229,6 @@ export function findPrimaryTweetAction(doc: Document, testIds: string[]): HTMLEl
   return null
 }
 
-/** 번역 버튼 문구 후보. x.com 은 판에 따라 'Grok으로 번역하기' 로도 적는다. */
-const TRANSLATE_LABELS = [
-  '번역하기',
-  '번역 보기',
-  'grok으로 번역',
-  'translate post',
-  'translate',
-  '翻訳',
-  'traducir',
-  'traduire',
-  'übersetzen',
-]
-
-/**
- * 주인공 게시물의 '번역하기' 버튼.
- *
- * x.com 이 본문 아래 달아두는 그 버튼이다. testid 를 먼저 보고, 없으면 문구로 찾는다.
- * 문구로 찾을 때는 짧은 것만 본다 — 번역이 끝나면 'Grok 으로 번역함' 같은 안내가
- * 같은 자리에 남는데, 그걸 버튼으로 집으면 다시 눌러도 아무 일이 없다.
- *
- * 없을 수 있는 버튼이다. x.com 은 읽는 언어와 같은 글에는 번역을 권하지 않는다.
- */
-export function findTranslateButton(doc: Document): HTMLElement | null {
-  const article = findFocalArticle(doc)
-  if (!article) return null
-
-  for (const id of ['tweet-text-translate', 'translateTweet', 'translate']) {
-    const found = article.querySelector<HTMLElement>(`[data-testid="${id}"]`)
-    if (found) return found
-  }
-
-  const candidates = [...article.querySelectorAll<HTMLElement>('[role="button"], button, a')]
-  return (
-    candidates.find((candidate) => {
-      // 본문 안의 링크는 후보가 아니다. 글에 '번역' 이라는 말이 들어 있을 뿐인데
-      // 그걸 누르면 엉뚱한 곳으로 나간다.
-      if (candidate.closest('[data-testid="tweetText"]')) return false
-      const text = norm(candidate.textContent)
-      if (text.length === 0 || text.length > 24) return false
-      return TRANSLATE_LABELS.some((label) => text.includes(label))
-    }) ?? null
-  )
-}
-
-/**
- * 주인공 게시물 안의 본문 조각들.
- *
- * 번역 결과는 원문 아래에 같은 모양의 본문 조각으로 하나 더 붙는다. 누르기 전후를
- * 비교해 새로 생긴 조각을 번역문으로 본다 — 번역문에만 붙는 표시를 알아내는 것보다
- * 이쪽이 UI 개편에 덜 흔들린다.
- */
-export function readFocalTweetTexts(doc: Document): string[] {
-  const article = findFocalArticle(doc)
-  if (!article) return []
-  return [...article.querySelectorAll<HTMLElement>('[data-testid="tweetText"]')]
-    .map((el) => (el.innerText ?? el.textContent ?? '').trim())
-    .filter((text) => text.length > 0)
-}
-
 /**
  * 리포스트 확인 메뉴는 article 밖(문서 최상단)에 그려진다.
  * 그래서 범위를 좁히지 않고 문서 전체에서 찾는다.

@@ -11,7 +11,7 @@
     "declarativeNetRequest",
     "declarativeNetRequestFeedback"
   ],
-  "host_permissions": ["https://x.com/*"],
+  "host_permissions": ["https://x.com/*", "https://papago.naver.com/*"],
   "declarative_net_request": {
     "rule_resources": [
       {
@@ -60,6 +60,13 @@
       "world": "ISOLATED",
       "run_at": "document_start",
       "all_frames": false
+    },
+    {
+      "matches": ["https://papago.naver.com/*"],
+      "js": ["papago.js"],
+      "world": "ISOLATED",
+      "run_at": "document_start",
+      "all_frames": true
     }
   ]
 }

@@ -230,6 +230,9 @@ src/
 | [src/content/collector.ts](src/content/collector.ts) | 수집 본체. 탭 유지, 알림 감지 · 클릭, 강제 갱신 사다리, 교대 수집 |
 | [src/content/selectors.ts](src/content/selectors.ts) | x.com DOM 선택자 **전부**. UI 개편 시 이 파일만 고칩니다 |
 | [src/content/actions.ts](src/content/actions.ts) | 하트 · 리포스트 수행, 작성 화면 주소 |
+| [src/content/translate.ts](src/content/translate.ts) | 게시물 번역. Papago 화면을 빌려 쓰고, 막히면 브라우저 내장 번역기로 물러섭니다 |
+| [src/content/papago.ts](src/content/papago.ts) | 번역 프레임 **안에서** 도는 스크립트. 글월을 받아 넣고 결과만 돌려줍니다 |
+| [src/content/frameQueue.ts](src/content/frameQueue.ts) | 숨은 프레임 작업을 하나씩 줄 세웁니다 |
 | [src/content/frameBlock.ts](src/content/frameBlock.ts) | 프레임이 막힌 원인(CSP vs X-Frame-Options)을 가려내는 관측점 |
 | [src/injected/interceptor.ts](src/injected/interceptor.ts) | 타임라인 응답만 복제해 넘기고, 문서를 '보임' 상태로 유지합니다 |
 | [src/core/parser.ts](src/core/parser.ts) | GraphQL 응답을 `Tweet` · `DeckNotification` 으로 정규화합니다 |
@@ -251,9 +254,10 @@ src/
 | `tabs` | 확장 아이콘을 눌렀을 때 덱 탭을 열고, 이미 열린 탭을 다시 찾아옵니다 |
 | `declarativeNetRequest` | x.com 응답의 `X-Frame-Options` 헤더를 제거합니다. `frame-ancestors 'self'` 는 동일 출처 임베드를 허용하지만 `X-Frame-Options: DENY` 는 동일 출처까지 막기 때문에, 이 헤더를 걷어내야 수집 프레임을 띄울 수 있습니다 |
 | `declarativeNetRequestFeedback` | 프레임이 막혔을 때 규칙이 실제로 적용되었는지 진단합니다 |
-| `host_permissions: https://x.com/*` | 덱과 수집기가 도는 유일한 도메인입니다 |
+| `host_permissions: https://x.com/*` | 덱과 수집기가 도는 도메인입니다 |
+| `host_permissions: https://papago.naver.com/*` | 게시물 번역에 Papago 화면을 빌려 씁니다. 유료 API 대신 사람이 쓰는 번역 화면을 보이지 않는 프레임에 띄우고, 그 안에서 도는 스크립트가 결과만 덱으로 넘깁니다 |
 
-헤더 제거 규칙은 [rules.json](rules.json) 에 전부 적혀 있으며, x.com 도메인에만 적용됩니다.
+헤더 제거 규칙은 [rules.json](rules.json) 에 전부 적혀 있습니다. x.com 규칙과, 번역 프레임을 위한 papago.naver.com 규칙 두 갈래입니다. 후자는 `initiatorDomains` 로 **x.com 이 띄운 프레임에만** 걸립니다.
 
 > [!IMPORTANT]
 > 이 규칙에는 **범위를 좁히지 못한 부작용** 이 있습니다. 조건이 "x.com 으로 가는 요청" 이라, 덱이 띄운 프레임뿐 아니라 **다른 사이트가 x.com 을 프레임에 싣는 경우에도** 헤더가 제거됩니다. 즉 이 확장을 설치한 브라우저에서는 임의의 사이트가 로그인된 x.com 을 iframe 으로 실을 수 있어 클릭재킹에 노출됩니다.

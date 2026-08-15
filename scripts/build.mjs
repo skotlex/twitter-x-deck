@@ -1,7 +1,7 @@
 // 확장 번들 빌드 오케스트레이터.
 //   1) dist 청소
 //   2) vite    → deck.js (덱 UI. IIFE + CSS 인라인)
-//   3) esbuild → interceptor.js / bridge.js / background.js (CSS·JSX 없는 단일 IIFE)
+//   3) esbuild → interceptor.js / bridge.js / papago.js / background.js (CSS·JSX 없는 단일 IIFE)
 //   4) manifest.json 과 아이콘을 dist 로 복사
 //
 // --watch 를 주면 감시 모드로 돈다.
@@ -19,6 +19,7 @@ const watch = process.argv.includes('--watch')
 const PLAIN_SCRIPTS = [
   { entry: 'src/injected/interceptor.ts', out: 'interceptor.js' },
   { entry: 'src/content/bridge.ts', out: 'bridge.js' },
+  { entry: 'src/content/papago.ts', out: 'papago.js' },
   { entry: 'src/background/service-worker.ts', out: 'background.js' },
 ]
 

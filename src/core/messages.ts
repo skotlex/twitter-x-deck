@@ -75,6 +75,37 @@ export interface DeletedMessage {
   body: string
 }
 
+/** 덱이 띄운 번역 프레임임을 알리는 표시. 사람이 직접 연 Papago 는 건드리지 않는다. */
+export const PAPAGO_PARAM = 'xdeck_tr'
+
+/** 번역 프레임의 출처. 이 두 곳 사이에서만 메시지를 주고받는다. */
+export const PAPAGO_ORIGIN = 'https://papago.naver.com'
+export const X_ORIGIN = 'https://x.com'
+
+/**
+ * 덱 ↔ Papago 프레임. 교차 출처라 서로의 DOM 을 못 읽으므로 메시지로만 오간다.
+ *
+ * `id` 는 요청과 응답을 짝짓는 일회용 값이다. 프레임을 하나씩 띄우더라도 앞 요청이
+ * 시간을 넘긴 뒤 뒤늦게 도착한 응답을 다음 요청의 것으로 잘못 받는 일이 없어야 한다.
+ */
+export type PapagoMessage =
+  | { channel: typeof CHANNEL; type: 'papago-ready'; id: string }
+  | { channel: typeof CHANNEL; type: 'papago-ask'; id: string; text: string; target: string }
+  | { channel: typeof CHANNEL; type: 'papago-result'; id: string; text: string }
+  | { channel: typeof CHANNEL; type: 'papago-failed'; id: string; reason: string }
+
+const PAPAGO_MESSAGE_TYPES = new Set(['papago-ready', 'papago-ask', 'papago-result', 'papago-failed'])
+
+export function isPapagoMessage(value: unknown): value is PapagoMessage {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { channel?: unknown }).channel === CHANNEL &&
+    PAPAGO_MESSAGE_TYPES.has((value as { type?: string }).type ?? '') &&
+    typeof (value as { id?: unknown }).id === 'string'
+  )
+}
+
 /** 덱 페이지 → 브리지. */
 export type DeckCommand =
   | { channel: typeof CHANNEL; type: 'command'; command: 'refresh' }
