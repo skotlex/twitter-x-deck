@@ -143,3 +143,29 @@ export function isDeckHostDocument(): boolean {
   if (isDeckTab()) return true
   return isTimelineHome() && readMirror()?.autoMount !== false
 }
+
+/** 주소가 바뀌었는지 살피는 주기. */
+const URL_WATCH_MS = 500
+
+/**
+ * 조건이 **처음 참이 되는 순간** 한 번 부른다. 이미 참이면 그 자리에서 부른다.
+ *
+ * x.com 은 화면을 옮길 때 문서를 다시 띄우지 않는다. 그래서 문서가 뜨는 순간 한 번만
+ * 판단하면, 로그인 화면에서 시작한 탭은 로그인을 마치고 홈으로 옮겨가도 우리가 다시
+ * 판단할 기회가 없다 — 새로고침하기 전까지 덱이 뜨지 않았다.
+ *
+ * 주소를 주기적으로 확인한다. 페이지가 부르는 `pushState` 를 가로채는 방법도 있지만
+ * 그건 세계(world)가 다르면 통하지 않는다. 확인 한 번이 문자열 비교 몇 개라 싸고,
+ * 조건이 맞는 순간 감시를 접는다.
+ */
+export function whenTrue(check: () => boolean, run: () => void): void {
+  if (check()) {
+    run()
+    return
+  }
+  const timer = window.setInterval(() => {
+    if (!check()) return
+    window.clearInterval(timer)
+    run()
+  }, URL_WATCH_MS)
+}

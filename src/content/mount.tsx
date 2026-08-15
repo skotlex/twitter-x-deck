@@ -11,7 +11,7 @@
  */
 import { createRoot } from 'react-dom/client'
 import css from '../ui/index.css?inline'
-import { isDeckTab, isTimelineHome, readFrameRole } from '@core/role'
+import { isDeckTab, isTimelineHome, readFrameRole, whenTrue } from '@core/role'
 import { loadSettings } from '@core/settings'
 import type { TimelineKind } from '@core/types'
 import { App } from '../ui/App'
@@ -148,11 +148,15 @@ function mountWhenReady(): void {
  *
  * 직접 지목한 탭이면 설정을 볼 것도 없이 뜬다. 홈 타임라인은 설정을 따르는데,
  * 그 값은 저장소에서 읽어야 하므로 여기서만 한 박자 늦게 결정된다.
+ *
+ * 판단은 한 번으로 끝나지 않는다. 로그인 화면에서 시작한 탭은 로그인을 마치고 홈으로
+ * 옮겨가지만 문서는 그대로라, 처음 한 번만 보면 새로고침하기 전까지 덱이 뜨지 않는다.
  */
 if (isDeckTab()) {
   mountWhenReady()
-} else if (isTimelineHome()) {
+} else {
   void loadSettings().then((settings) => {
-    if (settings.autoMount) mountWhenReady()
+    if (!settings.autoMount) return
+    whenTrue(isTimelineHome, mountWhenReady)
   })
 }

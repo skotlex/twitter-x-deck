@@ -6,12 +6,13 @@
  * 페이지 컨텍스트라 chrome API 를 못 쓰므로 결과는 postMessage 로 브리지에 넘긴다.
  */
 import { CHANNEL, type CapturedPayload } from '@core/messages'
-import { isDeckHostDocument, isDeckPanelFrame, readFrameRole } from '@core/role'
+import { isDeckHostDocument, isDeckPanelFrame, readFrameRole, whenTrue } from '@core/role'
 import {
   CREATE_TWEET_OPERATION,
   DELETE_TWEET_OPERATION,
   isNotificationKind,
   TIMELINE_OPERATION,
+  type TimelineKind,
 } from '@core/types'
 
 const GUARD = '__xDeckInterceptorInstalled'
@@ -172,19 +173,32 @@ function spoofVisibility(): void {
 }
 
 function main(): void {
-  const globals = window as unknown as Record<string, unknown>
-  if (globals[GUARD]) return
-
   const role = readFrameRole()
   const panel = isDeckPanelFrame()
-  // 역할 표시가 없어도 덱이 얹히는 문서라면 거기서 수집이 일어난다. 덱은 그 문서를
-  // '추천' 담당으로 세우므로 인터셉터도 같은 기준으로 깨어나야 한다.
-  const host = role === null && !panel && isDeckHostDocument()
-  // 덱과 무관한 문서면 사용자의 x.com 을 건드리지 않는다.
-  if (role === null && !panel && !host) return
+  if (role !== null || panel) {
+    install(role, panel)
+    return
+  }
+
+  /*
+   * 역할 표시가 없어도 덱이 얹히는 문서라면 거기서 수집이 일어난다. 덱은 그 문서를
+   * '추천' 담당으로 세우므로 인터셉터도 같은 기준으로 깨어나야 한다.
+   *
+   * 지금 당장 아니어도 나중에 그 자리가 될 수 있다 — 로그인 화면에서 시작한 탭은
+   * 로그인을 마치면 문서 그대로 홈으로 옮겨간다. 덱도 그때 뜨므로 여기도 함께 깨어난다.
+   * 그 전까지는 사용자의 평범한 x.com 을 건드리지 않는다.
+   */
+  whenTrue(isDeckHostDocument, () => install(null, false))
+}
+
+function install(role: TimelineKind | null, panel: boolean): void {
+  const globals = window as unknown as Record<string, unknown>
+  if (globals[GUARD]) return
   globals[GUARD] = true
 
-  const collecting = role !== null || host
+  // 작성창 프레임만 수집하지 않는다. 역할이 있는 수집 프레임과 덱이 얹힌 최상위
+  // 문서는 둘 다 수집 문서다.
+  const collecting = role !== null || !panel
   if (role !== null && isNotificationKind(role)) catchAll = true
 
   // 작성창은 글이 올라간 순간만 알면 된다. 타임라인을 계속 받을 이유가 없다.
