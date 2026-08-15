@@ -20,11 +20,10 @@ import {
   IMAGE_TRANSLATE_ASK,
   IMAGE_TRANSLATE_DONE,
   isPapagoMessage,
-  LOGIN_REQUIRED,
   PAPAGO_LOGIN_DONE,
-  RESULT_MISSING,
   PAPAGO_LOGIN_PARAM,
   PAPAGO_PARAM,
+  RESULT_MISSING,
   X_ORIGIN,
   type PapagoMessage,
 } from '@core/messages'
@@ -187,60 +186,12 @@ async function handleImage(blob: Blob, name: string, source: Size): Promise<stri
   input.files = transfer.files
   input.dispatchEvent(new Event('change', { bubbles: true }))
 
-  /*
-   * 번역문과 로그인 안내 중 **먼저 오는 쪽** 을 답으로 삼는다.
-   *
-   * 로그인 안내를 몇 초만 지켜보고 넘어가면 안 된다. 그 안내는 사진이 서버에 다녀온
-   * 뒤에야 뜨기도 하는데, 그 창을 놓치면 있지도 않을 결과를 끝까지 기다린 다음
-   * '번역된 사진을 찾지 못했습니다' 라는 엉뚱한 말로 끝난다. 실제로 그랬다.
-   */
-  const outcome = await waitFor<{ login: true } | { image: string }>(() => {
-    if (isLoginWall()) return { login: true }
-    const image = readTranslatedImage(before, source)
-    return image ? { image } : null
-  }, RESULT_IMAGE_TIMEOUT_MS)
+  const outcome = await waitFor(() => readTranslatedImage(before, source), RESULT_IMAGE_TIMEOUT_MS)
 
-  // 결과도 안내도 없이 시간을 넘겼다. 원인을 단정하지 않는다 — 세션 쿠키는 남아 있는데
-  // Papago 쪽 로그인만 풀린 경우가 있고, 그때 화면에는 아무 일도 일어나지 않는다.
+  // 결과가 안 나온 이유를 여기서 단정하지 않는다. 로그인 여부는 배경 워커가 쿠키로
+  // 이미 확인했고, 화면을 뒤져 그걸 다시 판정하려던 시도는 번번이 어긋났다.
   if (!outcome) throw new Error(RESULT_MISSING)
-  if ('login' in outcome) throw new Error(LOGIN_REQUIRED)
-  return outcome.image
-}
-
-/** '로그인이 필요한 기능입니다' 안내의 문구. */
-const LOGIN_WALL_RE = /로그인이?\s*필요|login\s*(is\s*)?required/i
-
-/**
- * 로그인 안내가 **떠 있는** 지. 로그인 여부의 주된 판단은 배경 워커가 세션 쿠키로
- * 하고(`hasNaverSession`), 이건 그 뒤에도 안내가 뜰 때를 위한 보조 장치다.
- *
- * 문구가 문서에 있다는 것만으로는 어림도 없다. 화면에 안 뜬 안내문이 미리 심어져 있기도
- * 하고, 어느 조상 요소의 글자를 훑으면 그 안의 숨은 문구까지 딸려 온다.
- *
- * 그래서 그 요소가 **직접 들고 있는 글자** 가 문구와 맞는지, 그리고 숨겨져 있지
- * 않은지를 함께 본다. 자리 크기(`getBoundingClientRect`)로 가리지 않는다 — 배경 탭은
- * 그려지지 않아 크기가 전부 0 으로 나오고, 그러면 어떤 안내도 영영 못 알아본다.
- * `checkVisibility` 는 그리기가 아니라 스타일만 보므로 배경 탭에서도 제 값을 낸다.
- */
-function isLoginWall(): boolean {
-  // 0.15초마다 도는 자리다. 문서 전체 글자를 한 번 훑어 값싸게 거른 뒤,
-  // 걸렸을 때만 요소를 하나씩 들여다본다.
-  if (!LOGIN_WALL_RE.test(document.body?.textContent ?? '')) return false
-
-  for (const element of document.querySelectorAll<HTMLElement>('p, span, strong, h1, h2, h3, div')) {
-    if (!LOGIN_WALL_RE.test(ownText(element))) continue
-    if (element.checkVisibility()) return true
-  }
-  return false
-}
-
-/** 그 요소가 직접 들고 있는 글자. 자식 요소 안의 글자는 세지 않는다. */
-function ownText(element: HTMLElement): string {
-  let text = ''
-  for (const node of element.childNodes) {
-    if (node.nodeType === Node.TEXT_NODE) text += node.textContent ?? ''
-  }
-  return text
+  return outcome
 }
 
 /**
@@ -257,8 +208,7 @@ function ownText(element: HTMLElement): string {
  * 생기지만 번역본이 그보다 뒤에 붙는다.
  */
 function readTranslatedImage(before: Set<string>, source: Size): string | null {
-  // 여기는 0.15초마다 도는 자리다. 문서 전체를 훑는 무거운 검사는 두지 않는다 —
-  // 그런 검사는 실패했을 때 진단 한 번에만 쓴다(`describeCandidates`).
+  // 여기는 0.15초마다 도는 자리다. 문서 전체를 훑는 무거운 검사는 두지 않는다.
   for (const canvas of document.querySelectorAll('canvas')) {
     if (!looksLikeTranslation(canvas.width, canvas.height, source)) continue
     const drawn = readCanvas(canvas)

@@ -254,6 +254,18 @@ async function translateImage(request: ImageTranslateRequest): Promise<ImageTran
   const direct = await translateImageByApi(request)
   if (direct) return { ok: true, dataUrl: direct }
 
+  /*
+   * 탭 방식은 첫 판이 헛도는 일이 있다. 로그인은 멀쩡한데(위에서 쿠키로 확인했다)
+   * 처음 띄운 Papago 화면이 아직 자리를 못 잡아 결과가 안 나오고, 사용자가 '다시
+   * 시도' 를 누르면 그때는 된다. 그 한 번을 사용자에게 시키지 않는다.
+   */
+  const first = await runImageJob(request)
+  if (first.ok) return first
+  return await runImageJob(request)
+}
+
+async function runImageJob(request: ImageTranslateRequest): Promise<ImageTranslateResult> {
+
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const url =
     `${PAPAGO_ORIGIN}/image?${PAPAGO_PARAM}=${id}` +
