@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { TweetMedia } from '@core/types'
+import { readImageText, type ImageText } from '../../content/imageText'
+import { READING_LANG } from '../../content/translate'
 import { originalMediaUrl } from '../lib/format'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { CloseIcon } from './icons'
@@ -15,8 +17,34 @@ export interface LightboxProps {
 /** 이미지 원본 보기. 화살표·Esc 로 조작하고, 배경을 누르면 닫힌다. */
 export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProps) {
   const [index, setIndex] = useState(startIndex)
+  const [reading, setReading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  /** 사진마다 읽어낸 글. 넘겼다 돌아와도 다시 읽지 않는다. */
+  const [texts, setTexts] = useState<Record<number, ImageText>>({})
   const total = media.length
   const current = media[Math.min(index, total - 1)]
+  const found = texts[index] ?? null
+
+  /**
+   * 사진 속 글자를 읽어 번역한다.
+   *
+   * 번역된 사진을 만들지는 않는다 — 원문 글자를 지우고 다시 조판하는 일은 흉내 낼 수
+   * 있는 수준이 아니라, 읽어낸 글과 그 번역을 따로 보여준다.
+   */
+  const read = useCallback(async () => {
+    const url = current ? originalMediaUrl(current.previewUrl) : null
+    if (!url || reading) return
+    setReading(true)
+    setError(null)
+    try {
+      const result = await readImageText(url, READING_LANG)
+      setTexts((prev) => ({ ...prev, [index]: result }))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '글자를 읽지 못했습니다')
+    } finally {
+      setReading(false)
+    }
+  }, [current, index, reading])
 
   const move = useCallback(
     (delta: number) => {
@@ -74,6 +102,24 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         >
           원문 게시물
         </a>
+        {/* 사진에만 붙인다. 영상에서 글자를 읽을 일은 없다. */}
+        {!current.playbackUrl && (
+          <button
+            type="button"
+            disabled={reading}
+            onClick={(event) => {
+              event.stopPropagation()
+              if (found) setTexts(({ [index]: _drop, ...rest }) => rest)
+              else void read()
+            }}
+            className="text-[13px] leading-none text-white/70 underline-offset-2 hover:text-white hover:underline disabled:opacity-60"
+            title="사진 속 글자를 읽어 번역합니다. 인식은 이 브라우저 안에서 하며, 처음 한 번은 글자 데이터를 내려받아 오래 걸립니다"
+          >
+            {reading ? '글자 읽는 중…' : found ? '글자 닫기' : '사진 속 글자'}
+          </button>
+        )}
+        {error && <span className="text-[13px] leading-none text-white/70">{error}</span>}
+
         <button
           type="button"
           onClick={onClose}
@@ -122,12 +168,58 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         )}
       </div>
 
+      {found && (
+        <ImageTextPanel text={found} onClose={() => setTexts(({ [index]: _drop, ...rest }) => rest)} />
+      )}
+
       {total > 1 && (
         <>
           <NavButton side="left" onClick={() => move(-1)} />
           <NavButton side="right" onClick={() => move(1)} />
         </>
       )}
+    </div>
+  )
+}
+
+/** 번역기 이름. 무엇이 옮긴 글인지 밝혀야 사용자가 곧이곧대로 믿지 않는다. */
+const ENGINE_LABEL: Record<ImageText['translation']['engine'], string> = {
+  papago: 'Papago 번역',
+  browser: '브라우저 번역',
+}
+
+/**
+ * 읽어낸 글과 그 번역.
+ *
+ * 사진 위에 겹치지 않고 아래에 깔린다 — 글자를 사진 위에 얹으면 원문을 가리고, 어차피
+ * 정확한 자리에 놓을 수도 없다. 번역을 크게, 원문은 작게 곁들여 둘을 견줄 수 있게 한다.
+ */
+function ImageTextPanel({ text, onClose }: { text: ImageText; onClose: () => void }) {
+  return (
+    <div
+      onClick={(event) => event.stopPropagation()}
+      className="animate-fade max-h-[38%] shrink-0 overflow-y-auto border-t border-white/15 bg-black/80 px-5 py-4 text-white backdrop-blur-sm"
+    >
+      <div className="mx-auto max-w-3xl">
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] font-semibold text-white/60">사진 속 글자</span>
+          <span className="text-[12px] text-white/40">{ENGINE_LABEL[text.translation.engine]}</span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto text-[12.5px] text-white/60 underline-offset-2 hover:text-white hover:underline"
+          >
+            닫기
+          </button>
+        </div>
+
+        <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed">
+          {text.translation.text}
+        </p>
+        <p className="mt-3 whitespace-pre-wrap text-[12.5px] leading-relaxed text-white/45">
+          {text.lines.join('\n')}
+        </p>
+      </div>
     </div>
   )
 }

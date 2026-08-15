@@ -4,7 +4,14 @@
  * 덱은 x.com 탭 위에 얹히므로, 여기서 할 일은 그 탭을 열고 다시 찾아주는 것뿐이다.
  * 수집 메시지는 같은 문서·같은 오리진 안에서만 오가므로 중계할 것이 없다.
  */
-import { DECK_PARAM, ROLE_PARAM, RULE_REPORT } from '@core/messages'
+import {
+  DECK_PARAM,
+  OCR_RUN,
+  ROLE_PARAM,
+  RULE_REPORT,
+  type OcrRequest,
+  type OcrResult,
+} from '@core/messages'
 
 /** 최상위 탭이 맡는 컬럼. 나머지는 그 탭 안의 숨은 프레임이 맡는다. */
 const DECK_URL = `https://x.com/home?${ROLE_PARAM}=foryou&${DECK_PARAM}=1`
@@ -68,12 +75,62 @@ async function ruleReport(tabId?: number): Promise<string> {
   return parts.join(' · ')
 }
 
+/**
+ * 글자 인식이 도는 문서를 띄워둔다.
+ *
+ * 화면에 보이지 않는 확장 문서다. x.com 페이지 안에서는 워커를 띄울 수 없어(그 페이지의
+ * CSP 가 막는다) 이 자리를 따로 마련한다. 한 번 띄우면 계속 두고 쓴다 — 띄울 때마다
+ * 글자 데이터를 다시 읽으면 인식이 매번 느려진다.
+ */
+const OCR_DOCUMENT = 'offscreen.html'
+let ocrReady: Promise<void> | null = null
+
+function ensureOcrDocument(): Promise<void> {
+  ocrReady ??= (async () => {
+    const existing = await chrome.runtime.getContexts({
+      contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
+    })
+    if (existing.length > 0) return
+
+    await chrome.offscreen.createDocument({
+      url: OCR_DOCUMENT,
+      reasons: [chrome.offscreen.Reason.WORKERS],
+      justification: '사진 속 글자를 이 브라우저 안에서 읽습니다.',
+    })
+  })().catch((cause: unknown) => {
+    // 다음 요청에서 다시 시도할 수 있게 놓아준다.
+    ocrReady = null
+    throw cause
+  })
+  return ocrReady
+}
+
+async function runOcr(request: OcrRequest): Promise<OcrResult> {
+  try {
+    await ensureOcrDocument()
+    // 오프스크린 문서도 같은 메시지 통로를 듣는다. 보낸 것이 그대로 그쪽으로 간다.
+    return (await chrome.runtime.sendMessage(request)) as OcrResult
+  } catch (cause) {
+    return {
+      ok: false,
+      reason: cause instanceof Error ? cause.message : '글자 인식을 시작하지 못했습니다',
+    }
+  }
+}
+
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   const type = (message as { type?: string } | null)?.type
 
   if (type === RULE_REPORT) {
     void ruleReport(sender.tab?.id).then(sendResponse)
     // 비동기로 답하겠다는 신호.
+    return true
+  }
+
+  // 덱이 보낸 것만 받는다. 오프스크린 문서가 답으로 보내는 같은 이름의 메시지를
+  // 여기서 다시 집으면 서로를 부르며 맴돈다.
+  if (type === OCR_RUN && sender.tab !== undefined) {
+    void runOcr(message as OcrRequest).then(sendResponse)
     return true
   }
 
