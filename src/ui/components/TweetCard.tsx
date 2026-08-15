@@ -154,7 +154,7 @@ function QuotedTweet({
         event.stopPropagation()
         onOpenDetail()
       }}
-      className="mt-2.5 rounded-xl border border-line bg-surface-2 p-3 transition-colors group-hover/card:bg-surface-3 hover:border-button"
+      className="mt-2.5 rounded-xl border border-line bg-surface-2 p-3 transition-colors group-hover/card:bg-surface-3 hover:border-line-strong"
     >
       <a
         href={tweet.url}

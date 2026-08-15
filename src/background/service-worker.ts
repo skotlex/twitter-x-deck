@@ -101,14 +101,20 @@ interface ImageJob {
 
 const imageJobs = new Map<string, ImageJob>()
 
-/** 이 일에 쓴 탭을 정리한다. 로그인이 필요하면 닫는 대신 앞으로 꺼낸다. */
-async function closeJobTab(job: ImageJob, reveal: boolean): Promise<void> {
+/**
+ * 이 일에 쓴 탭을 정리한다.
+ *
+ * 성공했으면 조용히 닫는다. 실패했으면 **닫지 않고 앞으로 꺼낸다** — 그 탭에는 이미
+ * 번역된 사진이 떠 있을 수 있다. 결과를 덱으로 못 가져왔다고 해서 해둔 일까지 버릴
+ * 이유가 없다. 로그인이 필요한 경우도 같은 자리에서 바로 하면 된다.
+ */
+async function settleJobTab(job: ImageJob, ok: boolean): Promise<void> {
   if (job.tabId === null) return
-  if (reveal) {
-    await chrome.tabs.update(job.tabId, { active: true }).catch(() => null)
+  if (ok) {
+    await chrome.tabs.remove(job.tabId).catch(() => null)
     return
   }
-  await chrome.tabs.remove(job.tabId).catch(() => null)
+  await chrome.tabs.update(job.tabId, { active: true }).catch(() => null)
 }
 
 async function translateImage(request: ImageTranslateRequest): Promise<ImageTranslateResult> {
@@ -125,7 +131,7 @@ async function translateImage(request: ImageTranslateRequest): Promise<ImageTran
       if (!imageJobs.delete(id)) return
       // 서비스 워커에는 window 가 없다. 전역 함수를 그대로 쓴다.
       clearTimeout(timer)
-      void closeJobTab(job, !result.ok && result.needsLogin)
+      void settleJobTab(job, result.ok)
       resolve(result)
     }
 

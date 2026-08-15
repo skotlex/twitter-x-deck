@@ -50,7 +50,7 @@ const FILE_INPUT = '[data-testid="file-input"], input#file[type="file"]'
 /** 사진을 넣은 뒤 로그인 안내가 뜨는지 지켜보는 시간. */
 const LOGIN_WALL_MS = 4_000
 /** 번역된 사진이 나올 때까지 기다리는 한계. OCR 이 도는 시간이다. */
-const RESULT_IMAGE_TIMEOUT_MS = 30_000
+const RESULT_IMAGE_TIMEOUT_MS = 20_000
 /** 결과로 셀 만한 최소 크기. 아이콘·장식 그림을 걸러낸다. */
 const MIN_RESULT_PX = 80
 
@@ -185,7 +185,25 @@ async function handleImage(blob: Blob, name: string): Promise<string | null> {
   const wall = await waitFor(() => (isLoginWall() ? true : null), LOGIN_WALL_MS)
   if (wall) throw new Error(LOGIN_REQUIRED)
 
-  return await waitFor(() => readTranslatedImage(before), RESULT_IMAGE_TIMEOUT_MS)
+  const found = await waitFor(() => readTranslatedImage(before), RESULT_IMAGE_TIMEOUT_MS)
+  // 못 찾았으면 **무엇이 있었는지** 함께 알린다. 이 탭 화면은 밖에서 볼 수 없어,
+  // 다음에 어디를 고쳐야 할지는 이 한 줄로만 알 수 있다.
+  if (!found) throw new Error(`번역된 사진을 찾지 못했습니다 — ${describeCandidates(before)}`)
+  return found
+}
+
+/** 결과를 찾을 때 무엇이 후보로 있었는지 한 줄로 적는다. 진단용이다. */
+function describeCandidates(before: Set<string>): string {
+  const canvases = [...document.querySelectorAll('canvas')].map(
+    (canvas) => `${canvas.width}x${canvas.height}`,
+  )
+  const fresh = [...document.images]
+    .filter((image) => !before.has(image.src))
+    .map((image) => `${image.naturalWidth}x${image.naturalHeight}${image.complete ? '' : '(로딩중)'}`)
+
+  const canvasPart = canvases.length ? `캔버스 ${canvases.slice(0, 4).join(' ')}` : '캔버스 없음'
+  const imagePart = fresh.length ? `새 이미지 ${fresh.slice(0, 6).join(' ')}` : '새 이미지 없음'
+  return `${canvasPart} · ${imagePart}`
 }
 
 /**

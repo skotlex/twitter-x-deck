@@ -45,7 +45,10 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
       setTranslated((prev) => ({ ...prev, [index]: image }))
       setShowOriginal(false)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '사진을 번역하지 못했습니다')
+      // 실패하면 번역 탭이 앞으로 나온다. 거기에 결과가 떠 있을 수 있으므로 그 사실을
+      // 함께 알린다 — 사용자가 헛물켜지 않게.
+      const detail = cause instanceof Error ? cause.message : '사진을 번역하지 못했습니다'
+      setError(`${detail} · 번역 탭을 열어뒀습니다`)
       setNeedsLogin(cause instanceof ImageTranslateError && cause.needsLogin)
     } finally {
       setSending(false)
