@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Settings } from '@core/settings'
 import { isNotification, TIMELINE_LABEL, type CollectorState, type TimelineKind } from '@core/types'
 import type { ColumnState } from '../hooks/useCollector'
+import { formatClock } from '../lib/format'
 import { NotificationCard } from './NotificationCard'
 import { TweetCard } from './TweetCard'
 import { ArrowUpIcon, RefreshIcon } from './icons'
@@ -100,7 +101,9 @@ export function DeckColumn({
     scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }, [kind, onFlush])
 
-  const { state, pendingCount } = column.status
+  const { state, pendingCount, lastReceivedAt } = column.status
+  // 상태만으로는 멈춘 것을 알 수 없다 — 마지막으로 실제 글이 들어온 시각을 함께 짚는다.
+  const seen = lastReceivedAt === null ? '아직 받은 글 없음' : `마지막 수신 ${formatClock(lastReceivedAt)}`
   const buffered = column.buffered.length
   const dragging = reorder?.dragging ?? null
   // 자기 자신 위로는 놓을 수 없다 — 표시도 하지 않는다.
@@ -159,7 +162,7 @@ export function DeckColumn({
 
         <span
           className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted"
-          title={column.status.message ?? STATE_LABEL[state]}
+          title={`${column.status.message ?? STATE_LABEL[state]} · ${seen}`}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${STATE_TONE[state]}`} />
           {STATE_LABEL[state]}

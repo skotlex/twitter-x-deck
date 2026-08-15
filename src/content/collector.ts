@@ -14,6 +14,8 @@
 import {
   CHANNEL,
   isCapturedPayload,
+  NOCACHE_PARAM,
+  ROLE_PARAM,
   type DeckCommand,
   type DeletedMessage,
   type FrameMessage,
@@ -24,6 +26,7 @@ import {
   isNotificationKind,
   TIMELINE_KINDS,
   TIMELINE_OPERATION,
+  TIMELINE_PATH,
   type CollectorState,
   type TimelineKind,
 } from '@core/types'
@@ -31,7 +34,6 @@ import {
   findHomeNavLink,
   findRefreshPill,
   findTab,
-  hasTimeline,
   isLoggedOut,
   isTabSelected,
   pressLoadNewPostsShortcut,
@@ -52,6 +54,15 @@ const PRIME_MAX_MS = 10_000
 const PRIME_NUDGE_MS = 3_000
 /** 수동 새로고침에서 옆 탭에 들렀다 돌아오기까지의 시간. */
 const TAB_BOUNCE_MS = 500
+/**
+ * 강제 갱신이 담당 컬럼을 못 채웠을 때 다음 칸으로 올라가기까지의 시간.
+ *
+ * 유휴 간격(기본 2분)을 그대로 다시 기다리면 사다리 끝까지 오르는 데 몇 분이 걸린다.
+ * 한 칸이 헛돌았다는 것은 이미 확인된 사실이므로 곧바로 다음 수단을 시도한다.
+ */
+const ESCALATE_RETRY_MS = 20_000
+/** 강제 갱신 사다리의 칸 수. 이 칸을 다 밟고도 조용하면 문서를 다시 띄운다. */
+const LADDER_RUNGS = 3
 
 /**
  * 응답이 어느 타임라인 것인지는 GraphQL operation 이름이 알려준다.
@@ -103,13 +114,24 @@ export function startCollector(
   let settings: Settings = DEFAULT_SETTINGS
   const states = new Map<TimelineKind, CollectorState>()
   const pendings = new Map<TimelineKind, number | null>()
-  let lastCaptureAt = 0
+  /**
+   * 컬럼별 마지막 수신 시각.
+   *
+   * 하나로 묶어두면 안 된다 — 이 문서는 담당이 아닌 컬럼의 응답도 받는다.
+   * 팔로잉 프레임에서 홈 링크를 누르면 추천 응답이 돌아오는데, 그걸 팔로잉이
+   * 갱신된 근거로 쓰면 팔로잉은 영영 안 채워진 채 사다리만 제자리를 돈다.
+   */
+  const captures = new Map<TimelineKind, number>()
+  /** 맡은 컬럼의 응답을 한 번이라도 받았는지. 상태를 '수신 중' 으로 올릴 유일한 근거다. */
+  const receiving = (): boolean => kinds.some((kind) => captures.has(kind))
   let lastPillClickAt = 0
   let lastTabAssertAt = 0
   let lastRotateAt = Date.now()
   let lastForcedRefreshAt = Date.now()
-  /** 강제 갱신 사다리의 현재 칸. 새 응답이 들어오면 0 으로 되돌린다. */
+  /** 강제 갱신 사다리의 현재 칸. 담당 컬럼의 새 응답이 들어오면 0 으로 되돌린다. */
   let escalation = 0
+  /** 사다리 끝의 재적재를 이미 걸었는지. 문서가 곧 사라지므로 두 번 걸 일이 없다. */
+  let reloading = false
   /**
    * 손을 뗀 상태. 사용자가 이 문서의 x.com 을 직접 보고 있다는 뜻이다.
    * 그동안 탭을 되돌리거나 대타로 옮겨 다니면 사용자의 조작과 정면으로 싸운다.
@@ -140,6 +162,24 @@ export function startCollector(
     }
   }
 
+  /**
+   * 지금 무엇을 해보고 있는지 한 줄로 알린다. 컬럼 상태 배지의 말풍선에 그대로 뜬다.
+   *
+   * 상태 값 자체는 그대로라 `setState` 로는 나가지 않는 소식을 전하는 통로다.
+   * 갱신이 멎었을 때 수집기가 어디까지 시도했는지 밖에서 볼 길이 있어야 한다.
+   */
+  function report(message: string): void {
+    for (const kind of kinds) {
+      emit({
+        channel: CHANNEL,
+        type: 'status',
+        role: kind,
+        state: states.get(kind) ?? 'loading',
+        message,
+      })
+    }
+  }
+
   function setPending(kind: TimelineKind, next: number | null): void {
     if (pendings.get(kind) === next) return
     pendings.set(kind, next)
@@ -164,44 +204,83 @@ export function startCollector(
   }
 
   /**
+   * 수집 프레임을 통째로 다시 띄운다. 사다리의 마지막 칸.
+   *
+   * 최상위 문서에서는 하지 않는다 — 그 위에 덱이 얹혀 있어서, 컬럼 하나가 조용하다는
+   * 이유로 사용자가 읽던 화면을 통째로 날리게 된다. 대신 사다리를 맨 아래로 되돌려
+   * 처음부터 다시 두드리고, 사정은 배지에 적어 사용자가 직접 판단하게 한다.
+   *
+   * 프레임에서도 그냥 reload 하면 안 된다 — 캐시에 남은 응답에는 걷어내야 할
+   * `X-Frame-Options` 가 그대로 붙어 있어 프레임이 막힌다. 처음 띄울 때와 같은
+   * 일회용 값을 붙여 새 응답을 받게 한다.
+   */
+  function hardReload(): void {
+    if (window.top === window.self) {
+      report('되살리지 못함 — 탭 새로고침이 필요합니다')
+      escalation = 0
+      return
+    }
+    // 한 번이면 족하다. 재적재가 어떤 이유로 듣지 않아도 20초마다 다시 부르지 않는다.
+    if (reloading) return
+    reloading = true
+    report('강제 갱신: 프레임 재적재')
+    const kind = home()
+    const nonce = Date.now().toString(36)
+    window.location.replace(
+      `${TIMELINE_PATH[kind]}?${ROLE_PARAM}=${kind}&${NOCACHE_PARAM}=${nonce}`,
+    )
+  }
+
+  /**
    * 새 타임라인을 강제로 받아온다.
    *
-   * 한 가지 방법에 기대지 않고 사다리를 오른다 — 앞 칸이 통했으면 응답이 들어오면서
-   * `escalation` 이 0 으로 되돌아가고, 통하지 않았으면 다음 칸으로 넘어간다.
-   * 마지막 칸은 문서 새로고침이라 어떤 경우에도 결국 복구된다.
+   * 한 가지 방법에 기대지 않고 사다리를 오른다 — 앞 칸이 통했으면 **담당 컬럼의**
+   * 응답이 들어오면서 `escalation` 이 0 으로 되돌아가고, 통하지 않았으면 다음 칸으로
+   * 넘어간다. 마지막 칸은 문서 재적재라 어떤 경우에도 결국 복구된다.
    */
   function forceRefresh(): void {
     lastForcedRefreshAt = Date.now()
 
-    const pill = findRefreshPill()
-    if (pill) {
-      simulateClick(pill.element)
-      lastPillClickAt = lastForcedRefreshAt
+    // 알약은 여기서 손대지 않는다. 떠 있으면 tick 이 이미 눌러보고 있고,
+    // 그것으로 안 되니 여기까지 온 것이다.
+    const rungs = ladder()
+    const step = rungs[escalation]
+    if (!step) {
+      hardReload()
       return
     }
+    report(`강제 갱신 ${escalation + 1}/${rungs.length}: ${step.label}`)
+    step.run()
+    escalation = Math.min(escalation + 1, rungs.length)
+  }
 
-    switch (escalation) {
-      case 0: {
-        // 홈 링크 재클릭 — 이미 홈에 있으면 맨 위로 올리며 타임라인을 새로 받는다.
-        // 알림 화면에서는 쓰면 안 된다. 그 문서를 홈으로 데려가 담당을 잃는다.
-        const home = clickHome()
-        if (!home) pressLoadNewPostsShortcut()
-        break
-      }
-      case 1: {
-        const tab = findTab(target())
-        if (tab) simulateClick(tab)
-        break
-      }
-      case 2:
-        pressLoadNewPostsShortcut()
-        break
-      default:
-        window.location.reload()
-        return
+  /**
+   * 강제 갱신 수단을 시도할 차례대로 늘어놓는다. 담당 컬럼에 따라 순서가 다르다.
+   *
+   * 홈 링크 재클릭은 이미 홈에 있을 때 목록을 맨 위로 올리며 새로 받아오는,
+   * 실제 요청이 나가는 것이 확인된 경로다. 다만 그렇게 받아오는 것은 홈의 기본
+   * 탭인 추천이라 팔로잉에는 뒤로 미룬다 — 앞에 두면 팔로잉은 한 건도 못 받은 채
+   * 추천 응답만 돌아와 사다리가 제자리를 돈다.
+   */
+  function ladder(): Array<{ label: string; run: () => void }> {
+    const wanted = target()
+    // 알림 화면에서는 홈 링크를 누르면 안 된다. 그 문서를 홈으로 데려가 담당을 잃는다 —
+    // `clickHome` 이 그 자리에서 거절하므로 선택자에 기대지 않는 단축키로 물러선다.
+    const home = {
+      label: '홈 링크 재클릭',
+      run: (): void => {
+        if (!clickHome()) pressLoadNewPostsShortcut()
+      },
     }
-
-    escalation = Math.min(escalation + 1, 3)
+    const tab = {
+      label: '탭 재클릭',
+      run: (): void => {
+        const found = findTab(wanted)
+        if (found) simulateClick(found)
+      },
+    }
+    const shortcut = { label: '단축키', run: pressLoadNewPostsShortcut }
+    return wanted === 'foryou' ? [home, tab, shortcut] : [shortcut, tab, home]
   }
 
   /**
@@ -237,12 +316,18 @@ export function startCollector(
     const now = Date.now()
     lastForcedRefreshAt = now
 
+    // 알약이 떠 있으면 그것부터 누른다. 다만 **여기서 끝내지 않는다** — 눌러도
+    // 아무 일이 없는 경우가 있고, 그러면 새로고침 버튼이 통째로 죽은 것처럼 보인다.
     const pill = findRefreshPill()
     if (pill) {
       simulateClick(pill.element)
       lastPillClickAt = now
-      return
     }
+    report(pill ? '새로고침: 알림 클릭 · 홈 · 탭 튕기기' : '새로고침: 홈 · 탭 튕기기')
+
+    // 한 번 눌러 안 되면 다음 수단으로 넘어가야 한다. 사다리를 한 칸 올려두면
+    // 이 시도가 헛돌았을 때 tick 이 곧바로 다음 칸을 밟는다.
+    escalation = Math.max(escalation, 1)
 
     // 같은 화면에 실제로 떠 있는 다른 탭을 고른다. 홈과 알림은 탭 목록이 따로라
     // 이름만 보고 고르면 이 문서에 없는 탭을 집는다.
@@ -318,14 +403,20 @@ export function startCollector(
       return
     }
 
-    lastCaptureAt = Date.now()
-    lastForcedRefreshAt = lastCaptureAt
-    // 직전 시도가 통했다는 뜻이므로 사다리를 맨 아래로 되돌린다.
-    escalation = 0
+    const capturedAt = Date.now()
 
     // operation 이름 → 주소 → 지금 보고 있는 탭 순으로 귀속을 정한다.
     const role =
       roleFromOperation(event.data.operation) ?? roleFromUrl(event.data.url) ?? target()
+    captures.set(role, capturedAt)
+
+    // 사다리와 유휴 시계는 **지금 채우려던 컬럼**의 응답으로만 되돌린다.
+    // 다른 컬럼 것으로 되돌리면 헛돈 시도를 성공으로 읽어 같은 칸만 되풀이한다.
+    if (role === target()) {
+      lastForcedRefreshAt = capturedAt
+      escalation = 0
+    }
+
     emit({
       channel: CHANNEL,
       type: 'timeline',
@@ -377,47 +468,54 @@ export function startCollector(
       return
     }
 
+    /*
+     * 여기부터는 어떤 이유로도 되돌아 나가지 않는다.
+     *
+     * 탭을 못 찾았든, 탭이 안 잡혔든, 아직 한 건도 못 받았든 — 그건 전부 되살릴
+     * 손이 필요하다는 뜻이지 손을 뗄 이유가 아니다. 예전에는 이런 자리마다 빠져
+     * 나가는 바람에 아래 사다리에 영영 닿지 못했다.
+     */
     const wanted = target()
     const tab = findTab(wanted)
-    if (!tab) {
-      setState('loading')
-      return
-    }
 
     // 같은 오리진의 다른 문서가 탭 선택을 밀어버릴 수 있다. 매 tick 확인해 되돌린다.
-    if (!isTabSelected(tab)) {
-      if (now - lastTabAssertAt > TAB_ASSERT_COOLDOWN_MS) {
-        simulateClick(tab)
-        lastTabAssertAt = now
-        lastForcedRefreshAt = now
-      }
-      return
+    // 유휴 시계는 건드리지 않는다 — 갱신됐다는 근거는 응답이지 클릭이 아니다.
+    const selected = tab !== null && isTabSelected(tab)
+    if (tab && !selected && now - lastTabAssertAt > TAB_ASSERT_COOLDOWN_MS) {
+      simulateClick(tab)
+      lastTabAssertAt = now
     }
 
-    // 응답을 한 번이라도 받았으면 DOM 선택자가 어긋나도 수신 중으로 본다.
-    if (!hasTimeline() && lastCaptureAt === 0) {
-      setState('loading')
-      return
-    }
-    setState('streaming')
+    // 맡은 컬럼의 응답을 한 번이라도 받았으면 DOM 선택자가 어긋나도 수신 중으로 본다.
+    // 거꾸로, 타임라인이 그려져 있다는 것만으로는 근거가 못 된다 — 팔로잉 프레임에도
+    // 추천 타임라인이 먼저 그려지므로 그걸 근거로 삼으면 한 건도 못 나른 컬럼이
+    // 수신 중으로 보인다. 실제로 그렇게 보였다.
+    setState(receiving() ? 'streaming' : 'loading')
 
-    const pill = findRefreshPill()
-    if (pill) {
-      setPending(wanted, pill.count)
-      if (settings.autoAdvance && now - lastPillClickAt > PILL_COOLDOWN_MS) {
-        simulateClick(pill.element)
-        lastPillClickAt = now
-        lastForcedRefreshAt = now
-      }
-      return
+    // 알약은 지금 그려져 있는 목록의 것이다. 담당 탭이 아직 안 잡혔으면 남의 것이다.
+    const pill = selected ? findRefreshPill() : null
+    setPending(wanted, pill?.count ?? null)
+    if (pill && settings.autoAdvance && now - lastPillClickAt > PILL_COOLDOWN_MS) {
+      simulateClick(pill.element)
+      lastPillClickAt = now
+      report(pill.count === null ? '새 게시물 알림 클릭' : `새 게시물 알림 ${pill.count}건 클릭`)
     }
 
-    setPending(wanted, null)
-
-    // 알림이 한동안 안 뜨면 사다리를 한 칸 올라 직접 새 타임라인을 받아온다.
-    // 대타 방문 중에는 건너뛴다 — 사다리 끝의 문서 새로고침이 방문을 통째로 날린다.
-    const idleFor = now - Math.max(lastCaptureAt, lastForcedRefreshAt)
-    if (!priming && settings.idleRefreshMs > 0 && idleFor > settings.idleRefreshMs) {
+    // 알약을 눌렀다고 해서 여기서 멈추지 않는다. 눌러도 응답이 없으면 조용한 것은
+    // 마찬가지이고, 그때 멈춰 서면 되살아날 길이 사라진다. 실제로 갱신이 통째로
+    // 멎었던 자리다 — 판정은 응답이 들어왔는지 하나로만 한다.
+    //
+    // 조용한지는 **이 컬럼이** 받은 시각으로 잰다. 옆 컬럼의 응답은 이 컬럼이 살아
+    // 있다는 근거가 못 된다.
+    // 대타 방문 중에는 건너뛴다 — 사다리 끝의 문서 재적재가 방문을 통째로 날린다.
+    const idleFor = now - Math.max(captures.get(wanted) ?? 0, lastForcedRefreshAt)
+    // 사다리를 오르는 중이면 유휴 간격을 다시 채울 것 없이 곧바로 다음 칸으로 간다.
+    // 문서를 다시 띄우는 마지막 칸만은 예외다 — 최상위 문서에서는 덱까지 함께 다시 뜬다.
+    const climbing = escalation > 0 && escalation < LADDER_RUNGS
+    const wait = climbing
+      ? Math.min(settings.idleRefreshMs, ESCALATE_RETRY_MS)
+      : settings.idleRefreshMs
+    if (!priming && settings.idleRefreshMs > 0 && idleFor > wait) {
       forceRefresh()
     }
   }
@@ -455,7 +553,7 @@ export function startCollector(
       lastRotateAt = Date.now()
       // 새로 맡은 컬럼에도 현재 상태를 알려야 하므로 캐시를 비운다.
       states.clear()
-      setState(lastCaptureAt === 0 ? 'loading' : 'streaming')
+      setState(receiving() ? 'streaming' : 'loading')
     },
     dispose() {
       window.clearInterval(timer)

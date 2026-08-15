@@ -132,6 +132,27 @@ export interface PillHit {
 }
 
 /**
+ * 알약에 실릴 수 있는 문구. 숫자를 못 읽는 판(그냥 '새 게시물 보기')도 있어 함께 본다.
+ */
+const PILL_LABEL_RE = /새\s*(게시물|포스트|트윗)|new\s+(posts?|tweets?)|show\s+\d/i
+
+/**
+ * 후보 하나가 정말 '새 게시물 보기' 알약인지 가린다.
+ *
+ * **문구가 없으면 알약이 아니다.** x.com 은 알약이 앉을 자리를 미리 만들어 두고 새
+ * 글이 생겼을 때만 채우는데, 그 빈 자리를 알약으로 세면 누를 때마다 아무 일도 일어나지
+ * 않는다. 그러면 자동 갱신도 수동 새로고침도 그 자리에서 멈춘 채 되살아나지 못한다 —
+ * 실제로 모든 컬럼이 첫 적재 뒤로 조용해지고 새로고침 버튼도 먹지 않았다.
+ */
+function asPill(element: HTMLElement | null | undefined): PillHit | null {
+  if (!element || !isVisible(element)) return null
+  const text = element.textContent ?? ''
+  const count = readCount(text)
+  if (count === null && !PILL_LABEL_RE.test(text)) return null
+  return { element, count }
+}
+
+/**
  * 타임라인 상단의 '새 게시물 보기' 알림을 찾는다.
  * data-testid 를 먼저 보고, 없으면 상단에 떠 있는 버튼의 문구로 판별한다.
  */
@@ -140,19 +161,22 @@ export function findRefreshPill(): PillHit | null {
   if (!scope) return null
 
   const direct =
-    scope.querySelector<HTMLElement>('[data-testid="pillToRefresh"]') ??
-    scope.querySelector<HTMLElement>('[data-testid="pillLabel"]')?.closest<HTMLElement>('[role="button"], button')
-  if (direct && isVisible(direct)) {
-    return { element: direct, count: readCount(direct.textContent) }
-  }
+    asPill(scope.querySelector<HTMLElement>('[data-testid="pillToRefresh"]')) ??
+    asPill(
+      scope
+        .querySelector<HTMLElement>('[data-testid="pillLabel"]')
+        ?.closest<HTMLElement>('[role="button"], button'),
+    )
+  if (direct) return direct
 
   const buttons = [...scope.querySelectorAll<HTMLElement>('[role="button"], button')]
   for (const button of buttons) {
-    if (!isVisible(button)) continue
     // 알림 알약은 항상 컬럼 최상단에 떠 있다. 아래쪽 버튼은 후보에서 뺀다.
     if (button.getBoundingClientRect().top > 220) continue
-    const count = readCount(button.textContent)
-    if (count !== null) return { element: button, count }
+    const hit = asPill(button)
+    // 문구로 찾을 때는 숫자가 있는 것만 믿는다. 상단에는 '새 게시물' 이라는 말이
+    // 들어간 다른 버튼(작성 버튼 등)이 함께 있을 수 있다.
+    if (hit?.count != null) return hit
   }
 
   return null
@@ -280,17 +304,4 @@ export function isLoggedOut(): boolean {
   const path = window.location.pathname
   if (path.startsWith('/i/flow/login') || path === '/login' || path === '/i/flow/signup') return true
   return Boolean(document.querySelector('[data-testid="loginButton"], [data-testid="signupButton"]'))
-}
-
-/**
- * 타임라인이 실제로 그려졌는지. 상태 표시를 '스트리밍' 으로 올릴 근거.
- * 알림 목록은 게시물이 아닌 줄이 섞여 있어 article 만으로는 못 잡는다 — 목록을
- * 이루는 칸 자체도 근거로 삼는다.
- */
-export function hasTimeline(): boolean {
-  return Boolean(
-    document.querySelector(
-      '[data-testid="primaryColumn"] [data-testid="tweet"], article[role="article"], [data-testid="primaryColumn"] [data-testid="cellInnerDiv"]',
-    ),
-  )
 }

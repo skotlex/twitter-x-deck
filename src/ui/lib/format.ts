@@ -1,6 +1,7 @@
 const compact = new Intl.NumberFormat('ko-KR', { notation: 'compact', maximumFractionDigits: 1 })
 const dateOnly = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric' })
 const dateWithYear = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+const clockOnly = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit' })
 const fullStamp = new Intl.DateTimeFormat('ko-KR', {
   year: 'numeric',
   month: 'long',
@@ -48,6 +49,15 @@ export function formatRelative(timestamp: number, now: number = Date.now()): str
 
 export function formatStamp(timestamp: number): string {
   return fullStamp.format(new Date(timestamp))
+}
+
+/**
+ * 시:분만 짚는다.
+ * '3분 전' 같은 상대 표현과 달리 다시 그리지 않아도 낡지 않는다 — 아무 것도
+ * 안 들어와 화면이 멈춰 있을 때 읽는 값이라 그 성질이 중요하다.
+ */
+export function formatClock(timestamp: number): string {
+  return clockOnly.format(new Date(timestamp))
 }
 
 /** 미디어 격자의 종횡비. 1장일 때만 원본 비율을 살린다. */
