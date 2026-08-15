@@ -44,8 +44,14 @@ async function toDataUrl(imageUrl: string): Promise<string> {
   })
 }
 
-/** Papago 로그인 화면. 사용자가 직접 로그인해야 하는 자리로 데려간다. */
-export const PAPAGO_LOGIN_URL = `${PAPAGO_ORIGIN}/image`
+/**
+ * 네이버 로그인 화면. 로그인을 마치면 사진 번역 화면으로 돌아온다.
+ *
+ * Papago 화면으로 보내면 사용자가 거기서 로그인 버튼을 한 번 더 찾아야 한다.
+ * 필요한 것이 로그인이면 로그인 화면으로 바로 데려가는 편이 낫다.
+ */
+export const PAPAGO_LOGIN_URL =
+  `https://nid.naver.com/nidlogin.login?url=${encodeURIComponent(`${PAPAGO_ORIGIN}/image`)}`
 
 /**
  * 사진 한 장을 번역해 그 결과 사진(data URL)을 돌려준다.

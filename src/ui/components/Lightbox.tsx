@@ -131,7 +131,9 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
               if (result) setShowOriginal((prev) => !prev)
               else void translate()
             }}
-            className="text-[13px] text-white/70 underline-offset-2 hover:text-white hover:underline disabled:opacity-60"
+            // 상태 문구와 같은 크기·같은 줄높이로 둔다. 둘이 나란히 서는 자리라
+            // 조금만 달라도 한쪽이 내려앉은 것처럼 보인다.
+            className="text-[13px] leading-none text-white/70 underline-offset-2 hover:text-white hover:underline disabled:opacity-60"
             title="Papago 로 사진 속 글자를 번역합니다 (네이버 로그인 필요)"
           >
             {sending
@@ -143,7 +145,7 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
                 : '사진 번역'}
           </button>
         )}
-        {error && <span className="text-[12.5px] text-white/70">{error}</span>}
+        {error && <span className="text-[13px] leading-none text-white/70">{error}</span>}
         {/*
           로그인은 사용자가 직접 해야 하고, 언제 할지도 사용자가 정한다. 우리가 탭을
           앞으로 끌어내지 않는다 — 사진을 보던 중에 난데없이 다른 탭으로 끌려가는 것이
