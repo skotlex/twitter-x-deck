@@ -51,6 +51,12 @@ const FILE_INPUT = '[data-testid="file-input"], input#file[type="file"]'
 const RESULT_IMAGE_TIMEOUT_MS = 20_000
 /** 결과로 셀 만한 최소 크기. 아이콘·장식 그림을 걸러낸다. */
 const MIN_RESULT_PX = 80
+/** 원본 크기를 모를 때 쓰는 최소 크기. 비율로 거를 수 없으니 더 엄하게 잡는다. */
+const LOOSE_MIN_PX = 320
+/** 원본과 같은 비율로 볼 여유. 테두리 몇 픽셀 차이는 넘어간다. */
+const ASPECT_TOLERANCE = 0.06
+/** 원본 대비 이만큼은 돼야 번역본으로 본다. 줄여 보여줄 수는 있어도 손톱만 하지는 않다. */
+const MIN_SCALE = 0.4
 /** 그림자 DOM·프레임을 몇 겹까지 파고들지. 더 깊으면 결과가 아니라 남의 위젯이다. */
 const MAX_SCAN_DEPTH = 4
 
@@ -165,7 +171,7 @@ async function waitForResult(): Promise<string> {
  * 받아 `DataTransfer` 로 목록을 꾸며 넣은 뒤, 사람이 고른 것과 같은 `change` 를 낸다.
  * 번역된 사진을 돌려준다. 시간을 넘기면 null.
  */
-async function handleImage(blob: Blob, name: string): Promise<string | null> {
+async function handleImage(blob: Blob, name: string, source: Size): Promise<string | null> {
   const input = await waitFor(
     () => document.querySelector<HTMLInputElement>(FILE_INPUT),
     EDITOR_TIMEOUT_MS,
@@ -189,7 +195,7 @@ async function handleImage(blob: Blob, name: string): Promise<string | null> {
    */
   const outcome = await waitFor<{ login: true } | { image: string }>(() => {
     if (isLoginWall()) return { login: true }
-    const image = readTranslatedImage(before)
+    const image = readTranslatedImage(before, source)
     return image ? { image } : null
   }, RESULT_IMAGE_TIMEOUT_MS)
 
@@ -257,11 +263,11 @@ function isLoginWall(): boolean {
  * 이미지 쪽은 넣기 전에 없던 것 중 마지막에 나타난 것을 고른다. 올린 원본도 새로
  * 생기지만 번역본이 그보다 뒤에 붙는다.
  */
-function readTranslatedImage(before: Set<string>): string | null {
+function readTranslatedImage(before: Set<string>, source: Size): string | null {
   // 여기는 0.15초마다 도는 자리다. 문서 전체를 훑는 무거운 검사는 두지 않는다 —
   // 그런 검사는 실패했을 때 진단 한 번에만 쓴다(`describeCandidates`).
   for (const canvas of document.querySelectorAll('canvas')) {
-    if (canvas.width < MIN_RESULT_PX || canvas.height < MIN_RESULT_PX) continue
+    if (!looksLikeTranslation(canvas.width, canvas.height, source)) continue
     const drawn = readCanvas(canvas)
     if (drawn) return drawn
   }
@@ -270,11 +276,37 @@ function readTranslatedImage(before: Set<string>): string | null {
     (image) =>
       !before.has(image.src) &&
       image.complete &&
-      image.naturalWidth >= MIN_RESULT_PX &&
-      image.naturalHeight >= MIN_RESULT_PX,
+      looksLikeTranslation(image.naturalWidth, image.naturalHeight, source),
   )
   const found = fresh.at(-1)
   return found ? drawToDataUrl(found, found.naturalWidth, found.naturalHeight) : null
+}
+
+export interface Size {
+  width: number
+  height: number
+}
+
+/**
+ * 이 그림이 **우리가 올린 사진의 번역본** 으로 볼 만한지.
+ *
+ * '새로 생긴 큰 그림' 만으로는 어림도 없다. 그 화면에는 행사 배지·배너 같은 남의 그림도
+ * 함께 뜨고, 로그인이 없어 번역이 아예 안 돌았을 때는 그것들만 남는다. 실제로 10주년
+ * 배지가 번역 결과랍시고 덱에 실렸다.
+ *
+ * 번역본은 원본 위에 글자만 얹은 것이라 **가로세로 비율이 원본과 같다.** 크기도 원본과
+ * 비슷해야 한다 — 줄여 보여줄 수는 있어도 손톱만 해지지는 않는다. 원본 크기를 모르면
+ * 비율로 거를 수 없으니 넉넉한 크기 기준만 쓴다.
+ */
+function looksLikeTranslation(width: number, height: number, source: Size): boolean {
+  if (width < MIN_RESULT_PX || height < MIN_RESULT_PX) return false
+  if (source.width <= 0 || source.height <= 0) {
+    return width >= LOOSE_MIN_PX && height >= LOOSE_MIN_PX
+  }
+
+  const wanted = source.width / source.height
+  if (Math.abs(width / height - wanted) / wanted > ASPECT_TOLERANCE) return false
+  return width >= source.width * MIN_SCALE
 }
 
 /** 그림 하나를 캔버스에 옮겨 그려 data URL 로 만든다. */
@@ -379,10 +411,13 @@ async function runImageJob(jobId: string): Promise<void> {
     const asked = (await chrome.runtime.sendMessage({
       type: IMAGE_TRANSLATE_ASK,
       id: jobId,
-    })) as { dataUrl: string } | null
+    })) as { dataUrl: string; width: number; height: number } | null
     if (!asked) return
 
-    const dataUrl = await handleImage(decodeDataUrl(asked.dataUrl), 'image.jpg')
+    const dataUrl = await handleImage(decodeDataUrl(asked.dataUrl), 'image.jpg', {
+      width: asked.width,
+      height: asked.height,
+    })
     if (!dataUrl) throw new Error('번역된 사진을 찾지 못했습니다')
     await chrome.runtime.sendMessage({ type: IMAGE_TRANSLATE_DONE, id: jobId, dataUrl })
   } catch (cause) {

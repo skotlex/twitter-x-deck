@@ -46,7 +46,11 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
       setError(null)
       setNeedsLogin(false)
       try {
-        const image = await translateImage(url, READING_LANG, { force })
+        const image = await translateImage(url, READING_LANG, {
+          force,
+          width: current?.width ?? 0,
+          height: current?.height ?? 0,
+        })
         setTranslated((prev) => ({ ...prev, [index]: image }))
         setShowOriginal(false)
       } catch (cause) {

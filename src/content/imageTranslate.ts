@@ -57,7 +57,7 @@ export const PAPAGO_LOGIN_URL = `${PAPAGO_ORIGIN}/image`
 export async function translateImage(
   imageUrl: string,
   target: string,
-  options?: { force?: boolean },
+  options?: { force?: boolean; width?: number; height?: number },
 ): Promise<string> {
   const dataUrl = await toDataUrl(imageUrl)
 
@@ -65,6 +65,9 @@ export async function translateImage(
     type: IMAGE_TRANSLATE,
     dataUrl,
     target,
+    // 원본 크기를 함께 보낸다. 번역 탭은 이걸 잣대로 번역본과 남의 그림을 가른다.
+    width: options?.width ?? 0,
+    height: options?.height ?? 0,
     force: options?.force ?? false,
   })) as ImageTranslateResult | undefined
 

@@ -95,6 +95,9 @@ async function ruleReport(tabId?: number): Promise<string> {
  */
 interface ImageJob {
   dataUrl: string
+  /** 원본 크기. 번역 탭이 결과를 가려낼 때 잣대로 쓴다. */
+  width: number
+  height: number
   tabId: number | null
   settle: (result: ImageTranslateResult) => void
 }
@@ -152,7 +155,13 @@ async function translateImage(request: ImageTranslateRequest): Promise<ImageTran
     `&tk=${encodeURIComponent(request.target)}`
 
   return await new Promise<ImageTranslateResult>((resolve) => {
-    const job: ImageJob = { dataUrl: request.dataUrl, tabId: null, settle: finish }
+    const job: ImageJob = {
+      dataUrl: request.dataUrl,
+      width: request.width,
+      height: request.height,
+      tabId: null,
+      settle: finish,
+    }
     imageJobs.set(id, job)
 
     function finish(result: ImageTranslateResult): void {
@@ -197,7 +206,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   // Papago 탭이 번역할 사진을 달라고 한다.
   if (type === IMAGE_TRANSLATE_ASK) {
     const job = imageJobs.get((message as { id: string }).id)
-    sendResponse(job ? { dataUrl: job.dataUrl } : null)
+    sendResponse(job ? { dataUrl: job.dataUrl, width: job.width, height: job.height } : null)
     return false
   }
 
