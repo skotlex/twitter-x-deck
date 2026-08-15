@@ -32,6 +32,7 @@ import {
 } from '@core/types'
 import {
   findHomeNavLink,
+  findNotificationsNavLink,
   findRefreshPill,
   findTab,
   isLoggedOut,
@@ -63,6 +64,15 @@ const TAB_BOUNCE_MS = 500
 const ESCALATE_RETRY_MS = 20_000
 /** 강제 갱신 사다리의 칸 수. 이 칸을 다 밟고도 조용하면 문서를 다시 띄운다. */
 const LADDER_RUNGS = 3
+
+/**
+ * 목록 응답에만 들어 있는 표시.
+ *
+ * 정확한 판정은 파서가 한다. 여기서는 '이 컬럼이 갱신됐다' 로 셀지 말지만 가린다 —
+ * 세 글자 훑는 값으로 사다리와 상태 표시가 엉뚱한 응답에 속지 않는다.
+ * GraphQL 타임라인은 `instructions` · `entryId` 를, 옛 알림 경로는 `globalObjects` 를 싣는다.
+ */
+const TIMELINE_MARKER_RE = /"(instructions|entryId|globalObjects)"/
 
 /**
  * 응답이 어느 타임라인 것인지는 GraphQL operation 이름이 알려준다.
@@ -187,19 +197,19 @@ export function startCollector(
   }
 
   /**
-   * 홈 링크를 다시 눌러 타임라인을 새로 받아온다. 눌렀으면 true.
+   * 담당 화면의 내비 링크를 다시 눌러 목록을 새로 받아온다. 눌렀으면 true.
    *
-   * 이미 홈에 있을 때 홈을 누르면 x.com 이 목록을 맨 위로 올리며 새로 받아온다.
-   * 탭을 다시 누르는 것과 달리 실제 요청이 나가는 것이 확인된 경로다.
+   * 이미 그 화면에 있을 때 같은 링크를 누르면 x.com 이 목록을 맨 위로 올리며 새로
+   * 받아온다. 탭을 다시 누르는 것과 달리 실제 요청이 나가는 것이 확인된 경로다.
    *
-   * 알림·멘션 화면에서는 절대 쓰지 않는다. 그 문서를 홈으로 데려가 담당하던
-   * 컬럼을 통째로 잃는다.
+   * 알림 문서에서 홈 링크를 누르면 안 된다 — 그 문서를 홈으로 데려가 담당하던 컬럼을
+   * 통째로 잃는다. 대신 같은 자리의 알림 링크를 쓴다. 멘션 담당이 알림 목록으로
+   * 옮겨가더라도 같은 화면 안이라 tick 이 곧 담당 탭을 되찾는다.
    */
-  function clickHome(): boolean {
-    if (isNotificationKind(target())) return false
-    const home = findHomeNavLink()
-    if (!home) return false
-    simulateClick(home)
+  function clickOwnNav(): boolean {
+    const link = isNotificationKind(target()) ? findNotificationsNavLink() : findHomeNavLink()
+    if (!link) return false
+    simulateClick(link)
     return true
   }
 
@@ -257,19 +267,20 @@ export function startCollector(
   /**
    * 강제 갱신 수단을 시도할 차례대로 늘어놓는다. 담당 컬럼에 따라 순서가 다르다.
    *
-   * 홈 링크 재클릭은 이미 홈에 있을 때 목록을 맨 위로 올리며 새로 받아오는,
-   * 실제 요청이 나가는 것이 확인된 경로다. 다만 그렇게 받아오는 것은 홈의 기본
-   * 탭인 추천이라 팔로잉에는 뒤로 미룬다 — 앞에 두면 팔로잉은 한 건도 못 받은 채
-   * 추천 응답만 돌아와 사다리가 제자리를 돈다.
+   * 내비 링크 재클릭은 이미 그 화면에 있을 때 목록을 맨 위로 올리며 새로 받아오는,
+   * 실제 요청이 나가는 것이 확인된 경로다. 그래서 대개 맨 앞에 둔다.
+   *
+   * 팔로잉만 예외다. 홈 링크로 받아오는 것은 홈의 기본 탭인 추천이라, 앞에 두면
+   * 팔로잉은 한 건도 못 받은 채 추천 응답만 돌아와 사다리가 제자리를 돈다.
+   * 알림·멘션은 자기 화면의 링크를 쓰므로 이 문제가 없다.
    */
   function ladder(): Array<{ label: string; run: () => void }> {
     const wanted = target()
-    // 알림 화면에서는 홈 링크를 누르면 안 된다. 그 문서를 홈으로 데려가 담당을 잃는다 —
-    // `clickHome` 이 그 자리에서 거절하므로 선택자에 기대지 않는 단축키로 물러선다.
-    const home = {
-      label: '홈 링크 재클릭',
+    const nav = {
+      label: isNotificationKind(wanted) ? '알림 링크 재클릭' : '홈 링크 재클릭',
       run: (): void => {
-        if (!clickHome()) pressLoadNewPostsShortcut()
+        // 링크를 못 찾는 화면(좁은 프레임 등)에서는 선택자에 기대지 않는 단축키로 물러선다.
+        if (!clickOwnNav()) pressLoadNewPostsShortcut()
       },
     }
     const tab = {
@@ -280,7 +291,7 @@ export function startCollector(
       },
     }
     const shortcut = { label: '단축키', run: pressLoadNewPostsShortcut }
-    return wanted === 'foryou' ? [home, tab, shortcut] : [shortcut, tab, home]
+    return wanted === 'following' ? [shortcut, tab, nav] : [nav, tab, shortcut]
   }
 
   /**
@@ -323,20 +334,20 @@ export function startCollector(
       simulateClick(pill.element)
       lastPillClickAt = now
     }
-    report(pill ? '새로고침: 알림 클릭 · 홈 · 탭 튕기기' : '새로고침: 홈 · 탭 튕기기')
+    report(pill ? '새로고침: 알림 클릭 · 내비 · 탭 튕기기' : '새로고침: 내비 · 탭 튕기기')
 
     // 한 번 눌러 안 되면 다음 수단으로 넘어가야 한다. 사다리를 한 칸 올려두면
     // 이 시도가 헛돌았을 때 tick 이 곧바로 다음 칸을 밟는다.
     escalation = Math.max(escalation, 1)
 
-    // 같은 화면에 실제로 떠 있는 다른 탭을 고른다. 홈과 알림은 탭 목록이 따로라
-    // 이름만 보고 고르면 이 문서에 없는 탭을 집는다.
-    // 홈 링크 재클릭이 실제 요청을 내는 것이 확인된 경로다. 탭을 다시 누르는 것만으로는
-    // x.com 이 이미 받아둔 목록을 다시 그리기만 하고 요청을 안 낼 때가 있다.
-    clickHome()
+    // 담당 화면의 내비 링크 재클릭이 실제 요청을 내는 것이 확인된 경로다. 탭을 다시
+    // 누르는 것만으로는 x.com 이 이미 받아둔 목록을 다시 그리기만 할 때가 있다.
+    clickOwnNav()
 
-    // 홈 링크가 없거나(알림 화면·좁은 프레임) 그것만으로 부족할 때를 위해 탭도 튕긴다.
-    // 홈 클릭으로 담당 탭이 풀렸다면 돌아오는 클릭이 그것까지 함께 되돌린다.
+    // 링크가 없거나(좁은 프레임) 그것만으로 부족할 때를 위해 탭도 튕긴다.
+    // 같은 화면에 실제로 떠 있는 다른 탭을 고른다 — 홈과 알림은 탭 목록이 따로라
+    // 이름만 보고 고르면 이 문서에 없는 탭을 집는다.
+    // 내비 클릭으로 담당 탭이 풀렸다면 돌아오는 클릭이 그것까지 함께 되돌린다.
     const wanted = target()
     const away = TIMELINE_KINDS.filter((kind) => kind !== wanted)
       .map((kind) => findTab(kind))
@@ -408,6 +419,25 @@ export function startCollector(
     // operation 이름 → 주소 → 지금 보고 있는 탭 순으로 귀속을 정한다.
     const role =
       roleFromOperation(event.data.operation) ?? roleFromUrl(event.data.url) ?? target()
+
+    // 건질 게 있는지는 파서가 판단한다. 여기서는 무엇이든 넘긴다.
+    emit({
+      channel: CHANNEL,
+      type: 'timeline',
+      role,
+      operation: event.data.operation,
+      body: event.data.body,
+    })
+
+    // 여기서부터는 '갱신됐다' 는 판정이다. 목록처럼 생긴 응답만 그 근거로 삼는다.
+    //
+    // 알림 프레임은 operation 이름을 가릴 수 없어 이 문서의 응답을 전부 받는데,
+    // 귀속이 마지막에는 지금 보고 있는 탭으로 떨어진다. 그래서 목록과 무관한 응답
+    // (프로필 조회 따위) 까지 자기 컬럼의 수신으로 세게 된다 — 사다리는 매번 맨
+    // 아래로 되감기고, 한 건도 못 나른 컬럼이 '수신 중' 으로 보인다. 팔로잉·추천이
+    // 멈췄던 것과 같은 종류의 착각이다.
+    if (!TIMELINE_MARKER_RE.test(event.data.body)) return
+
     captures.set(role, capturedAt)
 
     // 사다리와 유휴 시계는 **지금 채우려던 컬럼**의 응답으로만 되돌린다.
@@ -417,13 +447,6 @@ export function startCollector(
       escalation = 0
     }
 
-    emit({
-      channel: CHANNEL,
-      type: 'timeline',
-      role,
-      operation: event.data.operation,
-      body: event.data.body,
-    })
     setState('streaming')
     setPending(role, null)
 

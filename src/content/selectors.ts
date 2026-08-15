@@ -108,6 +108,19 @@ export function findHomeNavLink(): HTMLElement | null {
 }
 
 /**
+ * 사이드바의 알림 링크. 알림 화면에서 홈 링크와 같은 역할을 한다 — 이미 그 화면에
+ * 있을 때 누르면 목록을 맨 위로 올리며 새로 받아온다.
+ *
+ * 알림 문서에서 홈 링크를 누르면 그 문서를 홈으로 데려가 담당 컬럼을 통째로 잃는다.
+ * 같은 수를 쓰되 링크만 갈아 끼우는 자리다.
+ */
+export function findNotificationsNavLink(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(
+    '[data-testid="AppTabBar_Notifications_Link"], nav a[href="/notifications"]',
+  )
+}
+
+/**
  * x.com 의 '새 게시물 불러오기' 단축키(`.`) 를 눌러준다.
  * DOM 선택자에 전혀 기대지 않는 경로라 UI 개편에 가장 강하다.
  */
