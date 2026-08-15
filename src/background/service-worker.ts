@@ -211,10 +211,7 @@ async function translateImageByApi(request: ImageTranslateRequest): Promise<stri
     )
     if (!image.ok) return null
 
-    const rendered = await image.blob()
-    // 그림이 아니면 오류 문서다. 그것을 사진이라고 덱에 올려보내지 않는다.
-    if (!rendered.type.startsWith('image/')) return null
-    return await blobToDataUrl(rendered)
+    return await imageBytesToDataUrl(await image.arrayBuffer())
   } catch {
     return null
   }
@@ -280,11 +277,36 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: /:(.*?);/.exec(dataUrl.slice(0, comma))?.[1] ?? 'image/jpeg' })
 }
 
-async function blobToDataUrl(blob: Blob): Promise<string> {
-  const buffer = new Uint8Array(await blob.arrayBuffer())
+/**
+ * 받아온 바이트를 data URL 로 바꾼다. 그림이 아니면 null.
+ *
+ * 형식은 **바이트 앞머리로** 가린다. 내려주는 쪽이 `Content-Type` 을 그림으로 적어줄
+ * 것이라 믿을 수 없다 — 내려받기용 주소는 흔히 `application/octet-stream` 으로 준다.
+ * 헤더만 보고 물리면 멀쩡한 사진을 오류 문서로 오해해 버린다.
+ */
+async function imageBytesToDataUrl(buffer: ArrayBuffer): Promise<string | null> {
+  const bytes = new Uint8Array(buffer)
+  const type = sniffImageType(bytes)
+  if (!type) return null
+
+  // 한 글자씩 이으면 큰 사진에서 오래 걸린다. 조각으로 끊어 붙인다.
   let binary = ''
-  for (const byte of buffer) binary += String.fromCharCode(byte)
-  return `data:${blob.type || 'image/png'};base64,${btoa(binary)}`
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return `data:${type};base64,${btoa(binary)}`
+}
+
+/** 파일 앞머리로 그림 형식을 가린다. 그림이 아니면 null. */
+function sniffImageType(bytes: Uint8Array): string | null {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg'
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return 'image/png'
+  }
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'image/gif'
+  const riff = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+  if (riff && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42) return 'image/webp'
+  return null
 }
 
 async function translateImage(request: ImageTranslateRequest): Promise<ImageTranslateResult> {
