@@ -234,8 +234,22 @@ function describeCandidates(before: Set<string>): string {
       backgrounds.map((item) => `${Math.round(item.width)}x${Math.round(item.height)}`),
     ),
     `프레임 ${document.querySelectorAll('iframe').length}`,
+    describeLoginHint(),
   ]
   return parts.join(' · ')
+}
+
+/**
+ * 화면에 '로그인' 이라는 말이 어떤 모양으로 있는지 한 조각 떠온다.
+ *
+ * 로그인 안내를 못 알아보고 있는지, 안내 자체가 없는지를 가르는 데 쓴다.
+ * 둘은 고칠 곳이 전혀 다르다 — 앞은 문구 판별, 뒤는 사진이 아예 안 올라간 것이다.
+ */
+function describeLoginHint(): string {
+  const text = documentText().replace(/\s+/g, ' ')
+  const at = text.search(/로그인|login/i)
+  if (at < 0) return `로그인 문구 없음 (${window.location.pathname})`
+  return `문구 "${text.slice(Math.max(0, at - 15), at + 35)}"`
 }
 
 function describeSizes(label: string, sizes: string[]): string {
@@ -247,7 +261,26 @@ function describeSizes(label: string, sizes: string[]): string {
  * 화면 구석의 '로그인' 버튼은 늘 있으므로, 필요하다고 **말하는** 문구만 센다.
  */
 function isLoginWall(): boolean {
-  return /로그인이?\s*필요|login\s*(is\s*)?required/i.test(document.body?.innerText ?? '')
+  return /로그인이?\s*필요|로그인\s*후|login\s*(is\s*)?required/i.test(documentText())
+}
+
+/**
+ * 이 문서와 같은 출처 프레임의 글자를 모은다.
+ *
+ * 안내가 프레임 안에 뜨면 이 문서의 글자만 봐서는 영영 못 알아챈다 — 실제로 그 화면에는
+ * 프레임이 여럿 있다. `innerText` 가 아니라 `textContent` 로 읽는다. 배경 탭은 화면에
+ * 그려지지 않아 `innerText` 가 제 값을 못 낼 수 있고, 되풀이해 부르기에도 이쪽이 싸다.
+ */
+function documentText(): string {
+  const parts = [document.body?.textContent ?? '']
+  for (const frame of document.querySelectorAll('iframe')) {
+    try {
+      parts.push(frame.contentDocument?.body?.textContent ?? '')
+    } catch {
+      // 다른 출처의 프레임. 읽을 수 없다.
+    }
+  }
+  return parts.join(' ')
 }
 
 /**

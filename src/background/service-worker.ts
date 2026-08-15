@@ -105,18 +105,14 @@ interface ImageJob {
 const imageJobs = new Map<string, ImageJob>()
 
 /**
- * 이 일에 쓴 탭을 정리한다.
+ * 이 일에 쓴 탭을 **어떤 경우에도 닫는다.**
  *
- * 성공했거나 로그인이 없어 멈췄으면 조용히 닫는다. 결과를 못 꺼냈을 때만 **닫지 않고
- * 그 자리에 둔다** — 그 탭에는 이미 번역된 사진이 떠 있어서, 옮기지 못했다고 해둔
- * 일까지 버릴 이유가 없다.
- *
- * 두고 갈 뿐 앞으로 꺼내지는 않는다. 사진을 보던 사람을 다른 탭으로 끌고 가는 것은
- * 무엇을 보여주든 방해다. 그런 탭이 열려 있다는 사실은 덱에서 알린다.
+ * 실패했을 때 '결과가 저기 떠 있을지 모른다' 며 남겨둔 적이 있는데, 그러면 실패할
+ * 때마다 탭이 하나씩 쌓인다. 사용자는 사진을 보려 했을 뿐이지 탭을 치우려던 게 아니다.
+ * 실패는 덱에서 알리고 다시 시도하게 하는 편이 낫다.
  */
-async function settleJobTab(job: ImageJob, result: ImageTranslateResult): Promise<void> {
+async function settleJobTab(job: ImageJob): Promise<void> {
   if (job.tabId === null) return
-  if (!result.ok && !result.needsLogin) return
   await chrome.tabs.remove(job.tabId).catch(() => null)
 }
 
@@ -168,7 +164,7 @@ async function translateImage(request: ImageTranslateRequest): Promise<ImageTran
       if (!imageJobs.delete(id)) return
       // 서비스 워커에는 window 가 없다. 전역 함수를 그대로 쓴다.
       clearTimeout(timer)
-      void settleJobTab(job, result)
+      void settleJobTab(job)
       // 성공했다면 로그인은 멀쩡한 것이다. 기억해둔 것을 그때 지운다.
       if (result.ok || result.needsLogin) void rememberLogin(!result.ok)
       resolve(result)
