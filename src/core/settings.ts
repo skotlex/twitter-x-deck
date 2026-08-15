@@ -24,7 +24,7 @@ function area(): chrome.storage.StorageArea {
  */
 const MIRROR_KEY = 'xdeck:settings'
 
-function readMirror(): Partial<Settings> | undefined {
+export function readMirror(): Partial<Settings> | undefined {
   try {
     const raw = window.localStorage.getItem(MIRROR_KEY)
     return raw ? (JSON.parse(raw) as Partial<Settings>) : undefined

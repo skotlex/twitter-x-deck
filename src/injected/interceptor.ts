@@ -6,7 +6,7 @@
  * 페이지 컨텍스트라 chrome API 를 못 쓰므로 결과는 postMessage 로 브리지에 넘긴다.
  */
 import { CHANNEL, type CapturedPayload } from '@core/messages'
-import { isDeckPanelFrame, readFrameRole } from '@core/role'
+import { isDeckHostDocument, isDeckPanelFrame, readFrameRole } from '@core/role'
 import {
   CREATE_TWEET_OPERATION,
   DELETE_TWEET_OPERATION,
@@ -177,12 +177,15 @@ function main(): void {
 
   const role = readFrameRole()
   const panel = isDeckPanelFrame()
-  // 덱이 띄운 프레임/탭이 아니면 사용자의 x.com 을 건드리지 않는다.
-  if (role === null && !panel) return
+  // 역할 표시가 없어도 덱이 얹히는 문서라면 거기서 수집이 일어난다. 덱은 그 문서를
+  // '추천' 담당으로 세우므로 인터셉터도 같은 기준으로 깨어나야 한다.
+  const host = role === null && !panel && isDeckHostDocument()
+  // 덱과 무관한 문서면 사용자의 x.com 을 건드리지 않는다.
+  if (role === null && !panel && !host) return
   globals[GUARD] = true
 
-  const collecting = role !== null
-  if (collecting && isNotificationKind(role)) catchAll = true
+  const collecting = role !== null || host
+  if (role !== null && isNotificationKind(role)) catchAll = true
 
   // 작성창은 글이 올라간 순간만 알면 된다. 타임라인을 계속 받을 이유가 없다.
   // 작성창은 물론 상세 창에서도 글이 올라간다 (거기서 답글을 단다).

@@ -162,7 +162,7 @@ x.com 은 `frame-ancestors 'self'` 로 임베드를 막는데, 이는 곧 **x.co
 ### 수집 경로
 
 ```
-x.com/home?xdeck_role=foryou&xdeck=1        ← 확장 아이콘이 여는 탭
+x.com/home?xdeck_role=foryou&xdeck=1        ← 확장 아이콘이 여는 탭 (홈 화면에 자동으로 얹힐 때는 이 표시가 없습니다)
 ├─ interceptor.js  (MAIN world)     fetch/XHR 응답을 복제해 넘기고, 문서를 항상 '보임' 으로 유지
 ├─ bridge.js       (ISOLATED)       자식 프레임 전용 진입점
 ├─ deck.js         (ISOLATED)       그림자 DOM 에 덱 UI 를 얹고, 이 문서가 '추천' 을 직접 수집
@@ -180,7 +180,9 @@ x.com/home?xdeck_role=foryou&xdeck=1        ← 확장 아이콘이 여는 탭
 
 ### 갱신이 멈추지 않게 하는 장치
 
-x.com 은 `document.hidden` 이면 새 게시물 폴링을 멈춥니다. 인터셉터가 `visibilityState` · `hidden` · `hasFocus` 를 항상 '보임' 으로 유지하고 `visibilitychange` · `blur` 이벤트를 캡처 단계에서 삼켜 폴링이 계속 돌게 합니다. 역할이 지정된 프레임과 탭에서만 적용되므로 평소에 쓰는 다른 x.com 탭은 영향을 받지 않습니다.
+x.com 은 `document.hidden` 이면 새 게시물 폴링을 멈춥니다. 인터셉터가 `visibilityState` · `hidden` · `hasFocus` 를 항상 '보임' 으로 유지하고 `visibilitychange` · `blur` 이벤트를 캡처 단계에서 삼켜 폴링이 계속 돌게 합니다. 덱이 얹히는 문서에서만 적용되므로 평소에 쓰는 다른 x.com 탭은 영향을 받지 않습니다.
+
+인터셉터가 깨어날지 판단하는 기준은 덱이 얹힐지 판단하는 기준과 **같아야 합니다.** 확장 아이콘으로 연 탭에는 역할 표시(`xdeck_role`)가 주소에 붙지만, 홈 화면에 자동으로 얹힌 덱에는 그런 표시가 없습니다. 이때도 덱은 그 문서를 추천 담당으로 세우므로 인터셉터 역시 깨어나야 합니다 — 두 판단이 어긋나면 그 문서는 응답을 한 건도 가로채지 못한 채 컬럼이 `준비 중` 에 멈춥니다. 자동 적용 설정은 확장 저장소에 있어 MAIN world 에서 읽을 수 없으므로, 설정을 저장할 때 페이지에 함께 남겨두는 사본을 봅니다.
 
 '새 게시물 보기' 알림이 떠 있으면 눌러 다음 타임라인을 끌어옵니다. 그것으로도 컬럼이 조용하면 강제 갱신 사다리를 차례로 오릅니다 — `.` 단축키 → 탭 재클릭 → 홈 링크 재클릭 → 프레임 재적재. 홈 링크 재클릭으로 받아오는 것은 홈의 기본 탭인 추천이므로, 추천 컬럼에서는 이 칸이 맨 앞으로 옵니다.
 
@@ -234,6 +236,7 @@ src/
 | [src/core/db.ts](src/core/db.ts) | IndexedDB 영속 저장과 보관 정책 |
 | [src/core/settings.ts](src/core/settings.ts) | 설정 스키마 · 저장 · 마이그레이션 |
 | [src/core/types.ts](src/core/types.ts) | 컬럼 종류와 데이터 모델의 단일 정의 |
+| [src/core/role.ts](src/core/role.ts) | 이 문서가 덱인지 · 어느 컬럼 담당인지의 판정. 덱과 인터셉터가 함께 씁니다 |
 | [src/ui/](src/ui/) | 덱 UI. x.com DOM 을 아는 코드가 한 줄도 없습니다 |
 
 `@core` · `@ui` 경로 별칭을 사용하며, Vite 와 esbuild 양쪽에 같은 별칭을 등록해 두었습니다.

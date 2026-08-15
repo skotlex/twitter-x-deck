@@ -1,4 +1,5 @@
-import { ROLE_PARAM } from './messages'
+import { DECK_PARAM, ROLE_PARAM } from './messages'
+import { readMirror } from './settings'
 import { TIMELINE_KINDS, type TimelineKind } from './types'
 
 /** iframe 의 `name` 속성에 붙이는 접두사. 프레임 안 SPA 이동에도 살아남는다. */
@@ -74,4 +75,71 @@ export function readFrameRole(): TimelineKind | null {
   }
 
   return fromParam
+}
+
+const DECK_SESSION_KEY = 'xdeck:deck'
+
+/**
+ * 설치한 웹앱 창에서 열렸는지.
+ *
+ * 앱 창에는 주소창이 없어 `?xdeck=1` 을 붙일 방법이 없고, 창을 껐다 켜면 세션
+ * 기록도 사라진다. 그래서 표시를 창의 **모양** 에서 읽는다 — 탭 브라우저가 아닌
+ * 창이면 x.com 을 앱으로 띄운 것이고, 그건 덱을 보려고 만든 창이다.
+ */
+export function isAppWindow(): boolean {
+  return ['standalone', 'minimal-ui', 'window-controls-overlay', 'fullscreen'].some(
+    (mode) => window.matchMedia(`(display-mode: ${mode})`).matches,
+  )
+}
+
+/**
+ * 덱이 대신하려는 화면인지.
+ *
+ * 덱은 홈 타임라인을 대신하는 물건이므로 그 자리에서는 부르지 않아도 얹는다.
+ * 게시물·프로필 같은 나머지 주소는 건드리지 않는다 — 우리 화면의 '원문 보기' 나
+ * '새 탭에서 열기' 가 여는 곳이 바로 거기라, 그것까지 덮으면 빠져나갈 길이 없다.
+ */
+export function isTimelineHome(): boolean {
+  const path = window.location.pathname
+  return path === '/home' || path === '/'
+}
+
+/**
+ * 사용자가 이 탭을 덱으로 지목했는지.
+ *
+ * 확장 아이콘으로 열릴 때 붙는 파라미터를 세션에 새겨두어, x.com 의 SPA 이동이
+ * 쿼리를 지운 뒤에도 새로고침하면 덱이 그대로 살아난다. 앱 창은 파라미터를 받을
+ * 자리가 없으므로 창 모양만으로 판단한다.
+ *
+ * 여기에 걸리면 자동 적용 설정과 무관하게 뜬다 — 직접 부른 것이기 때문이다.
+ */
+export function isDeckTab(): boolean {
+  if (isAppWindow()) return true
+  try {
+    if (new URLSearchParams(window.location.search).get(DECK_PARAM) === '1') {
+      window.sessionStorage.setItem(DECK_SESSION_KEY, '1')
+      return true
+    }
+    return window.sessionStorage.getItem(DECK_SESSION_KEY) === '1'
+  } catch {
+    // 세션 저장소가 막힌 환경이면 최초 파라미터만 믿는다.
+    return new URLSearchParams(window.location.search).get(DECK_PARAM) === '1'
+  }
+}
+
+/**
+ * 이 문서 위에 덱이 얹히는지 — 곧, 여기서 수집이 일어나는지.
+ *
+ * 덱은 자기가 얹힌 문서를 역할 표시가 없어도 '추천' 담당으로 세운다(`mount.tsx`).
+ * 그러니 인터셉터도 같은 기준으로 깨어나야 한다. 예전에는 역할 표시만 보고 판단해서,
+ * 자동으로 얹힌 덱의 최상위 문서에서는 응답을 한 건도 가로채지 못했다 — 추천 컬럼이
+ * '준비 중' 에서 넘어가지 못하고 영영 갱신되지 않았다.
+ *
+ * 자동 적용 설정은 확장 저장소에 있어 MAIN world 에서는 못 읽는다. 대신 설정을
+ * 저장할 때마다 페이지에 남겨두는 사본을 본다. 사본이 아직 없으면 기본값(켬)으로 본다.
+ */
+export function isDeckHostDocument(): boolean {
+  if (window.top !== window.self) return false
+  if (isDeckTab()) return true
+  return isTimelineHome() && readMirror()?.autoMount !== false
 }
