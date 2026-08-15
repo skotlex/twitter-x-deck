@@ -51,6 +51,10 @@ const TARGET = '[data-testid="target-editor"], #target-editor'
 const FILE_INPUT = '[data-testid="file-input"], input#file[type="file"]'
 /** 번역된 사진이 나올 때까지 기다리는 한계. OCR 이 도는 시간이다. */
 const RESULT_IMAGE_TIMEOUT_MS = 20_000
+/** 입력란이 그려진 뒤 그쪽 핸들러가 붙을 틈. 이 전에 넣으면 그냥 삼켜진다. */
+const HYDRATE_MS = 800
+/** 넣은 사진을 받아들였는지(미리보기가 뜨는지) 지켜보는 시간. */
+const ACCEPT_TIMEOUT_MS = 3_000
 /** 결과로 셀 만한 최소 크기. 아이콘·장식 그림을 걸러낸다. */
 const MIN_RESULT_PX = 80
 /** 원본 크기를 모를 때 쓰는 최소 크기. 비율로 거를 수 없으니 더 엄하게 잡는다. */
@@ -181,10 +185,28 @@ async function handleImage(blob: Blob, name: string, source: Size): Promise<stri
   // 넣기 전 화면에 있던 그림을 기억해둔다. 뒤에 새로 생긴 것이 번역 결과다.
   const before = new Set([...document.images].map((image) => image.src))
 
-  const transfer = new DataTransfer()
-  transfer.items.add(new File([blob], name, { type: blob.type || 'image/jpeg' }))
-  input.files = transfer.files
-  input.dispatchEvent(new Event('change', { bubbles: true }))
+  const put = (): void => {
+    const transfer = new DataTransfer()
+    transfer.items.add(new File([blob], name, { type: blob.type || 'image/jpeg' }))
+    input.files = transfer.files
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+
+  // 입력란이 그려진 것과 받아들일 준비가 된 것은 다르다. 핸들러가 붙을 틈을 준다 —
+  // 그 전에 넣으면 이벤트가 그냥 삼켜진다 (하트·리포스트에서 겪은 것과 같은 일이다).
+  await sleep(HYDRATE_MS)
+  put()
+
+  /*
+   * 넣은 것이 먹었는지부터 본다. 사진을 받아들이면 화면에 미리보기가 곧바로 뜨므로,
+   * 그때까지 새 그림이 하나도 안 생겼으면 삼켜진 것이다. 그러면 한 번 더 넣는다.
+   * 이 한 번이 없으면 첫 판이 통째로 헛돌고, 사용자가 '다시 시도' 를 눌러야 했다.
+   */
+  const accepted = await waitFor(
+    () => ([...document.images].some((image) => !before.has(image.src)) ? true : null),
+    ACCEPT_TIMEOUT_MS,
+  )
+  if (!accepted) put()
 
   const outcome = await waitFor(() => readTranslatedImage(before, source), RESULT_IMAGE_TIMEOUT_MS)
 

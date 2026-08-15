@@ -194,40 +194,70 @@ async function translateImageByApi(request: ImageTranslateRequest): Promise<stri
     if (!response.ok) return null
 
     const payload: unknown = await response.json()
-    const found = findImageUrl(payload)
-    if (!found) return null
 
-    // 결과가 주소면 그것도 여기서 받아온다. 쿠키가 실리는 자리라 그대로 읽힌다.
-    if (found.startsWith('data:')) return found
-    const image = await fetch(new URL(found, PAPAGO_ORIGIN).href, { credentials: 'include' })
-    if (!image.ok) return null
-    return await blobToDataUrl(await image.blob())
+    // 응답 모양은 그쪽이 정하고 우리는 모른다. 그래서 **받아본 것이 정말 그림인지**
+    // 로 확인한다 — 주소든 열쇠든 시도해보고, 돌아온 것의 형식이 그림일 때만 받아들인다.
+    for (const candidate of collectStrings(payload)) {
+      const direct = await fetchImageAsDataUrl(candidate)
+      if (direct) return direct
+    }
+    return null
   } catch {
     return null
   }
 }
 
-/** 응답 어디에 있든 그림으로 볼 만한 주소를 찾는다. 응답 모양은 그쪽이 정한다. */
-function findImageUrl(node: unknown, depth = 0): string | null {
-  if (depth > 6) return null
-  if (typeof node === 'string') {
-    if (node.startsWith('data:image/')) return node
-    return /^https?:\/\/|^\/api\//.test(node) && /image|render|result/i.test(node) ? node : null
-  }
-  if (Array.isArray(node)) {
-    for (const item of node) {
-      const found = findImageUrl(item, depth + 1)
-      if (found) return found
+/** 다운로드 주소에 붙는 열쇠 이름 후보. 그쪽 화면이 무엇을 쓰는지 확인하지 못했다. */
+const IMAGE_KEY_PARAMS = ['imageId', 'id', 'key', 'requestId']
+
+/**
+ * 문자열 하나를 그림으로 바꿔본다. 그림이 아니면 null.
+ *
+ * 세 가지를 차례로 본다 — 그 자체가 그림 데이터인가, 그림 주소인가, 아니면 결과를
+ * 받아올 열쇠인가. 어느 쪽이든 **돌아온 응답의 형식이 그림일 때만** 받아들이므로,
+ * 엉뚱한 값을 집어도 조용히 넘어간다.
+ */
+async function fetchImageAsDataUrl(value: string): Promise<string | null> {
+  if (value.startsWith('data:image/')) return value
+
+  const urls: string[] = []
+  if (/^https?:\/\//.test(value) || value.startsWith('/api/')) {
+    urls.push(new URL(value, PAPAGO_ORIGIN).href)
+  } else if (/^[\w-]{8,}$/.test(value)) {
+    for (const name of IMAGE_KEY_PARAMS) {
+      urls.push(`${PAPAGO_ORIGIN}/api/image/downloadImage?${name}=${encodeURIComponent(value)}`)
     }
-    return null
   }
-  if (node && typeof node === 'object') {
-    for (const value of Object.values(node)) {
-      const found = findImageUrl(value, depth + 1)
-      if (found) return found
+
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { credentials: 'include' })
+      if (!response.ok) continue
+      const blob = await response.blob()
+      if (!blob.type.startsWith('image/')) continue
+      return await blobToDataUrl(blob)
+    } catch {
+      // 다음 후보로 넘어간다.
     }
   }
   return null
+}
+
+/** 응답 안의 문자열을 겉에서 안쪽 순서로 모은다. */
+function collectStrings(node: unknown, depth = 0, out: string[] = []): string[] {
+  if (depth > 5 || out.length > 40) return out
+  if (typeof node === 'string') {
+    if (node.length >= 8) out.push(node)
+    return out
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) collectStrings(item, depth + 1, out)
+    return out
+  }
+  if (node && typeof node === 'object') {
+    for (const value of Object.values(node)) collectStrings(value, depth + 1, out)
+  }
+  return out
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
