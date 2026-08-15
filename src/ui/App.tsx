@@ -233,6 +233,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
                 settings={settings}
                 onFlush={collector.flush}
                 onHold={collector.setHold}
+                onBusy={collector.setBusy}
                 onRefresh={collector.refresh}
                 onLoadMore={handleLoadMore}
                 rotating={collector.rotating}

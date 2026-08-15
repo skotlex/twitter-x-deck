@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MEDIA_MAX_HEIGHT, type MediaMode, type MediaSize } from '@core/settings'
 import type { TweetMedia } from '@core/types'
+import { useColumnActivity } from '../columnActivity'
 import { aspectRatio } from '../lib/format'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { ImageIcon, PlayIcon } from './icons'
@@ -56,6 +57,10 @@ function MediaItem({
    */
   const showVideo =
     playable && !failed && (engaged || (hoverPlay && (hovered || (cardActive && leads))))
+
+  // 영상이 도는 동안에는 새 글을 목록에 끼워 넣지 않는다 — 보고 있던 화면이
+  // 그 높이만큼 아래로 밀려난다. 그동안 온 글은 알약으로 세워둔다.
+  useColumnActivity(showVideo)
 
   /**
    * 이 영상이 실린 카드를 지금 보고 있는지 지켜본다.

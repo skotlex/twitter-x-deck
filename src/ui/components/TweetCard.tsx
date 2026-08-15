@@ -9,6 +9,7 @@ import {
 } from '@core/settings'
 import { runTweetAction, type ComposeMode, type TweetAction } from '../../content/actions'
 import { translateText, type Translation, type TranslateEngine } from '../../content/translate'
+import { useColumnActivity } from '../columnActivity'
 import { formatCount, formatRelative, formatStamp } from '../lib/format'
 import { Lightbox } from './Lightbox'
 import { MediaSlot } from './MediaGrid'
@@ -425,6 +426,10 @@ function TranslateBlock({ tweet, textClass }: { tweet: Tweet; textClass: string 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const text = result?.text ?? null
+
+  // 번역을 기다리는 동안에는 새 글을 목록에 끼워 넣지 않는다 — 결과가 붙을 카드가
+  // 그 사이 아래로 밀려나면 어디에 떴는지 찾게 된다. 그동안 온 글은 알약으로 세워둔다.
+  useColumnActivity(busy)
 
   const run = async () => {
     if (busy) return

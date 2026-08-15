@@ -141,6 +141,8 @@ export interface Collector {
   flush: (kind: TimelineKind) => void
   /** 스크롤 위치에 따라 새 글을 즉시 반영할지 대기시킬지 알린다. */
   setHold: (kind: TimelineKind, hold: boolean) => void
+  /** 컬럼 안에서 영상 재생·번역처럼 방해하면 안 되는 일이 도는지 알린다. */
+  setBusy: (kind: TimelineKind, busy: boolean) => void
   /**
    * 해당 컬럼을 강제로 새로 받아온다.
    * `quiet` 는 사람이 누른 게 아닐 때 쓴다 — 돌아가는 표시도 결과 안내도 내지 않는다.
@@ -158,6 +160,8 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
   const refreshTimers = useRef<Partial<Record<TimelineKind, number>>>({})
   const noteTimers = useRef<Partial<Record<TimelineKind, number>>>({})
   const holds = useRef<Record<TimelineKind, boolean>>(byKind(() => false))
+  /** 영상 재생·번역처럼 지금 끼어들면 안 되는 일이 도는 컬럼. */
+  const busy = useRef<Record<TimelineKind, boolean>>(byKind(() => false))
   const loadingMore = useRef<Record<TimelineKind, boolean>>(byKind(() => false))
   const settingsRef = useRef(settings)
   settingsRef.current = settings
@@ -251,7 +255,15 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
         }
         if (inserted.length === 0) return { ...prev, [kind]: { ...column, status, degraded } }
 
-        const hold = holds.current[kind] && settingsRef.current.holdWhileScrolled
+        /*
+         * 새 글을 지금 끼워 넣을지, 알약으로 세워둘지.
+         *
+         * 스크롤 쪽은 설정을 따른다. 영상·번역 쪽은 설정과 무관하게 늘 세워둔다 —
+         * 보고 있던 것이 새 글 높이만큼 아래로 밀려나는 일은 스크롤이 맨 위에
+         * 있더라도 똑같이 방해가 된다.
+         */
+        const hold =
+          (holds.current[kind] && settingsRef.current.holdWhileScrolled) || busy.current[kind]
         return {
           ...prev,
           [kind]: {
@@ -453,6 +465,10 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     holds.current[kind] = hold
   }, [])
 
+  const setBusy = useCallback((kind: TimelineKind, next: boolean) => {
+    busy.current[kind] = next
+  }, [])
+
   const refresh = useCallback(
     (kind: TimelineKind, options?: { quiet?: boolean }) => {
       // 자동 새로고침은 화면에 흔적을 남기지 않는다. 새 글이 있으면 그게 곧 응답이다.
@@ -514,5 +530,16 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     [columns],
   )
 
-  return { columns, loginNeededFor, rotating, registerFrame, reportFrame, flush, setHold, refresh, loadMore }
+  return {
+    columns,
+    loginNeededFor,
+    rotating,
+    registerFrame,
+    reportFrame,
+    flush,
+    setHold,
+    setBusy,
+    refresh,
+    loadMore,
+  }
 }

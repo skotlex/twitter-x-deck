@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Settings } from '@core/settings'
 import { isNotification, TIMELINE_LABEL, type CollectorState, type TimelineKind } from '@core/types'
+import { ColumnActivityContext, type ColumnActivity } from '../columnActivity'
 import type { ColumnState } from '../hooks/useCollector'
 import { formatClock } from '../lib/format'
 import { NotificationCard } from './NotificationCard'
@@ -48,6 +49,8 @@ export interface DeckColumnProps {
   settings: Settings
   onFlush: (kind: TimelineKind) => void
   onHold: (kind: TimelineKind, hold: boolean) => void
+  /** 이 컬럼에서 영상 재생·번역처럼 방해하면 안 되는 일이 도는지 알린다. */
+  onBusy: (kind: TimelineKind, busy: boolean) => void
   onRefresh: (kind: TimelineKind) => void
   onLoadMore: (kind: TimelineKind) => void
   /** 최상위 문서가 탭을 교대로 방문하며 수집하는 중인지. */
@@ -63,6 +66,7 @@ export function DeckColumn({
   settings,
   onFlush,
   onHold,
+  onBusy,
   onRefresh,
   onLoadMore,
   rotating,
@@ -100,6 +104,31 @@ export function DeckColumn({
     onFlush(kind)
     scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }, [kind, onFlush])
+
+  /**
+   * 카드들이 '지금 진행 중' 을 알려오는 자리.
+   *
+   * 하나라도 돌고 있으면 새 글을 끼워 넣지 않고 알약으로 세워둔다. 여럿이 동시에
+   * 돌 수 있으므로 수를 센다 — 하나가 끝났다고 곧바로 풀어주면 옆에서 돌고 있던
+   * 영상이 밀려난다.
+   */
+  const running = useRef(0)
+  const activity = useMemo<ColumnActivity>(
+    () => ({
+      begin: () => {
+        running.current += 1
+        if (running.current === 1) onBusy(kind, true)
+        return () => {
+          running.current -= 1
+          if (running.current === 0) onBusy(kind, false)
+        }
+      },
+    }),
+    [kind, onBusy],
+  )
+
+  // 컬럼이 사라질 때 표시를 남겨두지 않는다.
+  useEffect(() => () => onBusy(kind, false), [kind, onBusy])
 
   const { state, pendingCount, lastReceivedAt } = column.status
   // 상태만으로는 멈춘 것을 알 수 없다 — 마지막으로 실제 글이 들어온 시각을 함께 짚는다.
@@ -245,28 +274,31 @@ export function DeckColumn({
         )}
 
         <div ref={scrollRef} onScroll={handleScroll} className="scroll-thin h-full overflow-y-auto overscroll-contain">
-          {column.tweets.length === 0 ? (
-            <EmptyState state={state} />
-          ) : (
-            column.tweets.map((item, index) =>
-              isNotification(item) ? (
-                <NotificationCard
-                  key={item.key}
-                  notification={item}
-                  settings={settings}
-                  animate={settledRef.current && atTop && index < 12}
-                />
-              ) : (
-                <TweetCard
-                  key={item.key}
-                  tweet={item}
-                  settings={settings}
-                  animate={settledRef.current && atTop && index < 12}
-                  onActed={onActed}
-                />
-              ),
-            )
-          )}
+          {/* 카드들이 '지금 진행 중' 을 알려오는 자리. 그동안 새 글은 알약으로 세워둔다. */}
+          <ColumnActivityContext.Provider value={activity}>
+            {column.tweets.length === 0 ? (
+              <EmptyState state={state} />
+            ) : (
+              column.tweets.map((item, index) =>
+                isNotification(item) ? (
+                  <NotificationCard
+                    key={item.key}
+                    notification={item}
+                    settings={settings}
+                    animate={settledRef.current && atTop && index < 12}
+                  />
+                ) : (
+                  <TweetCard
+                    key={item.key}
+                    tweet={item}
+                    settings={settings}
+                    animate={settledRef.current && atTop && index < 12}
+                    onActed={onActed}
+                  />
+                ),
+              )
+            )}
+          </ColumnActivityContext.Provider>
 
           {column.tweets.length > 0 && !column.hasMore && (
             <p className="py-8 text-center text-[13px] text-faint">보관된 게시물의 끝</p>
