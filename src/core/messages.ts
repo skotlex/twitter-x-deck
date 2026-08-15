@@ -22,6 +22,34 @@ export const NOCACHE_PARAM = 'xdeck_t'
 /** 덱 → 배경 워커. 헤더 제거 규칙이 살아 있는지 물어본다 (진단용). */
 export const RULE_REPORT = 'xdeck:rule-report'
 
+/**
+ * 사진 번역 (덱 ↔ 배경 워커 ↔ Papago 탭).
+ *
+ * 이 길만 postMessage 가 아니라 확장 메시지를 쓴다. Papago 이미지 번역은 네이버
+ * 로그인이 있어야 하는데, 로그인 쿠키가 `SameSite=Lax` 라 x.com 이 최상위인 프레임에는
+ * 실리지 않는다. Papago 가 **최상위인 탭** 이어야만 평소 세션이 실리므로, 탭을 배경으로
+ * 열어 일을 시키고 결과만 받아온다. 그 탭과 덱은 서로 다른 사이트라 배경 워커가 잇는다.
+ */
+export const IMAGE_TRANSLATE = 'xdeck:image-translate'
+/** Papago 탭 → 배경 워커. 준비됐으니 번역할 사진을 달라. */
+export const IMAGE_TRANSLATE_ASK = 'xdeck:image-ask'
+/** Papago 탭 → 배경 워커. 번역 결과 또는 실패 사유. */
+export const IMAGE_TRANSLATE_DONE = 'xdeck:image-done'
+
+/** 네이버 로그인이 없어 더 못 간다는 사유. 이 값일 때만 덱이 로그인 안내를 낸다. */
+export const LOGIN_REQUIRED = '네이버 로그인이 필요합니다'
+
+export interface ImageTranslateRequest {
+  type: typeof IMAGE_TRANSLATE
+  /** 번역할 사진. 확장 메시지는 Blob 을 실어 나르지 못해 data URL 로 보낸다. */
+  dataUrl: string
+  target: string
+}
+
+export type ImageTranslateResult =
+  | { ok: true; dataUrl: string }
+  | { ok: false; reason: string; needsLogin: boolean }
+
 /** MAIN world 인터셉터 → ISOLATED world 브리지 (같은 프레임 안). */
 export interface CapturedPayload {
   channel: typeof CHANNEL

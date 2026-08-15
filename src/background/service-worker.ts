@@ -4,12 +4,26 @@
  * 덱은 x.com 탭 위에 얹히므로, 여기서 할 일은 그 탭을 열고 다시 찾아주는 것뿐이다.
  * 수집 메시지는 같은 문서·같은 오리진 안에서만 오가므로 중계할 것이 없다.
  */
-import { DECK_PARAM, ROLE_PARAM, RULE_REPORT } from '@core/messages'
+import {
+  DECK_PARAM,
+  IMAGE_TRANSLATE,
+  IMAGE_TRANSLATE_ASK,
+  IMAGE_TRANSLATE_DONE,
+  LOGIN_REQUIRED,
+  PAPAGO_ORIGIN,
+  PAPAGO_PARAM,
+  ROLE_PARAM,
+  RULE_REPORT,
+  type ImageTranslateRequest,
+  type ImageTranslateResult,
+} from '@core/messages'
 
 /** 최상위 탭이 맡는 컬럼. 나머지는 그 탭 안의 숨은 프레임이 맡는다. */
 const DECK_URL = `https://x.com/home?${ROLE_PARAM}=foryou&${DECK_PARAM}=1`
 
 const TAB_KEY = 'deckTabId'
+/** 사진 한 장을 번역하는 데 줄 수 있는 시간. 탭이 뜨고 OCR 까지 도는 시간이다. */
+const IMAGE_JOB_TIMEOUT_MS = 45_000
 
 async function rememberedTabId(): Promise<number | null> {
   const stored = await chrome.storage.session.get(TAB_KEY)
@@ -68,11 +82,109 @@ async function ruleReport(tabId?: number): Promise<string> {
   return parts.join(' · ')
 }
 
+/**
+ * 사진 번역 중개.
+ *
+ * 덱과 Papago 탭은 서로 다른 사이트라 직접 말을 주고받을 수 없다. 여기서 잇는다 —
+ * 탭을 **배경으로** 열어 일을 시키고, 결과만 덱에 돌려준 뒤 탭을 닫는다.
+ * 사용자 눈에는 라이트박스에 번역된 사진이 뜨는 것으로만 보인다.
+ *
+ * 탭을 쓰는 이유는 하나뿐이다 — 네이버 로그인 쿠키는 Papago 가 최상위인 문서에만
+ * 실린다. 로그인이 안 돼 있으면 그 탭을 **앞으로 꺼내** 사용자가 그 자리에서
+ * 로그인하게 한다. 한 번 해두면 그 뒤로는 배경에서 조용히 끝난다.
+ */
+interface ImageJob {
+  dataUrl: string
+  tabId: number | null
+  settle: (result: ImageTranslateResult) => void
+}
+
+const imageJobs = new Map<string, ImageJob>()
+
+/** 이 일에 쓴 탭을 정리한다. 로그인이 필요하면 닫는 대신 앞으로 꺼낸다. */
+async function closeJobTab(job: ImageJob, reveal: boolean): Promise<void> {
+  if (job.tabId === null) return
+  if (reveal) {
+    await chrome.tabs.update(job.tabId, { active: true }).catch(() => null)
+    return
+  }
+  await chrome.tabs.remove(job.tabId).catch(() => null)
+}
+
+async function translateImage(request: ImageTranslateRequest): Promise<ImageTranslateResult> {
+  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const url =
+    `${PAPAGO_ORIGIN}/image?${PAPAGO_PARAM}=${id}` +
+    `&tk=${encodeURIComponent(request.target)}`
+
+  return await new Promise<ImageTranslateResult>((resolve) => {
+    const job: ImageJob = { dataUrl: request.dataUrl, tabId: null, settle: finish }
+    imageJobs.set(id, job)
+
+    function finish(result: ImageTranslateResult): void {
+      if (!imageJobs.delete(id)) return
+      // 서비스 워커에는 window 가 없다. 전역 함수를 그대로 쓴다.
+      clearTimeout(timer)
+      void closeJobTab(job, !result.ok && result.needsLogin)
+      resolve(result)
+    }
+
+    const timer = setTimeout(() => {
+      finish({ ok: false, reason: 'Papago 가 응답하지 않았습니다', needsLogin: false })
+    }, IMAGE_JOB_TIMEOUT_MS)
+
+    void chrome.tabs
+      .create({ url, active: false })
+      .then((tab) => {
+        job.tabId = tab.id ?? null
+      })
+      .catch(() => {
+        finish({ ok: false, reason: '번역 탭을 열지 못했습니다', needsLogin: false })
+      })
+  })
+}
+
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
-  if ((message as { type?: string } | null)?.type !== RULE_REPORT) return undefined
-  void ruleReport(sender.tab?.id).then(sendResponse)
-  // 비동기로 답하겠다는 신호.
-  return true
+  const type = (message as { type?: string } | null)?.type
+
+  if (type === RULE_REPORT) {
+    void ruleReport(sender.tab?.id).then(sendResponse)
+    // 비동기로 답하겠다는 신호.
+    return true
+  }
+
+  if (type === IMAGE_TRANSLATE) {
+    void translateImage(message as ImageTranslateRequest).then(sendResponse)
+    return true
+  }
+
+  // Papago 탭이 번역할 사진을 달라고 한다.
+  if (type === IMAGE_TRANSLATE_ASK) {
+    const job = imageJobs.get((message as { id: string }).id)
+    sendResponse(job ? { dataUrl: job.dataUrl } : null)
+    return false
+  }
+
+  // Papago 탭이 결과나 실패 사유를 들고 왔다.
+  if (type === IMAGE_TRANSLATE_DONE) {
+    const done = message as { id: string; dataUrl?: string; reason?: string }
+    const job = imageJobs.get(done.id)
+    if (job) {
+      job.settle(
+        done.dataUrl
+          ? { ok: true, dataUrl: done.dataUrl }
+          : {
+              ok: false,
+              reason: done.reason ?? '번역 결과를 가져오지 못했습니다',
+              needsLogin: done.reason === LOGIN_REQUIRED,
+            },
+      )
+    }
+    sendResponse(null)
+    return false
+  }
+
+  return undefined
 })
 
 chrome.action.onClicked.addListener(() => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { TweetMedia } from '@core/types'
-import { openImageTranslation } from '../../content/imageTranslate'
+import { ImageTranslateError, translateImage } from '../../content/imageTranslate'
 import { READING_LANG } from '../../content/translate'
 import { originalMediaUrl } from '../lib/format'
 import { applyVolume, rememberVolume } from '../lib/volume'
@@ -19,29 +19,38 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
   const [index, setIndex] = useState(startIndex)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [needsLogin, setNeedsLogin] = useState(false)
+  /** 사진마다의 번역 결과. 넘겼다 돌아와도 다시 번역하지 않는다. */
+  const [translated, setTranslated] = useState<Record<number, string>>({})
+  const [showOriginal, setShowOriginal] = useState(false)
   const total = media.length
   const current = media[Math.min(index, total - 1)]
+  const result = translated[index] ?? null
 
   /**
-   * 사진 번역. Papago 이미지 번역 탭을 열어 이 사진을 넣는다.
+   * 사진 번역. 배경에서 Papago 를 거쳐 번역된 사진만 받아 이 자리에 띄운다.
    *
-   * 덱 안 창이 아니라 새 탭인 이유는 로그인 때문이다 — 네이버 세션 쿠키가 x.com 이
+   * 보이지 않는 프레임으로는 할 수 없는 일이다 — 네이버 로그인 쿠키가 x.com 이
    * 최상위인 프레임에는 실리지 않아, 프레임 안의 Papago 는 이미 로그인한 사람에게도
-   * 로그인하라고 한다.
+   * 로그인하라고 한다. 그래서 배경 워커가 탭을 화면 뒤로 열어 대신 처리한다.
    */
   const translate = useCallback(async () => {
     const url = current ? originalMediaUrl(current.previewUrl) : null
     if (!url || sending) return
     setSending(true)
     setError(null)
+    setNeedsLogin(false)
     try {
-      await openImageTranslation(url, READING_LANG)
+      const image = await translateImage(url, READING_LANG)
+      setTranslated((prev) => ({ ...prev, [index]: image }))
+      setShowOriginal(false)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '사진 번역을 열지 못했습니다')
+      setError(cause instanceof Error ? cause.message : '사진을 번역하지 못했습니다')
+      setNeedsLogin(cause instanceof ImageTranslateError && cause.needsLogin)
     } finally {
       setSending(false)
     }
-  }, [current, sending])
+  }, [current, index, sending])
 
   const move = useCallback(
     (delta: number) => {
@@ -106,15 +115,38 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
             disabled={sending}
             onClick={(event) => {
               event.stopPropagation()
-              void translate()
+              if (result) setShowOriginal((prev) => !prev)
+              else void translate()
             }}
             className="text-[13px] text-white/70 underline-offset-2 hover:text-white hover:underline disabled:opacity-60"
-            title="Papago 이미지 번역으로 엽니다 (네이버 로그인 필요)"
+            title="Papago 로 사진 속 글자를 번역합니다 (네이버 로그인 필요)"
           >
-            {sending ? '사진 번역 여는 중…' : '사진 번역'}
+            {sending
+              ? '사진 번역 중…'
+              : result
+                ? showOriginal
+                  ? '번역 보기'
+                  : '원본 보기'
+                : '사진 번역'}
           </button>
         )}
         {error && <span className="text-[12.5px] text-white/70">{error}</span>}
+        {/*
+          로그인은 사용자가 직접 해야 한다. 번역 탭이 이미 앞으로 나와 있으므로 여기서는
+          다시 시도할 길만 낸다 — 로그인을 마치고 누르면 그 뒤로는 배경에서 끝난다.
+        */}
+        {needsLogin && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              void translate()
+            }}
+            className="rounded-full bg-white px-3 py-1 text-[12.5px] font-semibold text-black transition-opacity hover:opacity-85"
+          >
+            로그인했습니다 · 다시 시도
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}
@@ -146,7 +178,7 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
           />
         ) : (
           <img
-            src={originalMediaUrl(current.previewUrl)}
+            src={result && !showOriginal ? result : originalMediaUrl(current.previewUrl)}
             alt={current.altText ?? ''}
             onClick={(event) => event.stopPropagation()}
             className="max-h-full max-w-full cursor-default object-contain"
