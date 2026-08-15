@@ -118,31 +118,32 @@ async function settleJobTab(job: ImageJob): Promise<void> {
 }
 
 /**
- * 로그인이 필요하다는 사실을 잠깐 기억해둔다.
+ * 네이버에 로그인돼 있는지 **쿠키로** 확인한다.
  *
- * 로그인 여부는 탭을 열어 사진까지 넣어봐야 알 수 있어 10초쯤 걸린다. 한 번 겪고 나면
- * 그 뒤로는 탭을 열지 않고 곧바로 안내한다 — 사진마다 10초씩 기다릴 이유가 없다.
+ * 화면을 뒤져 알아내려 했지만 번번이 틀렸다. 로그인 안내가 안 뜨는 판도 있고, 로그인
+ * 상태의 사용자 메뉴가 숨은 채로 문서에 늘 들어 있기도 해서, 무엇을 근거로 삼든
+ * 로그인 여부와 어긋났다. 세션 쿠키가 있는지가 그 답 자체다.
  *
- * 오래 붙들지는 않는다. 사용자가 그 사이 로그인했을 수 있으므로, 시간이 지나면
- * 잊고 다시 제대로 해본다.
+ * 탭을 열기 **전에** 확인하므로 로그아웃 상태에서는 기다림도 탭도 없다.
+ * 쿠키를 못 읽는 환경이면 막지 않고 그냥 해본다 — 확인 수단이 없다고 기능을 닫을
+ * 이유는 없다.
  */
-const LOGIN_MEMO_KEY = 'papagoLoginNeededAt'
-const LOGIN_MEMO_MS = 5 * 60_000
+const NAVER_SESSION_COOKIES = ['NID_SES', 'NID_AUT']
 
-async function loginKnownMissing(): Promise<boolean> {
-  const stored = await chrome.storage.session.get(LOGIN_MEMO_KEY)
-  const at = stored[LOGIN_MEMO_KEY]
-  return typeof at === 'number' && Date.now() - at < LOGIN_MEMO_MS
-}
-
-async function rememberLogin(needed: boolean): Promise<void> {
-  if (needed) await chrome.storage.session.set({ [LOGIN_MEMO_KEY]: Date.now() })
-  else await chrome.storage.session.remove(LOGIN_MEMO_KEY)
+async function hasNaverSession(): Promise<boolean> {
+  try {
+    for (const name of NAVER_SESSION_COOKIES) {
+      const cookie = await chrome.cookies.get({ url: PAPAGO_ORIGIN, name })
+      if (cookie?.value) return true
+    }
+    return false
+  } catch {
+    return true
+  }
 }
 
 async function translateImage(request: ImageTranslateRequest): Promise<ImageTranslateResult> {
-  // 방금 로그인이 필요하다고 확인했으면 탭을 여는 수고를 하지 않는다.
-  if (!request.force && (await loginKnownMissing())) {
+  if (!(await hasNaverSession())) {
     return { ok: false, reason: LOGIN_REQUIRED, needsLogin: true }
   }
 
@@ -166,8 +167,6 @@ async function translateImage(request: ImageTranslateRequest): Promise<ImageTran
       // 서비스 워커에는 window 가 없다. 전역 함수를 그대로 쓴다.
       clearTimeout(timer)
       void settleJobTab(job)
-      // 성공했다면 로그인은 멀쩡한 것이다. 기억해둔 것을 그때 지운다.
-      if (result.ok || result.needsLogin) void rememberLogin(!result.ok)
       resolve(result)
     }
 
@@ -198,12 +197,8 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   /*
    * 로그인을 마치고 돌아온 탭. 할 일이 끝났으니 닫아준다 — 로그인하려던 사람에게
    * 난데없이 Papago 화면이 남는 것은 뒤끝이 좋지 않다.
-   *
-   * 기억해둔 '로그인 필요' 도 함께 지운다. 방금 로그인했는데 그 기억 때문에 다음
-   * 시도가 해보지도 않고 막히면 앞뒤가 안 맞는다.
    */
   if (type === PAPAGO_LOGIN_DONE) {
-    void rememberLogin(false)
     if (sender.tab?.id !== undefined) void chrome.tabs.remove(sender.tab.id).catch(() => null)
     sendResponse(null)
     return false

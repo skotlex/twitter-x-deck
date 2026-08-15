@@ -61,11 +61,6 @@ export interface ImageTranslateRequest {
    */
   width: number
   height: number
-  /**
-   * 로그인이 필요하다고 기억해둔 것을 무시하고 그래도 해본다.
-   * 사용자가 '로그인했습니다' 라고 알려줄 때만 켠다.
-   */
-  force?: boolean
 }
 
 export type ImageTranslateResult =

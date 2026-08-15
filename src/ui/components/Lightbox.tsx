@@ -39,7 +39,7 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
    * 로그인하라고 한다. 그래서 배경 워커가 탭을 화면 뒤로 열어 대신 처리한다.
    */
   const translate = useCallback(
-    async (force = false) => {
+    async () => {
       const url = current ? originalMediaUrl(current.previewUrl) : null
       if (!url || sending) return
       setSending(true)
@@ -47,7 +47,6 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
       setNeedsLogin(false)
       try {
         const image = await translateImage(url, READING_LANG, {
-          force,
           width: current?.width ?? 0,
           height: current?.height ?? 0,
         })
@@ -167,7 +166,7 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
               type="button"
               onClick={(event) => {
                 event.stopPropagation()
-                void translate(true)
+                void translate()
               }}
               className="rounded-full bg-white/15 px-3 py-1 text-[12.5px] font-semibold text-white transition-colors hover:bg-white/25"
             >

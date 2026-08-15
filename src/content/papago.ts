@@ -262,15 +262,16 @@ function describeSizes(label: string, sizes: string[]): string {
 const LOGIN_WALL_RE = /로그인이?\s*필요|login\s*(is\s*)?required/i
 
 /**
- * 로그인 안내가 **눈에 보이게** 떠 있는지.
+ * 로그인 안내가 **떠 있는** 지. 로그인 여부의 주된 판단은 배경 워커가 세션 쿠키로
+ * 하고(`hasNaverSession`), 이건 그 뒤에도 안내가 뜰 때를 위한 보조 장치다.
  *
  * 문구가 문서에 있다는 것만으로는 어림도 없다. 화면에 안 뜬 안내문이 미리 심어져 있기도
- * 하고, 어느 조상 요소의 글자를 훑으면 그 안의 숨은 문구까지 딸려 온다. 실제로 로그인을
- * 마친 뒤에도 로그인하라는 말이 계속 나왔다.
+ * 하고, 어느 조상 요소의 글자를 훑으면 그 안의 숨은 문구까지 딸려 온다.
  *
- * 그래서 두 가지를 함께 본다 — 그 요소가 **직접 들고 있는 글자** 가 문구와 맞을 것,
- * 그리고 그 요소가 자리를 차지하고 있을 것. 안내 문구는 늘 문단이나 제목 하나에
- * 통째로 들어 있으므로 이 조건으로 충분하다.
+ * 그래서 그 요소가 **직접 들고 있는 글자** 가 문구와 맞는지, 그리고 숨겨져 있지
+ * 않은지를 함께 본다. 자리 크기(`getBoundingClientRect`)로 가리지 않는다 — 배경 탭은
+ * 그려지지 않아 크기가 전부 0 으로 나오고, 그러면 어떤 안내도 영영 못 알아본다.
+ * `checkVisibility` 는 그리기가 아니라 스타일만 보므로 배경 탭에서도 제 값을 낸다.
  */
 function isLoginWall(): boolean {
   // 0.15초마다 도는 자리다. 문서 전체 글자를 한 번 훑어 값싸게 거른 뒤,
@@ -279,8 +280,7 @@ function isLoginWall(): boolean {
 
   for (const element of document.querySelectorAll<HTMLElement>('p, span, strong, h1, h2, h3, div')) {
     if (!LOGIN_WALL_RE.test(ownText(element))) continue
-    const box = element.getBoundingClientRect()
-    if (box.width > 0 && box.height > 0) return true
+    if (element.checkVisibility()) return true
   }
   return false
 }

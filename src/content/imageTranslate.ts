@@ -62,14 +62,11 @@ export const PAPAGO_LOGIN_URL = `https://nid.naver.com/nidlogin.login?url=${enco
 /**
  * 사진 한 장을 번역해 그 결과 사진(data URL)을 돌려준다.
  * 주소는 원본 크기로 넘겨야 글자가 또렷해 잘 읽힌다.
- *
- * `force` 는 사용자가 방금 로그인했다고 알려줄 때만 쓴다 — 기억해둔 '로그인 필요' 를
- * 무시하고 실제로 다시 해본다.
  */
 export async function translateImage(
   imageUrl: string,
   target: string,
-  options?: { force?: boolean; width?: number; height?: number },
+  options?: { width?: number; height?: number },
 ): Promise<string> {
   const dataUrl = await toDataUrl(imageUrl)
 
@@ -80,7 +77,6 @@ export async function translateImage(
     // 원본 크기를 함께 보낸다. 번역 탭은 이걸 잣대로 번역본과 남의 그림을 가른다.
     width: options?.width ?? 0,
     height: options?.height ?? 0,
-    force: options?.force ?? false,
   })) as ImageTranslateResult | undefined
 
   if (!result) throw new ImageTranslateError('번역을 시작하지 못했습니다')
