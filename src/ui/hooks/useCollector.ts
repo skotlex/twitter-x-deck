@@ -16,11 +16,13 @@ import {
   type FrameMessage,
 } from '@core/messages'
 import { parseCreatedTweet, parseDeletedId, parseTimelinePayload } from '@core/parser'
+import { wasLoggedOut } from '@core/session'
 import type { Settings } from '@core/settings'
 import {
   isNotification,
   isNotificationKind,
   TIMELINE_KINDS,
+  type CollectorState,
   type CollectorStatus,
   type TimelineKind,
 } from '@core/types'
@@ -65,8 +67,8 @@ export interface ColumnState {
 
 export type ColumnMap = Record<TimelineKind, ColumnState>
 
-const emptyColumn = (kind: TimelineKind): ColumnState => ({
-  status: { kind, state: 'idle', lastReceivedAt: null, pendingCount: null },
+const emptyColumn = (kind: TimelineKind, state: CollectorState = 'idle'): ColumnState => ({
+  status: { kind, state, lastReceivedAt: null, pendingCount: null },
   tweets: [],
   buffered: [],
   hasMore: true,
@@ -83,7 +85,15 @@ function byKind<T>(make: (kind: TimelineKind) => T): Record<TimelineKind, T> {
   >
 }
 
-const initialColumns = (): ColumnMap => byKind(emptyColumn)
+/**
+ * 첫 화면의 컬럼들.
+ *
+ * 지난번에 로그아웃으로 판정났다면 그 상태로 시작한다. 그러지 않으면 수집기가 다시
+ * 판단하는 1초 사이에 보관된 글이 떴다가 로그인 화면으로 밀려나 화면이 튄다.
+ * 힌트가 틀렸더라도 수집기의 첫 판정이 곧바로 덮어쓴다.
+ */
+const initialColumns = (): ColumnMap =>
+  byKind((kind) => emptyColumn(kind, wasLoggedOut() ? 'login-required' : 'idle'))
 
 /**
  * 이 컬럼에 실제로 보여줄 항목만 남긴다.
@@ -314,6 +324,20 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [handleMessage, ingestCreated, ingestDeleted])
+
+  /**
+   * 듣기 시작하자마자 지금 상태를 물어본다.
+   *
+   * 최상위 문서의 수집기는 덱보다 **먼저** 뜬다. 그래서 그쪽이 처음 알린 상태는 듣는
+   * 이가 없어 흘러가 버리고, 그 뒤로 상태가 그대로면 다시 알릴 일도 없다. 물어보지
+   * 않으면 덱은 첫 화면을 계속 들고 있게 된다 — 지난 로그아웃 힌트로 시작한
+   * 경우에는 로그인이 멀쩡한데도 비켜선 채로 남는다.
+   */
+  useEffect(() => {
+    for (const kind of TIMELINE_KINDS) {
+      if (hostOwns(kind)) sendCommand(kind, 'ping')
+    }
+  }, [sendCommand])
 
   // 저장해둔 최근 글을 먼저 그려서 빈 화면을 보여주지 않는다.
   useEffect(() => {

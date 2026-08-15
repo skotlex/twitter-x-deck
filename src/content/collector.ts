@@ -20,6 +20,7 @@ import {
   type DeletedMessage,
   type FrameMessage,
 } from '@core/messages'
+import { rememberLoggedOut } from '@core/session'
 import { DEFAULT_SETTINGS, loadSettings, watchSettings, type Settings } from '@core/settings'
 import {
   DELETE_TWEET_OPERATION,
@@ -151,6 +152,8 @@ export function startCollector(
   let paused = false
   /** 상태를 마지막으로 알린 시각. 바뀐 게 없어도 이따금 다시 알리기 위해 둔다. */
   let lastStateEmitAt = 0
+  /** 지금까지 알고 있는 로그인 상태. 바뀔 때만 문서 밖에 남긴다. */
+  let knownLoggedOut: boolean | null = null
   /** 대타로 들러 있는 타임라인. 없으면 null. */
   let priming: TimelineKind | null = null
   let primingUntil = 0
@@ -393,7 +396,11 @@ export function startCollector(
 
   function command(kind: TimelineKind, next: DeckCommand['command']): void {
     if (next === 'ping') {
-      emit({ channel: CHANNEL, type: 'status', role: kind, state: states.get(kind) ?? 'idle' })
+      // 덱이 뒤늦게 떠서 처음 알린 상태를 놓쳤을 때 물어보는 자리다. 로그인 여부는
+      // 그 사이 바뀌었을 수 있으므로 저장해둔 값 대신 지금 다시 본다.
+      const state = isLoggedOut() ? 'login-required' : (states.get(kind) ?? 'loading')
+      states.set(kind, state)
+      emit({ channel: CHANNEL, type: 'status', role: kind, state })
       return
     }
 
@@ -472,13 +479,31 @@ export function startCollector(
   function tick(): void {
     const now = Date.now()
 
-    // 손을 뗀 동안에는 아무 것도 누르지 않는다. 응답이 들어오면 받기는 한다 —
-    // 사용자가 직접 넘긴 타임라인도 우리 것으로 쌓인다.
-    if (paused) return
+    /*
+     * 로그인 여부는 **손을 뗀 동안에도** 살핀다.
+     *
+     * 보는 것은 x.com 을 건드리는 일이 아니고, 사용자가 원본에서 로그아웃하는 것도
+     * 대개 손을 뗀 동안이다. 여기서 눈을 감으면 덱으로 돌아온 뒤에야 알아채고,
+     * 그 사이 보관된 글이 잠깐 떴다가 로그인 화면으로 밀려나 화면이 튄다.
+     */
+    const loggedOut = isLoggedOut()
+    if (loggedOut !== knownLoggedOut) {
+      knownLoggedOut = loggedOut
+      rememberLoggedOut(loggedOut)
+    }
 
-    if (isLoggedOut()) {
+    if (loggedOut) {
       for (const kind of kinds) setPending(kind, null)
       setState('login-required')
+      return
+    }
+
+    // 손을 뗀 동안에는 아무 것도 누르지 않는다. 응답이 들어오면 받기는 한다 —
+    // 사용자가 직접 넘긴 타임라인도 우리 것으로 쌓인다.
+    // 다만 로그인이 돌아온 것은 알린다 — 그러지 않으면 '로그인 필요' 에 갇혀
+    // 덱으로 돌아갈 길까지 막힌다.
+    if (paused) {
+      setState(receiving() ? 'streaming' : 'loading')
       return
     }
 
