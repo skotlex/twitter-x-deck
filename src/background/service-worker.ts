@@ -104,20 +104,52 @@ const imageJobs = new Map<string, ImageJob>()
 /**
  * 이 일에 쓴 탭을 정리한다.
  *
- * 성공했으면 조용히 닫는다. 실패했으면 **닫지 않고 앞으로 꺼낸다** — 그 탭에는 이미
- * 번역된 사진이 떠 있을 수 있다. 결과를 덱으로 못 가져왔다고 해서 해둔 일까지 버릴
- * 이유가 없다. 로그인이 필요한 경우도 같은 자리에서 바로 하면 된다.
+ * 성공했으면 조용히 닫는다. 결과를 못 꺼냈을 때만 **닫지 않고 앞으로 꺼낸다** —
+ * 그 탭에는 이미 번역된 사진이 떠 있어서, 옮기지 못했다고 해둔 일까지 버릴 이유가 없다.
+ *
+ * 로그인이 필요한 경우는 예외다. 그때는 조용히 닫는다 — 사용자는 사진을 보려던
+ * 참이었는데 몇 초 뒤 난데없이 다른 탭으로 끌려가면 그게 더 나쁘다. 로그인할지는
+ * 덱에서 안내를 보고 사용자가 정한다.
  */
-async function settleJobTab(job: ImageJob, ok: boolean): Promise<void> {
+async function settleJobTab(job: ImageJob, result: ImageTranslateResult): Promise<void> {
   if (job.tabId === null) return
-  if (ok) {
-    await chrome.tabs.remove(job.tabId).catch(() => null)
+  const keep = !result.ok && !result.needsLogin
+  if (keep) {
+    await chrome.tabs.update(job.tabId, { active: true }).catch(() => null)
     return
   }
-  await chrome.tabs.update(job.tabId, { active: true }).catch(() => null)
+  await chrome.tabs.remove(job.tabId).catch(() => null)
+}
+
+/**
+ * 로그인이 필요하다는 사실을 잠깐 기억해둔다.
+ *
+ * 로그인 여부는 탭을 열어 사진까지 넣어봐야 알 수 있어 10초쯤 걸린다. 한 번 겪고 나면
+ * 그 뒤로는 탭을 열지 않고 곧바로 안내한다 — 사진마다 10초씩 기다릴 이유가 없다.
+ *
+ * 오래 붙들지는 않는다. 사용자가 그 사이 로그인했을 수 있으므로, 시간이 지나면
+ * 잊고 다시 제대로 해본다.
+ */
+const LOGIN_MEMO_KEY = 'papagoLoginNeededAt'
+const LOGIN_MEMO_MS = 5 * 60_000
+
+async function loginKnownMissing(): Promise<boolean> {
+  const stored = await chrome.storage.session.get(LOGIN_MEMO_KEY)
+  const at = stored[LOGIN_MEMO_KEY]
+  return typeof at === 'number' && Date.now() - at < LOGIN_MEMO_MS
+}
+
+async function rememberLogin(needed: boolean): Promise<void> {
+  if (needed) await chrome.storage.session.set({ [LOGIN_MEMO_KEY]: Date.now() })
+  else await chrome.storage.session.remove(LOGIN_MEMO_KEY)
 }
 
 async function translateImage(request: ImageTranslateRequest): Promise<ImageTranslateResult> {
+  // 방금 로그인이 필요하다고 확인했으면 탭을 여는 수고를 하지 않는다.
+  if (!request.force && (await loginKnownMissing())) {
+    return { ok: false, reason: LOGIN_REQUIRED, needsLogin: true }
+  }
+
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const url =
     `${PAPAGO_ORIGIN}/image?${PAPAGO_PARAM}=${id}` +
@@ -131,7 +163,9 @@ async function translateImage(request: ImageTranslateRequest): Promise<ImageTran
       if (!imageJobs.delete(id)) return
       // 서비스 워커에는 window 가 없다. 전역 함수를 그대로 쓴다.
       clearTimeout(timer)
-      void settleJobTab(job, result.ok)
+      void settleJobTab(job, result)
+      // 성공했다면 로그인은 멀쩡한 것이다. 기억해둔 것을 그때 지운다.
+      if (result.ok || result.needsLogin) void rememberLogin(!result.ok)
       resolve(result)
     }
 

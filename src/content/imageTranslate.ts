@@ -9,7 +9,7 @@
  * 사용자 눈에는 라이트박스의 사진이 번역본으로 바뀌는 것으로만 보인다. 로그인이 안
  * 돼 있을 때만 그 탭이 앞으로 나와, 한 번 로그인해두면 그 뒤로는 조용히 끝난다.
  */
-import { IMAGE_TRANSLATE, type ImageTranslateResult } from '@core/messages'
+import { IMAGE_TRANSLATE, PAPAGO_ORIGIN, type ImageTranslateResult } from '@core/messages'
 
 export class ImageTranslateError extends Error {
   /** 네이버 로그인이 없어 멈춘 것인지. 안내 문구가 달라진다. */
@@ -44,17 +44,28 @@ async function toDataUrl(imageUrl: string): Promise<string> {
   })
 }
 
+/** Papago 로그인 화면. 사용자가 직접 로그인해야 하는 자리로 데려간다. */
+export const PAPAGO_LOGIN_URL = `${PAPAGO_ORIGIN}/image`
+
 /**
  * 사진 한 장을 번역해 그 결과 사진(data URL)을 돌려준다.
  * 주소는 원본 크기로 넘겨야 글자가 또렷해 잘 읽힌다.
+ *
+ * `force` 는 사용자가 방금 로그인했다고 알려줄 때만 쓴다 — 기억해둔 '로그인 필요' 를
+ * 무시하고 실제로 다시 해본다.
  */
-export async function translateImage(imageUrl: string, target: string): Promise<string> {
+export async function translateImage(
+  imageUrl: string,
+  target: string,
+  options?: { force?: boolean },
+): Promise<string> {
   const dataUrl = await toDataUrl(imageUrl)
 
   const result = (await chrome.runtime.sendMessage({
     type: IMAGE_TRANSLATE,
     dataUrl,
     target,
+    force: options?.force ?? false,
   })) as ImageTranslateResult | undefined
 
   if (!result) throw new ImageTranslateError('번역을 시작하지 못했습니다')

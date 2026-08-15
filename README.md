@@ -205,6 +205,10 @@ x.com 은 `document.hidden` 이면 새 게시물 폴링을 멈춥니다. 인터�
 
 x.com 과 Papago 는 출처가 달라 서로의 DOM 을 읽을 수 없습니다. 그래서 Papago 문서 안에서 도는 [papago.ts](src/content/papago.ts) 가 번역문을 읽어 메시지로 넘깁니다. 이 스크립트는 **덱이 띄운 프레임에서만** 돌며, 사람이 직접 연 Papago 탭은 건드리지 않습니다.
 
+**사진 속 글자** 도 번역합니다. 사진을 크게 띄운 상태에서 `사진 번역` 을 누르면 번역된 사진이 그 자리에 뜨고, 같은 버튼으로 원본과 번역을 오갈 수 있습니다.
+
+이쪽만 방식이 다릅니다. Papago 이미지 번역은 네이버 로그인이 필요한데, 로그인 쿠키는 Papago 가 **최상위인 문서** 에만 실립니다(`SameSite=Lax`). 그래서 보이지 않는 프레임으로는 할 수 없고, 배경 워커가 Papago 탭을 **화면 뒤로** 열어 처리한 뒤 결과 사진만 가져와 탭을 닫습니다. 로그인이 안 돼 있으면 탭을 조용히 닫고 안내만 띄우며, 로그인할지는 사용자가 정합니다 — 사진을 보던 중에 다른 탭으로 끌려가지 않습니다.
+
 Papago 가 막히면 브라우저에 내장된 번역기로 물러섭니다. 기기 안에서 도는 번역이라 네트워크도 권한도 필요 없지만, 최신 크롬에만 있고 게시물의 언어를 알 수 있을 때만 쓸 수 있습니다. 번역문 아래에 어느 쪽이 옮겼는지(`Papago 번역` · `브라우저 번역`) 적습니다.
 
 ### 하트 · 리포스트를 처리하는 방식
@@ -246,6 +250,7 @@ src/
 | [src/content/selectors.ts](src/content/selectors.ts) | x.com DOM 선택자 **전부**. UI 개편 시 이 파일만 고칩니다 |
 | [src/content/actions.ts](src/content/actions.ts) | 하트 · 리포스트 수행, 작성 화면 주소 |
 | [src/content/translate.ts](src/content/translate.ts) | 게시물 번역. Papago 화면을 빌려 쓰고, 막히면 브라우저 내장 번역기로 물러섭니다 |
+| [src/content/imageTranslate.ts](src/content/imageTranslate.ts) | 사진 번역. 배경 워커에 맡기고 결과 사진만 받아옵니다 |
 | [src/content/papago.ts](src/content/papago.ts) | 번역 프레임 **안에서** 도는 스크립트. 글월을 받아 넣고 결과만 돌려줍니다 |
 | [src/content/frameQueue.ts](src/content/frameQueue.ts) | 숨은 프레임 작업을 하나씩 줄 세웁니다 |
 | [src/content/frameBlock.ts](src/content/frameBlock.ts) | 프레임이 막힌 원인(CSP vs X-Frame-Options)을 가려내는 관측점 |

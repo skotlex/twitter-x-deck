@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { TweetMedia } from '@core/types'
-import { ImageTranslateError, translateImage } from '../../content/imageTranslate'
+import {
+  ImageTranslateError,
+  PAPAGO_LOGIN_URL,
+  translateImage,
+} from '../../content/imageTranslate'
 import { READING_LANG } from '../../content/translate'
 import { originalMediaUrl } from '../lib/format'
 import { applyVolume, rememberVolume } from '../lib/volume'
@@ -34,26 +38,30 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
    * 최상위인 프레임에는 실리지 않아, 프레임 안의 Papago 는 이미 로그인한 사람에게도
    * 로그인하라고 한다. 그래서 배경 워커가 탭을 화면 뒤로 열어 대신 처리한다.
    */
-  const translate = useCallback(async () => {
-    const url = current ? originalMediaUrl(current.previewUrl) : null
-    if (!url || sending) return
-    setSending(true)
-    setError(null)
-    setNeedsLogin(false)
-    try {
-      const image = await translateImage(url, READING_LANG)
-      setTranslated((prev) => ({ ...prev, [index]: image }))
-      setShowOriginal(false)
-    } catch (cause) {
-      // 실패하면 번역 탭이 앞으로 나온다. 거기에 결과가 떠 있을 수 있으므로 그 사실을
-      // 함께 알린다 — 사용자가 헛물켜지 않게.
-      const detail = cause instanceof Error ? cause.message : '사진을 번역하지 못했습니다'
-      setError(`${detail} · 번역 탭을 열어뒀습니다`)
-      setNeedsLogin(cause instanceof ImageTranslateError && cause.needsLogin)
-    } finally {
-      setSending(false)
-    }
-  }, [current, index, sending])
+  const translate = useCallback(
+    async (force = false) => {
+      const url = current ? originalMediaUrl(current.previewUrl) : null
+      if (!url || sending) return
+      setSending(true)
+      setError(null)
+      setNeedsLogin(false)
+      try {
+        const image = await translateImage(url, READING_LANG, { force })
+        setTranslated((prev) => ({ ...prev, [index]: image }))
+        setShowOriginal(false)
+      } catch (cause) {
+        const login = cause instanceof ImageTranslateError && cause.needsLogin
+        const detail = cause instanceof Error ? cause.message : '사진을 번역하지 못했습니다'
+        // 로그인이 없어 멈춘 것이면 탭도 조용히 닫힌다. 그 밖의 실패는 번역 탭이
+        // 앞으로 나오며, 거기에 결과가 떠 있을 수 있으므로 그 사실을 함께 알린다.
+        setError(login ? detail : `${detail} · 번역 탭을 열어뒀습니다`)
+        setNeedsLogin(login)
+      } finally {
+        setSending(false)
+      }
+    },
+    [current, index, sending],
+  )
 
   const move = useCallback(
     (delta: number) => {
@@ -135,20 +143,33 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         )}
         {error && <span className="text-[12.5px] text-white/70">{error}</span>}
         {/*
-          로그인은 사용자가 직접 해야 한다. 번역 탭이 이미 앞으로 나와 있으므로 여기서는
-          다시 시도할 길만 낸다 — 로그인을 마치고 누르면 그 뒤로는 배경에서 끝난다.
+          로그인은 사용자가 직접 해야 하고, 언제 할지도 사용자가 정한다. 우리가 탭을
+          앞으로 끌어내지 않는다 — 사진을 보던 중에 난데없이 다른 탭으로 끌려가는 것이
+          기다림보다 더 나쁘다. 여기서는 길만 낸다.
         */}
         {needsLogin && (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              void translate()
-            }}
-            className="rounded-full bg-white px-3 py-1 text-[12.5px] font-semibold text-black transition-opacity hover:opacity-85"
-          >
-            로그인했습니다 · 다시 시도
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                window.open(PAPAGO_LOGIN_URL, '_blank', 'noopener,noreferrer')
+              }}
+              className="rounded-full bg-white px-3 py-1 text-[12.5px] font-semibold text-black transition-opacity hover:opacity-85"
+            >
+              네이버 로그인
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                void translate(true)
+              }}
+              className="rounded-full bg-white/15 px-3 py-1 text-[12.5px] font-semibold text-white transition-colors hover:bg-white/25"
+            >
+              다시 시도
+            </button>
+          </>
         )}
         <button
           type="button"
