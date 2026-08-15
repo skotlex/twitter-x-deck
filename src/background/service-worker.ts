@@ -10,6 +10,7 @@ import {
   IMAGE_TRANSLATE_ASK,
   IMAGE_TRANSLATE_DONE,
   LOGIN_REQUIRED,
+  PAPAGO_LOGIN_DONE,
   PAPAGO_ORIGIN,
   PAPAGO_PARAM,
   ROLE_PARAM,
@@ -90,8 +91,8 @@ async function ruleReport(tabId?: number): Promise<string> {
  * 사용자 눈에는 라이트박스에 번역된 사진이 뜨는 것으로만 보인다.
  *
  * 탭을 쓰는 이유는 하나뿐이다 — 네이버 로그인 쿠키는 Papago 가 최상위인 문서에만
- * 실린다. 로그인이 안 돼 있으면 그 탭을 **앞으로 꺼내** 사용자가 그 자리에서
- * 로그인하게 한다. 한 번 해두면 그 뒤로는 배경에서 조용히 끝난다.
+ * 실린다. 로그인이 안 돼 있으면 그 탭도 조용히 닫고 덱에서 안내한다. 한 번 로그인해
+ * 두면 그 뒤로는 사용자가 아무 것도 안 해도 배경에서 끝난다.
  */
 interface ImageJob {
   dataUrl: string
@@ -192,6 +193,20 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     void ruleReport(sender.tab?.id).then(sendResponse)
     // 비동기로 답하겠다는 신호.
     return true
+  }
+
+  /*
+   * 로그인을 마치고 돌아온 탭. 할 일이 끝났으니 닫아준다 — 로그인하려던 사람에게
+   * 난데없이 Papago 화면이 남는 것은 뒤끝이 좋지 않다.
+   *
+   * 기억해둔 '로그인 필요' 도 함께 지운다. 방금 로그인했는데 그 기억 때문에 다음
+   * 시도가 해보지도 않고 막히면 앞뒤가 안 맞는다.
+   */
+  if (type === PAPAGO_LOGIN_DONE) {
+    void rememberLogin(false)
+    if (sender.tab?.id !== undefined) void chrome.tabs.remove(sender.tab.id).catch(() => null)
+    sendResponse(null)
+    return false
   }
 
   if (type === IMAGE_TRANSLATE) {

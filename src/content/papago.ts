@@ -21,6 +21,8 @@ import {
   IMAGE_TRANSLATE_DONE,
   isPapagoMessage,
   LOGIN_REQUIRED,
+  PAPAGO_LOGIN_DONE,
+  PAPAGO_LOGIN_PARAM,
   PAPAGO_PARAM,
   X_ORIGIN,
   type PapagoMessage,
@@ -487,7 +489,15 @@ function decodeDataUrl(dataUrl: string): Blob {
   return new Blob([bytes], { type: /:(.*?);/.exec(head)?.[1] ?? 'image/jpeg' })
 }
 
-if (id) {
+/**
+ * 로그인을 마치고 돌아온 탭이면 할 일이 끝났다. 배경 워커에 알려 닫게 한다.
+ *
+ * 스스로 `window.close()` 를 부르지 않는다 — 로그인 화면을 거치며 창을 연 주체가
+ * 바뀌면 그 호출이 조용히 무시된다. 탭을 닫는 일은 배경 워커가 확실히 할 수 있다.
+ */
+if (new URLSearchParams(window.location.search).get(PAPAGO_LOGIN_PARAM) === '1') {
+  void chrome.runtime.sendMessage({ type: PAPAGO_LOGIN_DONE })
+} else if (id) {
   if (window.parent !== window.self) {
     // 글 번역. 덱이 띄운 보이지 않는 프레임이다.
     window.addEventListener('message', (event: MessageEvent) => {

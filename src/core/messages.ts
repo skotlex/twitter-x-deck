@@ -39,6 +39,17 @@ export const IMAGE_TRANSLATE_DONE = 'xdeck:image-done'
 /** 네이버 로그인이 없어 더 못 간다는 사유. 이 값일 때만 덱이 로그인 안내를 낸다. */
 export const LOGIN_REQUIRED = '네이버 로그인이 필요합니다'
 
+/**
+ * 로그인을 마치고 돌아온 탭임을 알리는 표시.
+ *
+ * 로그인 화면에는 '마치면 이리로 보내라' 는 주소를 함께 넘기는데, 거기에 이 표시를
+ * 달아 보낸다. 그 주소로 돌아온 탭은 할 일을 다 한 것이므로 스스로 물러난다 —
+ * 로그인하려던 사람에게 난데없이 Papago 화면이 남는 것은 뒤끝이 좋지 않다.
+ */
+export const PAPAGO_LOGIN_PARAM = 'xdeck_login'
+/** 로그인 탭 → 배경 워커. 다 됐으니 이 탭을 닫아달라. */
+export const PAPAGO_LOGIN_DONE = 'xdeck:papago-login-done'
+
 export interface ImageTranslateRequest {
   type: typeof IMAGE_TRANSLATE
   /** 번역할 사진. 확장 메시지는 Blob 을 실어 나르지 못해 data URL 로 보낸다. */

@@ -9,7 +9,12 @@
  * 사용자 눈에는 라이트박스의 사진이 번역본으로 바뀌는 것으로만 보인다. 로그인이 안
  * 돼 있을 때만 그 탭이 앞으로 나와, 한 번 로그인해두면 그 뒤로는 조용히 끝난다.
  */
-import { IMAGE_TRANSLATE, PAPAGO_ORIGIN, type ImageTranslateResult } from '@core/messages'
+import {
+  IMAGE_TRANSLATE,
+  PAPAGO_LOGIN_PARAM,
+  PAPAGO_ORIGIN,
+  type ImageTranslateResult,
+} from '@core/messages'
 
 export class ImageTranslateError extends Error {
   /** 네이버 로그인이 없어 멈춘 것인지. 안내 문구가 달라진다. */
@@ -50,8 +55,9 @@ async function toDataUrl(imageUrl: string): Promise<string> {
  * Papago 화면으로 보내면 사용자가 거기서 로그인 버튼을 한 번 더 찾아야 한다.
  * 필요한 것이 로그인이면 로그인 화면으로 바로 데려가는 편이 낫다.
  */
-export const PAPAGO_LOGIN_URL =
-  `https://nid.naver.com/nidlogin.login?url=${encodeURIComponent(`${PAPAGO_ORIGIN}/image`)}`
+export const PAPAGO_LOGIN_URL = `https://nid.naver.com/nidlogin.login?url=${encodeURIComponent(
+  `${PAPAGO_ORIGIN}/image?${PAPAGO_LOGIN_PARAM}=1`,
+)}`
 
 /**
  * 사진 한 장을 번역해 그 결과 사진(data URL)을 돌려준다.
