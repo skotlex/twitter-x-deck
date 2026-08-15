@@ -157,10 +157,102 @@ async function hasNaverSession(): Promise<boolean> {
   }
 }
 
+/**
+ * Papago 이미지 번역 API 를 직접 부른다. 되면 탭이 아예 필요 없다.
+ *
+ * 유료 API 가 아니라 **Papago 웹 화면이 스스로 부르는 그 요청** 이다. 그쪽 번들에서
+ * 확인한 모양 그대로 보낸다 — `POST /api/image/translation` 에 사진 하나를 담은
+ * multipart, 나머지는 쿼리 파라미터. 서명도 API 키도 붙지 않고 쿠키로만 인증한다.
+ *
+ * 배경 워커의 요청에는 호스트 권한이 있으면 네이버 세션 쿠키가 실린다. 탭이 필요했던
+ * 이유가 그 쿠키 하나였으므로, 이 길이 통하면 화면에 아무 것도 안 뜬다.
+ *
+ * 다만 남의 내부 API 다. 모양이 바뀌면 조용히 깨지므로, 실패하면 지금까지 쓰던
+ * 탭 방식으로 물러선다.
+ */
+async function translateImageByApi(request: ImageTranslateRequest): Promise<string | null> {
+  try {
+    const body = new FormData()
+    body.append('image', dataUrlToBlob(request.dataUrl), 'image.jpg')
+
+    // 출발 언어를 모를 때 그쪽 화면이 보내는 값을 그대로 흉내낸다 —
+    // source 자리에 target 을 넣고 langDetect 를 켠다.
+    const params = new URLSearchParams({
+      source: request.target,
+      target: request.target,
+      langDetect: 'true',
+      rotation: '0',
+      useGlossary: 'false',
+      requestId: crypto.randomUUID(),
+    })
+
+    const response = await fetch(`${PAPAGO_ORIGIN}/api/image/translation?${params.toString()}`, {
+      method: 'POST',
+      body,
+      credentials: 'include',
+    })
+    if (!response.ok) return null
+
+    const payload: unknown = await response.json()
+    const found = findImageUrl(payload)
+    if (!found) return null
+
+    // 결과가 주소면 그것도 여기서 받아온다. 쿠키가 실리는 자리라 그대로 읽힌다.
+    if (found.startsWith('data:')) return found
+    const image = await fetch(new URL(found, PAPAGO_ORIGIN).href, { credentials: 'include' })
+    if (!image.ok) return null
+    return await blobToDataUrl(await image.blob())
+  } catch {
+    return null
+  }
+}
+
+/** 응답 어디에 있든 그림으로 볼 만한 주소를 찾는다. 응답 모양은 그쪽이 정한다. */
+function findImageUrl(node: unknown, depth = 0): string | null {
+  if (depth > 6) return null
+  if (typeof node === 'string') {
+    if (node.startsWith('data:image/')) return node
+    return /^https?:\/\/|^\/api\//.test(node) && /image|render|result/i.test(node) ? node : null
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = findImageUrl(item, depth + 1)
+      if (found) return found
+    }
+    return null
+  }
+  if (node && typeof node === 'object') {
+    for (const value of Object.values(node)) {
+      const found = findImageUrl(value, depth + 1)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const comma = dataUrl.indexOf(',')
+  const binary = atob(dataUrl.slice(comma + 1))
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes], { type: /:(.*?);/.exec(dataUrl.slice(0, comma))?.[1] ?? 'image/jpeg' })
+}
+
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  const buffer = new Uint8Array(await blob.arrayBuffer())
+  let binary = ''
+  for (const byte of buffer) binary += String.fromCharCode(byte)
+  return `data:${blob.type || 'image/png'};base64,${btoa(binary)}`
+}
+
 async function translateImage(request: ImageTranslateRequest): Promise<ImageTranslateResult> {
   if (!(await hasNaverSession())) {
     return { ok: false, reason: LOGIN_REQUIRED, needsLogin: true }
   }
+
+  // 탭 없이 되는 길을 먼저 본다. 안 되면 아래의 탭 방식으로 물러선다.
+  const direct = await translateImageByApi(request)
+  if (direct) return { ok: true, dataUrl: direct }
 
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const url =
