@@ -11,6 +11,14 @@ const DECK_URL = `https://x.com/home?${ROLE_PARAM}=foryou&${DECK_PARAM}=1`
 
 const TAB_KEY = 'deckTabId'
 
+/**
+ * 헤더를 걷어내는 규칙의 id (`rules.json`).
+ *
+ * 같은 파일의 광고·분석 차단 규칙은 늘 걸리므로 셈에 섞이면 진단이 못 쓰게 된다 —
+ * 프레임이 막혔는지는 **헤더 규칙이** 방금 걸렸는지로만 가려진다.
+ */
+const HEADER_RULE_IDS = new Set([1, 2, 3])
+
 async function rememberedTabId(): Promise<number | null> {
   const stored = await chrome.storage.session.get(TAB_KEY)
   const id = stored[TAB_KEY]
@@ -54,13 +62,14 @@ async function ruleReport(tabId?: number): Promise<string> {
     const { rulesMatchedInfo } = await chrome.declarativeNetRequest.getMatchedRules(
       tabId === undefined ? {} : { tabId },
     )
-    if (rulesMatchedInfo.length === 0) {
+    const hits = rulesMatchedInfo.filter((hit) => HEADER_RULE_IDS.has(hit.rule.ruleId))
+    if (hits.length === 0) {
       parts.push('매칭 0건')
     } else {
-      const newest = Math.max(...rulesMatchedInfo.map((hit) => hit.timeStamp))
+      const newest = Math.max(...hits.map((hit) => hit.timeStamp))
       const ago = Math.round((Date.now() - newest) / 1000)
-      const ids = [...new Set(rulesMatchedInfo.map((hit) => hit.rule.ruleId))]
-      parts.push(`매칭 ${rulesMatchedInfo.length}건 (규칙 ${ids.join(',')}, 마지막 ${ago}초 전)`)
+      const ids = [...new Set(hits.map((hit) => hit.rule.ruleId))]
+      parts.push(`매칭 ${hits.length}건 (규칙 ${ids.join(',')}, 마지막 ${ago}초 전)`)
     }
   } catch {
     parts.push('매칭 조회 불가')

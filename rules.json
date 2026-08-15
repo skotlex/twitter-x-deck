@@ -42,5 +42,28 @@
       "initiatorDomains": ["x.com"],
       "resourceTypes": ["sub_frame"]
     }
+  },
+  {
+    "id": 4,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "initiatorDomains": ["x.com"],
+      "requestDomains": [
+        "googlesyndication.com",
+        "doubleclick.net",
+        "googletagservices.com",
+        "googleadservices.com",
+        "adservice.google.com",
+        "ads.google.com",
+        "google-analytics.com",
+        "analytics.google.com",
+        "static.ads-twitter.com",
+        "analytics.twitter.com",
+        "intercom.io",
+        "intercomcdn.com"
+      ],
+      "excludedResourceTypes": ["main_frame"]
+    }
   }
 ]

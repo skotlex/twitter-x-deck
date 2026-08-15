@@ -267,12 +267,23 @@ src/
 | --- | --- |
 | `storage` · `unlimitedStorage` | 설정 저장과 게시물 보관(IndexedDB)에 사용합니다 |
 | `tabs` | 확장 아이콘을 눌렀을 때 덱 탭을 열고, 이미 열린 탭을 다시 찾아옵니다 |
-| `declarativeNetRequest` | x.com 응답의 `X-Frame-Options` 헤더를 제거합니다. `frame-ancestors 'self'` 는 동일 출처 임베드를 허용하지만 `X-Frame-Options: DENY` 는 동일 출처까지 막기 때문에, 이 헤더를 걷어내야 수집 프레임을 띄울 수 있습니다 |
+| `declarativeNetRequest` | x.com 응답의 `X-Frame-Options` 헤더를 제거합니다. `frame-ancestors 'self'` 는 동일 출처 임베드를 허용하지만 `X-Frame-Options: DENY` 는 동일 출처까지 막기 때문에, 이 헤더를 걷어내야 수집 프레임을 띄울 수 있습니다. 광고·분석 도메인 차단에도 같은 권한을 씁니다 |
 | `declarativeNetRequestFeedback` | 프레임이 막혔을 때 규칙이 실제로 적용되었는지 진단합니다 |
 | `host_permissions: https://x.com/*` | 덱과 수집기가 도는 도메인입니다 |
 | `host_permissions: https://papago.naver.com/*` | 게시물 번역에 Papago 화면을 빌려 씁니다. 유료 API 대신 사람이 쓰는 번역 화면을 보이지 않는 프레임에 띄우고, 그 안에서 도는 스크립트가 결과만 덱으로 넘깁니다 |
 
-헤더 제거 규칙은 [rules.json](rules.json) 에 전부 적혀 있습니다. x.com 규칙과, 번역 프레임을 위한 papago.naver.com 규칙 두 갈래입니다. 후자는 `initiatorDomains` 로 **x.com 이 띄운 프레임에만** 걸립니다.
+규칙은 [rules.json](rules.json) 에 전부 적혀 있습니다. 헤더를 걷어내는 x.com 규칙, 번역 프레임을 위한 papago.naver.com 규칙, 그리고 광고·분석 도메인 차단 규칙 세 갈래입니다. 뒤의 둘은 `initiatorDomains` 로 **x.com 문서가 시작한 요청에만** 걸립니다.
+
+### 광고 · 분석 도메인 차단
+
+숨은 수집 프레임은 컬럼 수만큼 x.com 웹앱을 통째로 띄웁니다. 그 사본마다 광고·분석 스크립트가 따라 붙으면 그만큼 요청과 메모리가 배로 늘어나므로, x.com 문서가 시작한 요청 중 아래 도메인으로 가는 것을 막습니다.
+
+`googlesyndication.com` · `doubleclick.net` · `googletagservices.com` · `googleadservices.com` · `adservice.google.com` · `ads.google.com` · `google-analytics.com` · `analytics.google.com` · `static.ads-twitter.com` · `analytics.twitter.com` · `intercom.io` · `intercomcdn.com`
+
+로그인 · 봇 탐지 · 결제 · 영상 재생에 쓰이는 외부 도메인(arkoselabs · castle · reCAPTCHA · Google/Apple 로그인 · Stripe · Plaid · gstatic 캐스트)은 **막지 않습니다.** 막으면 로그인이나 재생이 깨집니다. 주소창에 직접 입력하거나 링크로 이동하는 경우(`main_frame`)도 차단 대상에서 뺐습니다.
+
+> [!NOTE]
+> `declarativeNetRequest` 조건에는 프레임 깊이를 가리는 항목이 없습니다. 그래서 이 규칙은 숨은 수집 프레임뿐 아니라 **같은 탭의 x.com 화면 전체** 에 걸립니다. 통과 모드로 x.com 원본을 볼 때도 위 도메인은 막힌 채입니다.
 
 > [!IMPORTANT]
 > 이 규칙에는 **범위를 좁히지 못한 부작용** 이 있습니다. 조건이 "x.com 으로 가는 요청" 이라, 덱이 띄운 프레임뿐 아니라 **다른 사이트가 x.com 을 프레임에 싣는 경우에도** 헤더가 제거됩니다. 즉 이 확장을 설치한 브라우저에서는 임의의 사이트가 로그인된 x.com 을 iframe 으로 실을 수 있어 클릭재킹에 노출됩니다.
