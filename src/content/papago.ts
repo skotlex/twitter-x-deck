@@ -22,6 +22,7 @@ import {
   isPapagoMessage,
   LOGIN_REQUIRED,
   PAPAGO_LOGIN_DONE,
+  RESULT_MISSING,
   PAPAGO_LOGIN_PARAM,
   PAPAGO_PARAM,
   X_ORIGIN,
@@ -59,8 +60,6 @@ const LOOSE_MIN_PX = 320
 const ASPECT_TOLERANCE = 0.06
 /** 원본 대비 이만큼은 돼야 번역본으로 본다. 줄여 보여줄 수는 있어도 손톱만 하지는 않다. */
 const MIN_SCALE = 0.4
-/** 그림자 DOM·프레임을 몇 겹까지 파고들지. 더 깊으면 결과가 아니라 남의 위젯이다. */
-const MAX_SCAN_DEPTH = 4
 
 /** 글 번역은 덱이 띄운 프레임에서 하므로 답할 곳은 늘 부모다. */
 function post(message: PapagoMessage): void {
@@ -201,61 +200,11 @@ async function handleImage(blob: Blob, name: string, source: Size): Promise<stri
     return image ? { image } : null
   }, RESULT_IMAGE_TIMEOUT_MS)
 
-  if (!outcome) {
-    // 못 찾았으면 **무엇이 있었는지** 함께 알린다. 이 탭 화면은 밖에서 볼 수 없어,
-    // 다음에 어디를 고쳐야 할지는 이 한 줄로만 알 수 있다.
-    throw new Error(`번역된 사진을 찾지 못했습니다 — ${describeCandidates(before)}`)
-  }
+  // 결과도 안내도 없이 시간을 넘겼다. 원인을 단정하지 않는다 — 세션 쿠키는 남아 있는데
+  // Papago 쪽 로그인만 풀린 경우가 있고, 그때 화면에는 아무 일도 일어나지 않는다.
+  if (!outcome) throw new Error(RESULT_MISSING)
   if ('login' in outcome) throw new Error(LOGIN_REQUIRED)
   return outcome.image
-}
-
-/**
- * 결과를 찾을 때 무엇이 후보로 있었는지 한 줄로 적는다. 진단용이다.
- * 큰 것만 적는다 — 아이콘·추적 픽셀까지 늘어놓으면 정작 볼 것이 묻힌다.
- */
-function describeCandidates(before: Set<string>): string {
-  const { canvases, images, backgrounds } = collectCandidates()
-
-  const big = (width: number, height: number): boolean =>
-    width >= MIN_RESULT_PX && height >= MIN_RESULT_PX
-
-  const parts = [
-    describeSizes(
-      '캔버스',
-      canvases.filter((canvas) => big(canvas.width, canvas.height)).map((canvas) => `${canvas.width}x${canvas.height}`),
-    ),
-    describeSizes(
-      '새 그림',
-      images
-        .filter((image) => !before.has(image.src) && big(image.naturalWidth, image.naturalHeight))
-        .map((image) => `${image.naturalWidth}x${image.naturalHeight}`),
-    ),
-    describeSizes(
-      '배경',
-      backgrounds.map((item) => `${Math.round(item.width)}x${Math.round(item.height)}`),
-    ),
-    `프레임 ${document.querySelectorAll('iframe').length}`,
-    describeLoginHint(),
-  ]
-  return parts.join(' · ')
-}
-
-/**
- * 화면에 '로그인' 이라는 말이 어떤 모양으로 있는지 한 조각 떠온다.
- *
- * 로그인 안내를 못 알아보고 있는지, 안내 자체가 없는지를 가르는 데 쓴다.
- * 둘은 고칠 곳이 전혀 다르다 — 앞은 문구 판별, 뒤는 사진이 아예 안 올라간 것이다.
- */
-function describeLoginHint(): string {
-  const text = (document.body?.textContent ?? '').replace(/\s+/g, ' ')
-  const at = text.search(/로그인|login/i)
-  if (at < 0) return `로그인 문구 없음 (${window.location.pathname})`
-  return `문구 "${text.slice(Math.max(0, at - 15), at + 35)}"`
-}
-
-function describeSizes(label: string, sizes: string[]): string {
-  return sizes.length ? `${label} ${sizes.slice(0, 5).join(' ')}` : `${label} 없음`
 }
 
 /** '로그인이 필요한 기능입니다' 안내의 문구. */
@@ -360,52 +309,6 @@ function drawToDataUrl(source: CanvasImageSource, width: number, height: number)
   canvas.height = height
   canvas.getContext('2d')?.drawImage(source, 0, 0)
   return readCanvas(canvas)
-}
-
-interface Candidates {
-  canvases: HTMLCanvasElement[]
-  images: HTMLImageElement[]
-  backgrounds: Array<{ url: string; width: number; height: number }>
-}
-
-/**
- * 결과가 있을 만한 자리를 모두 훑는다. **실패했을 때 진단용으로만** 부른다.
- *
- * 문서 전체를 돌며 모든 요소의 계산된 스타일까지 읽으므로 되풀이해 부를 것이 못 된다.
- * 평소 결과 찾기가 보는 곳(`document.images`·캔버스) 밖에 무엇이 있었는지를 한 번
- * 훑어, 다음에 어디를 봐야 할지 알려주는 것이 이 함수의 쓸모다.
- */
-function collectCandidates(): Candidates {
-  const found: Candidates = { canvases: [], images: [], backgrounds: [] }
-
-  const walk = (root: Document | ShadowRoot, depth: number): void => {
-    if (depth > MAX_SCAN_DEPTH) return
-    found.canvases.push(...root.querySelectorAll('canvas'))
-    found.images.push(...root.querySelectorAll('img'))
-
-    for (const element of root.querySelectorAll<HTMLElement>('*')) {
-      if (element.shadowRoot) walk(element.shadowRoot, depth + 1)
-
-      const box = element.getBoundingClientRect()
-      if (box.width < MIN_RESULT_PX || box.height < MIN_RESULT_PX) continue
-      const url = /url\(["']?(.+?)["']?\)/.exec(getComputedStyle(element).backgroundImage)?.[1]
-      if (url && !url.startsWith('data:image/svg')) {
-        found.backgrounds.push({ url, width: box.width, height: box.height })
-      }
-    }
-
-    for (const frame of root.querySelectorAll('iframe')) {
-      try {
-        const doc = frame.contentDocument
-        if (doc) walk(doc, depth + 1)
-      } catch {
-        // 다른 출처의 프레임. 읽을 수 없고, 읽을 이유도 없다.
-      }
-    }
-  }
-
-  walk(document, 0)
-  return found
 }
 
 /** 캔버스를 data URL 로. 다른 출처가 섞여 오염됐으면 null. */

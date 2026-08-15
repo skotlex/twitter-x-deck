@@ -36,8 +36,16 @@ export const IMAGE_TRANSLATE_ASK = 'xdeck:image-ask'
 /** Papago 탭 → 배경 워커. 번역 결과 또는 실패 사유. */
 export const IMAGE_TRANSLATE_DONE = 'xdeck:image-done'
 
-/** 네이버 로그인이 없어 더 못 간다는 사유. 이 값일 때만 덱이 로그인 안내를 낸다. */
+/** 네이버 로그인이 없어 더 못 간다는 사유. */
 export const LOGIN_REQUIRED = '네이버 로그인이 필요합니다'
+
+/**
+ * 끝내 결과가 안 나왔다는 사유.
+ *
+ * 세션 쿠키는 남아 있는데 Papago 쪽 로그인은 풀린 경우가 있어, 그때도 화면에는
+ * 아무 일이 일어나지 않는다. 원인을 단정하지 않고 로그인 길도 함께 내준다.
+ */
+export const RESULT_MISSING = '번역 결과를 받지 못했습니다 — 네이버 로그인이 풀렸을 수 있습니다'
 
 /**
  * 로그인을 마치고 돌아온 탭임을 알리는 표시.
