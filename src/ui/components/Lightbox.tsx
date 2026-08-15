@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { TweetMedia } from '@core/types'
-import {
-  ImageTranslateError,
-  PAPAGO_LOGIN_URL,
-  translateImage,
-} from '../../content/imageTranslate'
-import { READING_LANG } from '../../content/translate'
 import { originalMediaUrl } from '../lib/format'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { CloseIcon } from './icons'
@@ -21,48 +15,8 @@ export interface LightboxProps {
 /** 이미지 원본 보기. 화살표·Esc 로 조작하고, 배경을 누르면 닫힌다. */
 export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProps) {
   const [index, setIndex] = useState(startIndex)
-  const [sending, setSending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [needsLogin, setNeedsLogin] = useState(false)
-  /** 사진마다의 번역 결과. 넘겼다 돌아와도 다시 번역하지 않는다. */
-  const [translated, setTranslated] = useState<Record<number, string>>({})
-  const [showOriginal, setShowOriginal] = useState(false)
   const total = media.length
   const current = media[Math.min(index, total - 1)]
-  const result = translated[index] ?? null
-
-  /**
-   * 사진 번역. 배경에서 Papago 를 거쳐 번역된 사진만 받아 이 자리에 띄운다.
-   *
-   * 보이지 않는 프레임으로는 할 수 없는 일이다 — 네이버 로그인 쿠키가 x.com 이
-   * 최상위인 프레임에는 실리지 않아, 프레임 안의 Papago 는 이미 로그인한 사람에게도
-   * 로그인하라고 한다. 그래서 배경 워커가 탭을 화면 뒤로 열어 대신 처리한다.
-   */
-  const translate = useCallback(
-    async () => {
-      const url = current ? originalMediaUrl(current.previewUrl) : null
-      if (!url || sending) return
-      setSending(true)
-      setError(null)
-      setNeedsLogin(false)
-      try {
-        const image = await translateImage(url, READING_LANG, {
-          width: current?.width ?? 0,
-          height: current?.height ?? 0,
-        })
-        setTranslated((prev) => ({ ...prev, [index]: image }))
-        setShowOriginal(false)
-      } catch (cause) {
-        const login = cause instanceof ImageTranslateError && cause.needsLogin
-        const detail = cause instanceof Error ? cause.message : '사진을 번역하지 못했습니다'
-        setError(detail)
-        setNeedsLogin(login)
-      } finally {
-        setSending(false)
-      }
-    },
-    [current, index, sending],
-  )
 
   const move = useCallback(
     (delta: number) => {
@@ -120,60 +74,6 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         >
           원문 게시물
         </a>
-        {/* 사진에만 붙인다. 영상은 Papago 이미지 번역이 받지 않는다. */}
-        {!current.playbackUrl && (
-          <button
-            type="button"
-            disabled={sending}
-            onClick={(event) => {
-              event.stopPropagation()
-              if (result) setShowOriginal((prev) => !prev)
-              else void translate()
-            }}
-            // 상태 문구와 같은 크기·같은 줄높이로 둔다. 둘이 나란히 서는 자리라
-            // 조금만 달라도 한쪽이 내려앉은 것처럼 보인다.
-            className="text-[13px] leading-none text-white/70 underline-offset-2 hover:text-white hover:underline disabled:opacity-60"
-            title="Papago 로 사진 속 글자를 번역합니다 (네이버 로그인 필요)"
-          >
-            {sending
-              ? '사진 번역 중…'
-              : result
-                ? showOriginal
-                  ? '번역 보기'
-                  : '원본 보기'
-                : '사진 번역'}
-          </button>
-        )}
-        {error && <span className="text-[13px] leading-none text-white/70">{error}</span>}
-        {/*
-          로그인은 사용자가 직접 해야 하고, 언제 할지도 사용자가 정한다. 우리가 탭을
-          앞으로 끌어내지 않는다 — 사진을 보던 중에 난데없이 다른 탭으로 끌려가는 것이
-          기다림보다 더 나쁘다. 여기서는 길만 낸다.
-        */}
-        {needsLogin && (
-          <>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                window.open(PAPAGO_LOGIN_URL, '_blank', 'noopener,noreferrer')
-              }}
-              className="rounded-full bg-white px-3 py-1 text-[12.5px] font-semibold text-black transition-opacity hover:opacity-85"
-            >
-              네이버 로그인
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                void translate()
-              }}
-              className="rounded-full bg-white/15 px-3 py-1 text-[12.5px] font-semibold text-white transition-colors hover:bg-white/25"
-            >
-              다시 시도
-            </button>
-          </>
-        )}
         <button
           type="button"
           onClick={onClose}
@@ -214,7 +114,7 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
           />
         ) : (
           <img
-            src={result && !showOriginal ? result : originalMediaUrl(current.previewUrl)}
+            src={originalMediaUrl(current.previewUrl)}
             alt={current.altText ?? ''}
             onClick={(event) => event.stopPropagation()}
             className="max-h-full max-w-full cursor-default object-contain"

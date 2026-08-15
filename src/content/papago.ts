@@ -8,22 +8,12 @@
  * 번역할 글월은 주소(`st`)에 실려 온다 — Papago 가 공유 링크로 쓰는 방식이라 우리가
  * 입력란을 건드릴 일이 없다. 주소에 담기엔 너무 긴 글만 여기서 직접 넣는다.
  *
- * 두 가지 일을 한다. 어느 쪽인지는 이 문서가 프레임인지 탭인지로 갈린다.
- *   - **프레임** — 글 번역. 덱이 띄운 보이지 않는 프레임이고, 결과는 부모로 돌려준다.
- *   - **탭** — 사진 번역. 배경 워커가 열어준 탭이고, 결과는 확장 메시지로 돌려준다.
- *     탭이어야 하는 이유는 네이버 로그인 쿠키가 Papago 가 최상위인 문서에만 실려서다.
- *
- * **덱이 부른 문서에서만 돈다.** 사람이 직접 연 Papago 에는 표시가 없다.
+ * **덱이 띄운 프레임에서만 돈다.** 사람이 직접 연 Papago 탭에는 표시가 없다.
  */
 import {
   CHANNEL,
-  IMAGE_TRANSLATE_ASK,
-  IMAGE_TRANSLATE_DONE,
   isPapagoMessage,
-  PAPAGO_LOGIN_DONE,
-  PAPAGO_LOGIN_PARAM,
   PAPAGO_PARAM,
-  RESULT_MISSING,
   X_ORIGIN,
   type PapagoMessage,
 } from '@core/messages'
@@ -47,22 +37,6 @@ const id = new URLSearchParams(window.location.search).get(PAPAGO_PARAM)
 /** 입력·출력 칸. 둘 다 textarea 가 아니라 편집 가능한 div 다. */
 const SOURCE = '[data-testid="source-editor"], #source-editor'
 const TARGET = '[data-testid="target-editor"], #target-editor'
-/** 이미지 번역 화면의 파일 입력. */
-const FILE_INPUT = '[data-testid="file-input"], input#file[type="file"]'
-/** 번역된 사진이 나올 때까지 기다리는 한계. OCR 이 도는 시간이다. */
-const RESULT_IMAGE_TIMEOUT_MS = 20_000
-/** 입력란이 그려진 뒤 그쪽 핸들러가 붙을 틈. 이 전에 넣으면 그냥 삼켜진다. */
-const HYDRATE_MS = 800
-/** 넣은 사진을 받아들였는지(미리보기가 뜨는지) 지켜보는 시간. */
-const ACCEPT_TIMEOUT_MS = 3_000
-/** 결과로 셀 만한 최소 크기. 아이콘·장식 그림을 걸러낸다. */
-const MIN_RESULT_PX = 80
-/** 원본 크기를 모를 때 쓰는 최소 크기. 비율로 거를 수 없으니 더 엄하게 잡는다. */
-const LOOSE_MIN_PX = 320
-/** 원본과 같은 비율로 볼 여유. 테두리 몇 픽셀 차이는 넘어간다. */
-const ASPECT_TOLERANCE = 0.06
-/** 원본 대비 이만큼은 돼야 번역본으로 본다. 줄여 보여줄 수는 있어도 손톱만 하지는 않다. */
-const MIN_SCALE = 0.4
 
 /** 글 번역은 덱이 띄운 프레임에서 하므로 답할 곳은 늘 부모다. */
 function post(message: PapagoMessage): void {
@@ -168,130 +142,6 @@ async function waitForResult(): Promise<string> {
   }
 }
 
-/**
- * 이미지 번역 화면의 파일 입력에 사진을 넣는다.
- *
- * 파일 입력에는 주소를 넣을 수 없다 — 파일 객체여야 한다. 그래서 바이트를 통째로
- * 받아 `DataTransfer` 로 목록을 꾸며 넣은 뒤, 사람이 고른 것과 같은 `change` 를 낸다.
- * 번역된 사진을 돌려준다. 시간을 넘기면 null.
- */
-async function handleImage(blob: Blob, name: string, source: Size): Promise<string | null> {
-  const input = await waitFor(
-    () => document.querySelector<HTMLInputElement>(FILE_INPUT),
-    EDITOR_TIMEOUT_MS,
-  )
-  if (!input) throw new Error('사진을 넣을 자리를 찾지 못했습니다')
-
-  // 넣기 전 화면에 있던 그림을 기억해둔다. 뒤에 새로 생긴 것이 번역 결과다.
-  const before = new Set([...document.images].map((image) => image.src))
-
-  const put = (): void => {
-    const transfer = new DataTransfer()
-    transfer.items.add(new File([blob], name, { type: blob.type || 'image/jpeg' }))
-    input.files = transfer.files
-    input.dispatchEvent(new Event('change', { bubbles: true }))
-  }
-
-  // 입력란이 그려진 것과 받아들일 준비가 된 것은 다르다. 핸들러가 붙을 틈을 준다 —
-  // 그 전에 넣으면 이벤트가 그냥 삼켜진다 (하트·리포스트에서 겪은 것과 같은 일이다).
-  await sleep(HYDRATE_MS)
-  put()
-
-  /*
-   * 넣은 것이 먹었는지부터 본다. 사진을 받아들이면 화면에 미리보기가 곧바로 뜨므로,
-   * 그때까지 새 그림이 하나도 안 생겼으면 삼켜진 것이다. 그러면 한 번 더 넣는다.
-   * 이 한 번이 없으면 첫 판이 통째로 헛돌고, 사용자가 '다시 시도' 를 눌러야 했다.
-   */
-  const accepted = await waitFor(
-    () => ([...document.images].some((image) => !before.has(image.src)) ? true : null),
-    ACCEPT_TIMEOUT_MS,
-  )
-  if (!accepted) put()
-
-  const outcome = await waitFor(() => readTranslatedImage(before, source), RESULT_IMAGE_TIMEOUT_MS)
-
-  // 결과가 안 나온 이유를 여기서 단정하지 않는다. 로그인 여부는 배경 워커가 쿠키로
-  // 이미 확인했고, 화면을 뒤져 그걸 다시 판정하려던 시도는 번번이 어긋났다.
-  if (!outcome) throw new Error(RESULT_MISSING)
-  return outcome
-}
-
-/**
- * 번역된 사진을 data URL 로 꺼낸다. 아직 안 나왔으면 null.
- *
- * Papago 가 결과를 캔버스로 그리는지 이미지로 그리는지는 확인하지 못했다. 그래서 둘 다
- * 본다 — 여기는 Papago 자신의 문서라 어느 쪽이든 같은 출처로 읽힌다.
- *
- * 이미지도 **캔버스에 옮겨 그려서** 바이트를 얻는다. 주소를 그대로 넘기면 그 주소는
- * 이 탭에서만 살아 있어 덱에서는 못 연다. `fetch` 로 받아오는 길은 이 탭에 살아 있는
- * Papago CSP 에 막힐 수 있어 쓰지 않는다.
- *
- * 이미지 쪽은 넣기 전에 없던 것 중 마지막에 나타난 것을 고른다. 올린 원본도 새로
- * 생기지만 번역본이 그보다 뒤에 붙는다.
- */
-function readTranslatedImage(before: Set<string>, source: Size): string | null {
-  // 여기는 0.15초마다 도는 자리다. 문서 전체를 훑는 무거운 검사는 두지 않는다.
-  for (const canvas of document.querySelectorAll('canvas')) {
-    if (!looksLikeTranslation(canvas.width, canvas.height, source)) continue
-    const drawn = readCanvas(canvas)
-    if (drawn) return drawn
-  }
-
-  const fresh = [...document.images].filter(
-    (image) =>
-      !before.has(image.src) &&
-      image.complete &&
-      looksLikeTranslation(image.naturalWidth, image.naturalHeight, source),
-  )
-  const found = fresh.at(-1)
-  return found ? drawToDataUrl(found, found.naturalWidth, found.naturalHeight) : null
-}
-
-export interface Size {
-  width: number
-  height: number
-}
-
-/**
- * 이 그림이 **우리가 올린 사진의 번역본** 으로 볼 만한지.
- *
- * '새로 생긴 큰 그림' 만으로는 어림도 없다. 그 화면에는 행사 배지·배너 같은 남의 그림도
- * 함께 뜨고, 로그인이 없어 번역이 아예 안 돌았을 때는 그것들만 남는다. 실제로 10주년
- * 배지가 번역 결과랍시고 덱에 실렸다.
- *
- * 번역본은 원본 위에 글자만 얹은 것이라 **가로세로 비율이 원본과 같다.** 크기도 원본과
- * 비슷해야 한다 — 줄여 보여줄 수는 있어도 손톱만 해지지는 않는다. 원본 크기를 모르면
- * 비율로 거를 수 없으니 넉넉한 크기 기준만 쓴다.
- */
-function looksLikeTranslation(width: number, height: number, source: Size): boolean {
-  if (width < MIN_RESULT_PX || height < MIN_RESULT_PX) return false
-  if (source.width <= 0 || source.height <= 0) {
-    return width >= LOOSE_MIN_PX && height >= LOOSE_MIN_PX
-  }
-
-  const wanted = source.width / source.height
-  if (Math.abs(width / height - wanted) / wanted > ASPECT_TOLERANCE) return false
-  return width >= source.width * MIN_SCALE
-}
-
-/** 그림 하나를 캔버스에 옮겨 그려 data URL 로 만든다. */
-function drawToDataUrl(source: CanvasImageSource, width: number, height: number): string | null {
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  canvas.getContext('2d')?.drawImage(source, 0, 0)
-  return readCanvas(canvas)
-}
-
-/** 캔버스를 data URL 로. 다른 출처가 섞여 오염됐으면 null. */
-function readCanvas(canvas: HTMLCanvasElement): string | null {
-  try {
-    return canvas.toDataURL('image/png')
-  } catch {
-    return null
-  }
-}
-
 async function handle(text: string): Promise<void> {
   const fail = (reason: string): void => {
     post({ channel: CHANNEL, type: 'papago-failed', id: id ?? '', reason })
@@ -319,69 +169,12 @@ async function handle(text: string): Promise<void> {
   post({ channel: CHANNEL, type: 'papago-result', id: id ?? '', text: result })
 }
 
-/**
- * 사진 번역은 이 문서가 **최상위 탭** 일 때만 한다. 배경 워커가 그렇게 열어준다 —
- * 네이버 로그인 쿠키는 Papago 가 최상위인 문서에만 실리기 때문이다.
- *
- * 덱과는 사이트가 달라 직접 말할 수 없으므로 확장 메시지로 배경 워커를 거친다.
- */
-async function runImageJob(jobId: string): Promise<void> {
-  try {
-    const asked = (await chrome.runtime.sendMessage({
-      type: IMAGE_TRANSLATE_ASK,
-      id: jobId,
-    })) as { dataUrl: string; width: number; height: number } | null
-    if (!asked) return
+if (id && window.parent !== window.self) {
+  window.addEventListener('message', (event: MessageEvent) => {
+    if (event.origin !== X_ORIGIN || !isPapagoMessage(event.data)) return
+    if (event.data.type !== 'papago-ask' || event.data.id !== id) return
+    void handle(event.data.text)
+  })
 
-    const dataUrl = await handleImage(decodeDataUrl(asked.dataUrl), 'image.jpg', {
-      width: asked.width,
-      height: asked.height,
-    })
-    if (!dataUrl) throw new Error('번역된 사진을 찾지 못했습니다')
-    await chrome.runtime.sendMessage({ type: IMAGE_TRANSLATE_DONE, id: jobId, dataUrl })
-  } catch (cause) {
-    await chrome.runtime.sendMessage({
-      type: IMAGE_TRANSLATE_DONE,
-      id: jobId,
-      reason: cause instanceof Error ? cause.message : '사진 번역에 실패했습니다',
-    })
-  }
-}
-
-/**
- * data URL 을 그림 조각으로 되돌린다.
- *
- * `fetch` 로 읽지 않는다. 이 탭은 Papago 가 최상위라 그쪽 CSP 가 그대로 살아 있는데,
- * `data:` 는 보통 `connect-src` 에 없어 요청이 막히고 'Failed to fetch' 로 끝난다.
- * 직접 풀면 네트워크를 아예 쓰지 않으므로 걸릴 곳이 없다.
- */
-function decodeDataUrl(dataUrl: string): Blob {
-  const comma = dataUrl.indexOf(',')
-  const head = dataUrl.slice(0, comma)
-  const binary = atob(dataUrl.slice(comma + 1))
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
-  return new Blob([bytes], { type: /:(.*?);/.exec(head)?.[1] ?? 'image/jpeg' })
-}
-
-/**
- * 로그인을 마치고 돌아온 탭이면 할 일이 끝났다. 배경 워커에 알려 닫게 한다.
- *
- * 스스로 `window.close()` 를 부르지 않는다 — 로그인 화면을 거치며 창을 연 주체가
- * 바뀌면 그 호출이 조용히 무시된다. 탭을 닫는 일은 배경 워커가 확실히 할 수 있다.
- */
-if (new URLSearchParams(window.location.search).get(PAPAGO_LOGIN_PARAM) === '1') {
-  void chrome.runtime.sendMessage({ type: PAPAGO_LOGIN_DONE })
-} else if (id) {
-  if (window.parent !== window.self) {
-    // 글 번역. 덱이 띄운 보이지 않는 프레임이다.
-    window.addEventListener('message', (event: MessageEvent) => {
-      if (event.origin !== X_ORIGIN || !isPapagoMessage(event.data)) return
-      if (event.data.type !== 'papago-ask' || event.data.id !== id) return
-      void handle(event.data.text)
-    })
-    post({ channel: CHANNEL, type: 'papago-ready', id })
-  } else {
-    void runImageJob(id)
-  }
+  post({ channel: CHANNEL, type: 'papago-ready', id })
 }

@@ -205,23 +205,6 @@ x.com 은 `document.hidden` 이면 새 게시물 폴링을 멈춥니다. 인터�
 
 x.com 과 Papago 는 출처가 달라 서로의 DOM 을 읽을 수 없습니다. 그래서 Papago 문서 안에서 도는 [papago.ts](src/content/papago.ts) 가 번역문을 읽어 메시지로 넘깁니다. 이 스크립트는 **덱이 띄운 프레임에서만** 돌며, 사람이 직접 연 Papago 탭은 건드리지 않습니다.
 
-**사진 속 글자** 도 번역합니다. 사진을 크게 띄운 상태에서 `사진 번역` 을 누르면 번역된 사진이 그 자리에 뜨고, 같은 버튼으로 원본과 번역을 오갈 수 있습니다.
-
-이쪽은 배경 워커가 **Papago 이미지 번역 API 를 직접 부릅니다.** 유료 API 가 아니라 Papago 웹 화면이 스스로 부르는 그 요청이며, 서명도 API 키도 없이 로그인 쿠키로만 인증합니다. 화면에는 아무 것도 뜨지 않습니다.
-
-```
-POST /api/image/translation?source=…&target=…&langDetect=true   (사진을 multipart 로)
-  → { imageId, detectedLang, sentenceList[] }
-GET  /api/image/downloadImage?imageId=…&imageType=rendered&source=…&target=…
-  → 번역된 사진
-```
-
-확장의 요청에는 호스트 권한이 있으면 네이버 세션 쿠키가 실립니다. 사용자의 로그인으로, 브라우저가 어차피 보낼 요청을 보내는 것입니다. 받아온 것이 정말 사진인지는 `Content-Type` 이 아니라 **파일 앞머리 바이트** 로 가립니다 — 내려받기용 주소는 흔히 `application/octet-stream` 으로 주기 때문입니다.
-
-남의 내부 API 라 언젠가 모양이 바뀝니다. 그때를 위해 **탭 방식을 폴백으로 남겨 두었습니다.** 배경 워커가 Papago 탭을 화면 뒤로 열어 사진을 넣고 결과를 읽어온 뒤 탭을 닫는 방식으로, 느리고 탭이 잠깐 보이지만 API 가 바뀌어도 동작합니다.
-
-로그인 여부는 **세션 쿠키가 있는지** 로 확인합니다. 화면을 뒤져 알아내는 방법도 있지만 번번이 어긋났습니다 — 로그인 안내가 아예 안 뜨는 경우도 있고, 로그인 상태의 사용자 메뉴가 숨은 채로 문서에 늘 들어 있기도 합니다. 로그인이 안 돼 있으면 곧바로 안내하며, 로그인할지는 사용자가 정합니다. 로그인 화면에서 돌아온 탭은 스스로 닫힙니다.
-
 Papago 가 막히면 브라우저에 내장된 번역기로 물러섭니다. 기기 안에서 도는 번역이라 네트워크도 권한도 필요 없지만, 최신 크롬에만 있고 게시물의 언어를 알 수 있을 때만 쓸 수 있습니다. 번역문 아래에 어느 쪽이 옮겼는지(`Papago 번역` · `브라우저 번역`) 적습니다.
 
 ### 하트 · 리포스트를 처리하는 방식
@@ -263,7 +246,6 @@ src/
 | [src/content/selectors.ts](src/content/selectors.ts) | x.com DOM 선택자 **전부**. UI 개편 시 이 파일만 고칩니다 |
 | [src/content/actions.ts](src/content/actions.ts) | 하트 · 리포스트 수행, 작성 화면 주소 |
 | [src/content/translate.ts](src/content/translate.ts) | 게시물 번역. Papago 화면을 빌려 쓰고, 막히면 브라우저 내장 번역기로 물러섭니다 |
-| [src/content/imageTranslate.ts](src/content/imageTranslate.ts) | 사진 번역. 배경 워커에 맡기고 결과 사진만 받아옵니다 |
 | [src/content/papago.ts](src/content/papago.ts) | 번역 프레임 **안에서** 도는 스크립트. 글월을 받아 넣고 결과만 돌려줍니다 |
 | [src/content/frameQueue.ts](src/content/frameQueue.ts) | 숨은 프레임 작업을 하나씩 줄 세웁니다 |
 | [src/content/frameBlock.ts](src/content/frameBlock.ts) | 프레임이 막힌 원인(CSP vs X-Frame-Options)을 가려내는 관측점 |
@@ -287,7 +269,6 @@ src/
 | `tabs` | 확장 아이콘을 눌렀을 때 덱 탭을 열고, 이미 열린 탭을 다시 찾아옵니다 |
 | `declarativeNetRequest` | x.com 응답의 `X-Frame-Options` 헤더를 제거합니다. `frame-ancestors 'self'` 는 동일 출처 임베드를 허용하지만 `X-Frame-Options: DENY` 는 동일 출처까지 막기 때문에, 이 헤더를 걷어내야 수집 프레임을 띄울 수 있습니다 |
 | `declarativeNetRequestFeedback` | 프레임이 막혔을 때 규칙이 실제로 적용되었는지 진단합니다 |
-| `cookies` | 사진 번역 전에 네이버 세션 쿠키가 있는지만 확인합니다. 없으면 요청하지 않고 로그인 안내를 띄웁니다. 확인 대상은 papago.naver.com 하나이며 값은 쓰지 않습니다 |
 | `host_permissions: https://x.com/*` | 덱과 수집기가 도는 도메인입니다 |
 | `host_permissions: https://papago.naver.com/*` | 게시물 번역에 Papago 화면을 빌려 씁니다. 유료 API 대신 사람이 쓰는 번역 화면을 보이지 않는 프레임에 띄우고, 그 안에서 도는 스크립트가 결과만 덱으로 넘깁니다 |
 

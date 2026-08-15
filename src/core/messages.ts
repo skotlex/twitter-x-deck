@@ -22,59 +22,6 @@ export const NOCACHE_PARAM = 'xdeck_t'
 /** 덱 → 배경 워커. 헤더 제거 규칙이 살아 있는지 물어본다 (진단용). */
 export const RULE_REPORT = 'xdeck:rule-report'
 
-/**
- * 사진 번역 (덱 ↔ 배경 워커 ↔ Papago 탭).
- *
- * 이 길만 postMessage 가 아니라 확장 메시지를 쓴다. Papago 이미지 번역은 네이버
- * 로그인이 있어야 하는데, 로그인 쿠키가 `SameSite=Lax` 라 x.com 이 최상위인 프레임에는
- * 실리지 않는다. Papago 가 **최상위인 탭** 이어야만 평소 세션이 실리므로, 탭을 배경으로
- * 열어 일을 시키고 결과만 받아온다. 그 탭과 덱은 서로 다른 사이트라 배경 워커가 잇는다.
- */
-export const IMAGE_TRANSLATE = 'xdeck:image-translate'
-/** Papago 탭 → 배경 워커. 준비됐으니 번역할 사진을 달라. */
-export const IMAGE_TRANSLATE_ASK = 'xdeck:image-ask'
-/** Papago 탭 → 배경 워커. 번역 결과 또는 실패 사유. */
-export const IMAGE_TRANSLATE_DONE = 'xdeck:image-done'
-
-/** 네이버 로그인이 없어 더 못 간다는 사유. */
-export const LOGIN_REQUIRED = '네이버 로그인이 필요합니다'
-
-/**
- * 끝내 결과가 안 나왔다는 사유.
- *
- * 세션 쿠키는 남아 있는데 Papago 쪽 로그인은 풀린 경우가 있어, 그때도 화면에는
- * 아무 일이 일어나지 않는다. 원인을 단정하지 않고 로그인 길도 함께 내준다.
- */
-export const RESULT_MISSING = '번역 결과를 받지 못했습니다 — 네이버 로그인이 풀렸을 수 있습니다'
-
-/**
- * 로그인을 마치고 돌아온 탭임을 알리는 표시.
- *
- * 로그인 화면에는 '마치면 이리로 보내라' 는 주소를 함께 넘기는데, 거기에 이 표시를
- * 달아 보낸다. 그 주소로 돌아온 탭은 할 일을 다 한 것이므로 스스로 물러난다 —
- * 로그인하려던 사람에게 난데없이 Papago 화면이 남는 것은 뒤끝이 좋지 않다.
- */
-export const PAPAGO_LOGIN_PARAM = 'xdeck_login'
-/** 로그인 탭 → 배경 워커. 다 됐으니 이 탭을 닫아달라. */
-export const PAPAGO_LOGIN_DONE = 'xdeck:papago-login-done'
-
-export interface ImageTranslateRequest {
-  type: typeof IMAGE_TRANSLATE
-  /** 번역할 사진. 확장 메시지는 Blob 을 실어 나르지 못해 data URL 로 보낸다. */
-  dataUrl: string
-  target: string
-  /**
-   * 원본 사진의 크기. 번역된 사진을 가려내는 잣대다 — 화면에는 배너·배지 같은 남의
-   * 그림도 함께 뜨는데, 번역본은 원본과 가로세로 비율이 같다.
-   */
-  width: number
-  height: number
-}
-
-export type ImageTranslateResult =
-  | { ok: true; dataUrl: string }
-  | { ok: false; reason: string; needsLogin: boolean }
-
 /** MAIN world 인터셉터 → ISOLATED world 브리지 (같은 프레임 안). */
 export interface CapturedPayload {
   channel: typeof CHANNEL
@@ -146,22 +93,8 @@ export type PapagoMessage =
   | { channel: typeof CHANNEL; type: 'papago-ask'; id: string; text: string; target: string }
   | { channel: typeof CHANNEL; type: 'papago-result'; id: string; text: string }
   | { channel: typeof CHANNEL; type: 'papago-failed'; id: string; reason: string }
-  /**
-   * 이미지 번역. 파일 입력에는 주소를 넣을 수 없어 바이트를 통째로 건넨다 —
-   * Blob 은 구조화 복제로 그대로 건너간다.
-   */
-  | { channel: typeof CHANNEL; type: 'papago-image'; id: string; blob: Blob; name: string }
-  /** 이미지를 넣었다. 결과는 프레임 안 Papago 화면에 그대로 뜬다. */
-  | { channel: typeof CHANNEL; type: 'papago-loaded'; id: string }
 
-const PAPAGO_MESSAGE_TYPES = new Set([
-  'papago-ready',
-  'papago-ask',
-  'papago-result',
-  'papago-failed',
-  'papago-image',
-  'papago-loaded',
-])
+const PAPAGO_MESSAGE_TYPES = new Set(['papago-ready', 'papago-ask', 'papago-result', 'papago-failed'])
 
 export function isPapagoMessage(value: unknown): value is PapagoMessage {
   return (
