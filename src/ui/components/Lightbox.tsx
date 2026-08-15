@@ -52,9 +52,9 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
       } catch (cause) {
         const login = cause instanceof ImageTranslateError && cause.needsLogin
         const detail = cause instanceof Error ? cause.message : '사진을 번역하지 못했습니다'
-        // 로그인이 없어 멈춘 것이면 탭도 조용히 닫힌다. 그 밖의 실패는 번역 탭이
-        // 앞으로 나오며, 거기에 결과가 떠 있을 수 있으므로 그 사실을 함께 알린다.
-        setError(login ? detail : `${detail} · 번역 탭을 열어뒀습니다`)
+        // 로그인이 없어 멈춘 것이면 탭도 조용히 닫힌다. 그 밖의 실패는 번역 탭을
+        // 닫지 않고 두므로, 거기에 결과가 있다는 것을 알려 찾아갈 수 있게 한다.
+        setError(login ? detail : `${detail} · 번역 탭에서 확인할 수 있습니다`)
         setNeedsLogin(login)
       } finally {
         setSending(false)

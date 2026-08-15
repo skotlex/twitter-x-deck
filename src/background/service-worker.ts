@@ -104,20 +104,16 @@ const imageJobs = new Map<string, ImageJob>()
 /**
  * 이 일에 쓴 탭을 정리한다.
  *
- * 성공했으면 조용히 닫는다. 결과를 못 꺼냈을 때만 **닫지 않고 앞으로 꺼낸다** —
- * 그 탭에는 이미 번역된 사진이 떠 있어서, 옮기지 못했다고 해둔 일까지 버릴 이유가 없다.
+ * 성공했거나 로그인이 없어 멈췄으면 조용히 닫는다. 결과를 못 꺼냈을 때만 **닫지 않고
+ * 그 자리에 둔다** — 그 탭에는 이미 번역된 사진이 떠 있어서, 옮기지 못했다고 해둔
+ * 일까지 버릴 이유가 없다.
  *
- * 로그인이 필요한 경우는 예외다. 그때는 조용히 닫는다 — 사용자는 사진을 보려던
- * 참이었는데 몇 초 뒤 난데없이 다른 탭으로 끌려가면 그게 더 나쁘다. 로그인할지는
- * 덱에서 안내를 보고 사용자가 정한다.
+ * 두고 갈 뿐 앞으로 꺼내지는 않는다. 사진을 보던 사람을 다른 탭으로 끌고 가는 것은
+ * 무엇을 보여주든 방해다. 그런 탭이 열려 있다는 사실은 덱에서 알린다.
  */
 async function settleJobTab(job: ImageJob, result: ImageTranslateResult): Promise<void> {
   if (job.tabId === null) return
-  const keep = !result.ok && !result.needsLogin
-  if (keep) {
-    await chrome.tabs.update(job.tabId, { active: true }).catch(() => null)
-    return
-  }
+  if (!result.ok && !result.needsLogin) return
   await chrome.tabs.remove(job.tabId).catch(() => null)
 }
 

@@ -53,6 +53,8 @@ const LOGIN_WALL_MS = 4_000
 const RESULT_IMAGE_TIMEOUT_MS = 20_000
 /** 결과로 셀 만한 최소 크기. 아이콘·장식 그림을 걸러낸다. */
 const MIN_RESULT_PX = 80
+/** 그림자 DOM·프레임을 몇 겹까지 파고들지. 더 깊으면 결과가 아니라 남의 위젯이다. */
+const MAX_SCAN_DEPTH = 4
 
 /** 글 번역은 덱이 띄운 프레임에서 하므로 답할 곳은 늘 부모다. */
 function post(message: PapagoMessage): void {
@@ -192,18 +194,38 @@ async function handleImage(blob: Blob, name: string): Promise<string | null> {
   return found
 }
 
-/** 결과를 찾을 때 무엇이 후보로 있었는지 한 줄로 적는다. 진단용이다. */
+/**
+ * 결과를 찾을 때 무엇이 후보로 있었는지 한 줄로 적는다. 진단용이다.
+ * 큰 것만 적는다 — 아이콘·추적 픽셀까지 늘어놓으면 정작 볼 것이 묻힌다.
+ */
 function describeCandidates(before: Set<string>): string {
-  const canvases = [...document.querySelectorAll('canvas')].map(
-    (canvas) => `${canvas.width}x${canvas.height}`,
-  )
-  const fresh = [...document.images]
-    .filter((image) => !before.has(image.src))
-    .map((image) => `${image.naturalWidth}x${image.naturalHeight}${image.complete ? '' : '(로딩중)'}`)
+  const { canvases, images, backgrounds } = collectCandidates()
 
-  const canvasPart = canvases.length ? `캔버스 ${canvases.slice(0, 4).join(' ')}` : '캔버스 없음'
-  const imagePart = fresh.length ? `새 이미지 ${fresh.slice(0, 6).join(' ')}` : '새 이미지 없음'
-  return `${canvasPart} · ${imagePart}`
+  const big = (width: number, height: number): boolean =>
+    width >= MIN_RESULT_PX && height >= MIN_RESULT_PX
+
+  const parts = [
+    describeSizes(
+      '캔버스',
+      canvases.filter((canvas) => big(canvas.width, canvas.height)).map((canvas) => `${canvas.width}x${canvas.height}`),
+    ),
+    describeSizes(
+      '새 그림',
+      images
+        .filter((image) => !before.has(image.src) && big(image.naturalWidth, image.naturalHeight))
+        .map((image) => `${image.naturalWidth}x${image.naturalHeight}`),
+    ),
+    describeSizes(
+      '배경',
+      backgrounds.map((item) => `${Math.round(item.width)}x${Math.round(item.height)}`),
+    ),
+    `프레임 ${document.querySelectorAll('iframe').length}`,
+  ]
+  return parts.join(' · ')
+}
+
+function describeSizes(label: string, sizes: string[]): string {
+  return sizes.length ? `${label} ${sizes.slice(0, 5).join(' ')}` : `${label} 없음`
 }
 
 /**
@@ -228,13 +250,15 @@ function isLoginWall(): boolean {
  * 생기지만 번역본이 그보다 뒤에 붙는다.
  */
 function readTranslatedImage(before: Set<string>): string | null {
-  for (const canvas of document.querySelectorAll('canvas')) {
+  const { canvases, images, backgrounds } = collectCandidates()
+
+  for (const canvas of canvases) {
     if (canvas.width < MIN_RESULT_PX || canvas.height < MIN_RESULT_PX) continue
     const drawn = readCanvas(canvas)
     if (drawn) return drawn
   }
 
-  const fresh = [...document.images].filter(
+  const fresh = images.filter(
     (image) =>
       !before.has(image.src) &&
       image.complete &&
@@ -242,13 +266,70 @@ function readTranslatedImage(before: Set<string>): string | null {
       image.naturalHeight >= MIN_RESULT_PX,
   )
   const found = fresh.at(-1)
-  if (!found) return null
+  if (found) return drawToDataUrl(found, found.naturalWidth, found.naturalHeight)
 
+  // 배경 그림으로 깔리는 판. 주소만으로는 덱에서 못 여니 여기서 그려 바이트로 만든다.
+  const background = backgrounds.at(-1)
+  if (!background) return null
+  const loaded = new Image()
+  loaded.src = background.url
+  if (!loaded.complete || loaded.naturalWidth < MIN_RESULT_PX) return null
+  return drawToDataUrl(loaded, loaded.naturalWidth, loaded.naturalHeight)
+}
+
+/** 그림 하나를 캔버스에 옮겨 그려 data URL 로 만든다. */
+function drawToDataUrl(source: CanvasImageSource, width: number, height: number): string | null {
   const canvas = document.createElement('canvas')
-  canvas.width = found.naturalWidth
-  canvas.height = found.naturalHeight
-  canvas.getContext('2d')?.drawImage(found, 0, 0)
+  canvas.width = width
+  canvas.height = height
+  canvas.getContext('2d')?.drawImage(source, 0, 0)
   return readCanvas(canvas)
+}
+
+interface Candidates {
+  canvases: HTMLCanvasElement[]
+  images: HTMLImageElement[]
+  backgrounds: Array<{ url: string; width: number; height: number }>
+}
+
+/**
+ * 결과가 있을 만한 자리를 모두 훑는다.
+ *
+ * `document.images` 만 보면 놓치는 자리가 많다 — 요즘 화면은 그림자 DOM 안에도,
+ * 같은 출처 프레임 안에도 그린다. CSS 배경으로 까는 판도 있다. 실제로 큰 그림이
+ * 하나도 안 잡혀 결과를 못 찾았고, 그래서 세 곳을 함께 본다.
+ */
+function collectCandidates(): Candidates {
+  const found: Candidates = { canvases: [], images: [], backgrounds: [] }
+
+  const walk = (root: Document | ShadowRoot, depth: number): void => {
+    if (depth > MAX_SCAN_DEPTH) return
+    found.canvases.push(...root.querySelectorAll('canvas'))
+    found.images.push(...root.querySelectorAll('img'))
+
+    for (const element of root.querySelectorAll<HTMLElement>('*')) {
+      if (element.shadowRoot) walk(element.shadowRoot, depth + 1)
+
+      const box = element.getBoundingClientRect()
+      if (box.width < MIN_RESULT_PX || box.height < MIN_RESULT_PX) continue
+      const url = /url\(["']?(.+?)["']?\)/.exec(getComputedStyle(element).backgroundImage)?.[1]
+      if (url && !url.startsWith('data:image/svg')) {
+        found.backgrounds.push({ url, width: box.width, height: box.height })
+      }
+    }
+
+    for (const frame of root.querySelectorAll('iframe')) {
+      try {
+        const doc = frame.contentDocument
+        if (doc) walk(doc, depth + 1)
+      } catch {
+        // 다른 출처의 프레임. 읽을 수 없고, 읽을 이유도 없다.
+      }
+    }
+  }
+
+  walk(document, 0)
+  return found
 }
 
 /** 캔버스를 data URL 로. 다른 출처가 섞여 오염됐으면 null. */
