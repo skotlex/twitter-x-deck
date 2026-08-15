@@ -53,7 +53,6 @@ API 요금이 들지 않습니다. 사용자의 브라우저 세션으로 x.com 
 - **게시물 상세 · 프로필** — 답글 트리와 프로필을 덱 안 창에서 확인합니다
 - **미디어 원본** — 이미지 · 동영상을 눌러 라이트박스로 확대합니다
 - **번역** — 읽는 언어와 다른 글에만 `번역하기` 가 붙고, 번역문은 원문 아래에 덧붙습니다
-- **사진 속 글자** — 사진을 크게 띄운 뒤 글자를 읽어 번역문을 아래에 깔아줍니다
 
 ### 읽기 편하게 다듬는 표시 설정
 
@@ -208,14 +207,6 @@ x.com 과 Papago 는 출처가 달라 서로의 DOM 을 읽을 수 없습니다.
 
 Papago 가 막히면 브라우저에 내장된 번역기로 물러섭니다. 기기 안에서 도는 번역이라 네트워크도 권한도 필요 없지만, 최신 크롬에만 있고 게시물의 언어를 알 수 있을 때만 쓸 수 있습니다. 번역문 아래에 어느 쪽이 옮겼는지(`Papago 번역` · `브라우저 번역`) 적습니다.
 
-### 사진 속 글자
-
-사진에서 글자를 읽어(OCR) 그 글을 번역합니다. 인식은 **이 브라우저 안에서** 끝납니다 — 사진을 어디로도 보내지 않으므로 횟수 제한도 로그인도 없습니다. 뽑아낸 글의 번역만 위의 번역 경로를 그대로 씁니다.
-
-인식은 [tesseract.js](https://github.com/naptha/tesseract.js) 가 하며, x.com 페이지 안에서는 돌릴 수 없어(그 페이지의 CSP 가 워커 생성을 막습니다) 보이지 않는 확장 문서(offscreen)를 하나 띄워 그 안에서 돌립니다. 글자 데이터는 처음 한 번만 내려받고 그 뒤로는 브라우저에 남습니다 — 그래서 첫 인식만 오래 걸립니다.
-
-**번역된 사진을 만들지는 않습니다.** 원문 글자를 깨끗이 지우고 그 자리에 다시 조판하는 일은 흉내 낼 수 있는 수준이 아니어서, 어설프게 덮어 그리면 결과가 더 지저분해집니다. 대신 읽어낸 글과 그 번역을 사진 아래에 나란히 보여줍니다. 만화 말풍선이나 손글씨처럼 꾸민 글자는 잘 못 읽는데, 그건 이 방식의 한계입니다.
-
 ### 하트 · 리포스트를 처리하는 방식
 
 x.com 의 내부 뮤테이션을 직접 호출하려면 요청 서명까지 위조해야 하고, 이는 깨지기 쉬운 동시에 계정 위험을 집니다. 그래서 **게시물 상세 페이지를 보이지 않는 프레임에 띄운 뒤 x.com 자신의 버튼을 누르는** 방식을 씁니다. 요청 생성과 서명, 낙관적 갱신을 전부 x.com 코드가 수행하며 확장은 버튼을 누르기만 합니다. 답글 · 인용 · 새 글도 같은 원칙으로, x.com 의 공식 작성 화면을 덱 안에 그대로 띄웁니다.
@@ -254,8 +245,6 @@ src/
 | [src/content/collector.ts](src/content/collector.ts) | 수집 본체. 탭 유지, 알림 감지 · 클릭, 강제 갱신 사다리, 교대 수집 |
 | [src/content/selectors.ts](src/content/selectors.ts) | x.com DOM 선택자 **전부**. UI 개편 시 이 파일만 고칩니다 |
 | [src/content/actions.ts](src/content/actions.ts) | 하트 · 리포스트 수행, 작성 화면 주소 |
-| [src/content/imageText.ts](src/content/imageText.ts) | 사진 속 글자 읽기·번역을 잇습니다 |
-| [src/offscreen/ocr.ts](src/offscreen/ocr.ts) | 글자 인식이 실제로 도는 자리 (화면 없는 확장 문서) |
 | [src/content/translate.ts](src/content/translate.ts) | 게시물 번역. Papago 화면을 빌려 쓰고, 막히면 브라우저 내장 번역기로 물러섭니다 |
 | [src/content/papago.ts](src/content/papago.ts) | 번역 프레임 **안에서** 도는 스크립트. 글월을 받아 넣고 결과만 돌려줍니다 |
 | [src/content/frameQueue.ts](src/content/frameQueue.ts) | 숨은 프레임 작업을 하나씩 줄 세웁니다 |
@@ -279,7 +268,6 @@ src/
 | `storage` · `unlimitedStorage` | 설정 저장과 게시물 보관(IndexedDB)에 사용합니다 |
 | `tabs` | 확장 아이콘을 눌렀을 때 덱 탭을 열고, 이미 열린 탭을 다시 찾아옵니다 |
 | `declarativeNetRequest` | x.com 응답의 `X-Frame-Options` 헤더를 제거합니다. `frame-ancestors 'self'` 는 동일 출처 임베드를 허용하지만 `X-Frame-Options: DENY` 는 동일 출처까지 막기 때문에, 이 헤더를 걷어내야 수집 프레임을 띄울 수 있습니다 |
-| `offscreen` | 사진 속 글자를 읽는 화면 없는 문서를 띄웁니다. x.com 페이지 안에서는 그 작업에 필요한 워커를 띄울 수 없습니다 |
 | `declarativeNetRequestFeedback` | 프레임이 막혔을 때 규칙이 실제로 적용되었는지 진단합니다 |
 | `host_permissions: https://x.com/*` | 덱과 수집기가 도는 도메인입니다 |
 | `host_permissions: https://papago.naver.com/*` | 게시물 번역에 Papago 화면을 빌려 씁니다. 유료 API 대신 사람이 쓰는 번역 화면을 보이지 않는 프레임에 띄우고, 그 안에서 도는 스크립트가 결과만 덱으로 넘깁니다 |

@@ -4,17 +4,7 @@
  * 덱은 x.com 탭 위에 얹히므로, 여기서 할 일은 그 탭을 열고 다시 찾아주는 것뿐이다.
  * 수집 메시지는 같은 문서·같은 오리진 안에서만 오가므로 중계할 것이 없다.
  */
-import {
-  DECK_PARAM,
-  OCR_DONE,
-  OCR_PROGRESS,
-  OCR_RUN,
-  ROLE_PARAM,
-  RULE_REPORT,
-  type OcrDone,
-  type OcrProgress,
-  type OcrRequest,
-} from '@core/messages'
+import { DECK_PARAM, ROLE_PARAM, RULE_REPORT } from '@core/messages'
 
 /** 최상위 탭이 맡는 컬럼. 나머지는 그 탭 안의 숨은 프레임이 맡는다. */
 const DECK_URL = `https://x.com/home?${ROLE_PARAM}=foryou&${DECK_PARAM}=1`
@@ -78,55 +68,6 @@ async function ruleReport(tabId?: number): Promise<string> {
   return parts.join(' · ')
 }
 
-/**
- * 글자 인식이 도는 문서를 띄워둔다.
- *
- * 화면에 보이지 않는 확장 문서다. x.com 페이지 안에서는 워커를 띄울 수 없어(그 페이지의
- * CSP 가 막는다) 이 자리를 따로 마련한다. 한 번 띄우면 계속 두고 쓴다 — 띄울 때마다
- * 글자 데이터를 다시 읽으면 인식이 매번 느려진다.
- */
-const OCR_DOCUMENT = 'offscreen.html'
-let ocrReady: Promise<void> | null = null
-
-function ensureOcrDocument(): Promise<void> {
-  ocrReady ??= (async () => {
-    const existing = await chrome.runtime.getContexts({
-      contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
-    })
-    if (existing.length > 0) return
-
-    await chrome.offscreen.createDocument({
-      url: OCR_DOCUMENT,
-      reasons: [chrome.offscreen.Reason.WORKERS],
-      justification: '사진 속 글자를 이 브라우저 안에서 읽습니다.',
-    })
-  })().catch((cause: unknown) => {
-    // 다음 요청에서 다시 시도할 수 있게 놓아준다.
-    ocrReady = null
-    throw cause
-  })
-  return ocrReady
-}
-
-/**
- * 인식을 시켜만 놓는다. 결과는 기다리지 않는다.
- *
- * 처음 한 번은 몇 분이 걸리는데, 그 시간을 응답 채널에 매달아 두면 그 사이 이 워커가
- * 잠들며 통로가 끊긴다. 결과는 오프스크린 문서가 따로 보내오고, 그때 탭으로 옮긴다.
- */
-async function startOcr(request: OcrRequest, tabId: number): Promise<void> {
-  try {
-    await ensureOcrDocument()
-    // 오프스크린 문서도 같은 메시지 통로를 듣는다. 보낸 것이 그대로 그쪽으로 간다.
-    void chrome.runtime.sendMessage({ ...request, tabId }).catch(() => undefined)
-  } catch (cause) {
-    const reason = cause instanceof Error ? cause.message : '글자 인식을 시작하지 못했습니다'
-    void chrome.tabs
-      .sendMessage(tabId, { type: OCR_DONE, tabId, result: { ok: false, reason } })
-      .catch(() => undefined)
-  }
-}
-
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   const type = (message as { type?: string } | null)?.type
 
@@ -138,34 +79,6 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
 
   // 덱이 보낸 것만 받는다. 오프스크린 문서가 답으로 보내는 같은 이름의 메시지를
   // 여기서 다시 집으면 서로를 부르며 맴돈다.
-  // 덱이 보낸 것만 받는다(tabId 가 없다). 오프스크린 문서로 넘긴 것을 여기서 다시
-  // 집으면 서로를 부르며 맴돈다.
-  if (type === OCR_RUN && sender.tab?.id !== undefined) {
-    void startOcr(message as OcrRequest, sender.tab.id)
-    sendResponse(null)
-    return false
-  }
-
-  // 오프스크린 문서가 보낸 결과·진행 상황을 물어본 탭으로 넘긴다. 확장 메시지는
-  // 콘텐츠 스크립트까지 저절로 가지 않아 여기서 한 번 옮겨줘야 한다.
-  if (type === OCR_DONE) {
-    const done = message as OcrDone
-    if (done.tabId !== undefined) {
-      void chrome.tabs.sendMessage(done.tabId, done).catch(() => undefined)
-    }
-    sendResponse(null)
-    return false
-  }
-
-  if (type === OCR_PROGRESS) {
-    const progress = message as OcrProgress
-    if (progress.tabId !== undefined) {
-      void chrome.tabs.sendMessage(progress.tabId, progress).catch(() => undefined)
-    }
-    sendResponse(null)
-    return false
-  }
-
   return undefined
 })
 
