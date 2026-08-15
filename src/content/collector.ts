@@ -43,6 +43,8 @@ import {
 
 /** 상태 점검 주기. */
 const TICK_MS = 1_000
+/** 상태가 그대로여도 이 간격마다 한 번은 다시 알린다. */
+const STATE_RESEND_MS = 5_000
 /** 같은 알림을 연타하지 않도록 두는 최소 간격. */
 const PILL_COOLDOWN_MS = 3_000
 /** 탭 선택이 어긋났을 때 다시 누르기까지의 최소 간격. */
@@ -147,6 +149,8 @@ export function startCollector(
    * 그동안 탭을 되돌리거나 대타로 옮겨 다니면 사용자의 조작과 정면으로 싸운다.
    */
   let paused = false
+  /** 상태를 마지막으로 알린 시각. 바뀐 게 없어도 이따금 다시 알리기 위해 둔다. */
+  let lastStateEmitAt = 0
   /** 대타로 들러 있는 타임라인. 없으면 null. */
   let priming: TimelineKind | null = null
   let primingUntil = 0
@@ -160,9 +164,20 @@ export function startCollector(
   const target = (): TimelineKind => priming ?? home()
 
   function setState(next: CollectorState, message?: string): void {
+    /*
+     * 바뀐 것이 없어도 이따금 다시 알린다.
+     *
+     * 최상위 문서의 수집기는 덱보다 **먼저** 뜬다. 그래서 첫 상태를 알릴 때는 아직
+     * 듣는 쪽이 없고, 그 뒤로 상태가 그대로면 다시 알릴 일도 없어 덱은 영영 '대기'
+     * 에 머문다. 로그아웃처럼 처음부터 끝까지 한 상태로 있는 경우가 정확히 그렇다.
+     */
+    const now = Date.now()
+    const resend = now - lastStateEmitAt > STATE_RESEND_MS
+    if (resend) lastStateEmitAt = now
+
     // 담당하는 모든 컬럼의 상태를 함께 올린다 — 교대 수집이면 둘 다 같은 처지다.
     for (const kind of kinds) {
-      if (states.get(kind) === next) continue
+      if (states.get(kind) === next && !resend) continue
       states.set(kind, next)
       emit(
         message

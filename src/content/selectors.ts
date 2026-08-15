@@ -315,6 +315,51 @@ export function findViewer(): ViewerInfo | null {
  */
 export function isLoggedOut(): boolean {
   const path = window.location.pathname
-  if (path.startsWith('/i/flow/login') || path === '/login' || path === '/i/flow/signup') return true
-  return Boolean(document.querySelector('[data-testid="loginButton"], [data-testid="signupButton"]'))
+  if (LOGIN_PATH_RE.test(path)) return true
+
+  // testid 는 개편 때 가장 먼저 바뀐다. 로그인 화면으로 가는 링크 주소도 함께 본다.
+  if (document.querySelector(LOGIN_UI_SELECTOR)) return true
+
+  // 그것마저 안 걸리면 문구로 찾는다 — 이 파일의 다른 선택자들과 같은 순서다.
+  // 게시물 안은 보지 않는다. 글 내용에 '로그인' 이 들어 있을 뿐인 링크를 근거로
+  // 삼으면 멀쩡히 로그인한 사람의 덱이 통째로 비켜서 버린다.
+  const buttons = document.querySelectorAll<HTMLElement>('[role="button"], button, a')
+  for (const button of buttons) {
+    if (button.closest('article')) continue
+    const text = norm(button.textContent)
+    if (text.length === 0 || text.length > 20) continue
+    if (LOGIN_LABELS.some((label) => text === label)) return true
+  }
+  return false
 }
+
+/** 로그인·가입 흐름의 주소. 여기에 있으면 로그인이 풀린 것이다. */
+const LOGIN_PATH_RE = /^\/(login|signup|i\/flow\/(login|signup))/
+
+const LOGIN_UI_SELECTOR = [
+  '[data-testid="loginButton"]',
+  '[data-testid="signupButton"]',
+  '[data-testid="login"]',
+  'a[href="/login"]',
+  'a[href^="/i/flow/login"]',
+  'a[href^="/i/flow/signup"]',
+].join(', ')
+
+/**
+ * 로그인·가입 버튼 문구. 정확히 일치할 때만 센다 — 부분 일치로 보면 게시물 밖의
+ * 다른 문구까지 걸린다.
+ */
+const LOGIN_LABELS = [
+  '로그인',
+  '가입하기',
+  '계정 만들기',
+  'log in',
+  'sign in',
+  'sign up',
+  'create account',
+  'ログイン',
+  'アカウント作成',
+  'iniciar sesión',
+  'se connecter',
+  'anmelden',
+]
