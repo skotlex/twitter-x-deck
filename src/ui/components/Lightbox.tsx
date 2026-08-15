@@ -181,7 +181,16 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         </button>
       </header>
 
-      <div className="flex min-h-0 flex-1 items-center justify-center px-4 pb-6">
+      {/*
+        사진이 여러 장이면 양옆을 단추 폭만큼 비워 둔다. 그러지 않으면 가로로 넓은
+        사진이 화면 끝까지 뻗어 단추 자리를 그대로 덮는다 — 단추는 사진 위에 묻혀
+        보이지 않고, 그 자리를 눌러도 사진이 눌릴 뿐 다음 장으로 넘어가지 않는다.
+        세로로 긴 사진에서는 양옆이 비어 있어 멀쩡히 보였으니, 사진에 따라 됐다 안
+        됐다 하는 것처럼 보였다.
+      */}
+      <div
+        className={`flex min-h-0 flex-1 items-center justify-center pb-6 ${total > 1 ? 'px-16' : 'px-4'}`}
+      >
         {current.playbackUrl ? (
           <video
             src={current.playbackUrl}
@@ -220,6 +229,13 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
   )
 }
 
+/**
+ * 앞뒤 사진으로 넘기는 단추.
+ *
+ * 사진 쪽에 자리를 비워 두었지만(위), 그것만 믿지 않는다. 배경을 검게 깔고 흰 테두리를
+ * 둘러 밝은 사진 위에서도 모양이 남게 하고, z-10 으로 사진보다 위에 놓아 눌리는 것도
+ * 이 단추가 되게 한다.
+ */
 function NavButton({ side, onClick }: { side: 'left' | 'right'; onClick: () => void }) {
   return (
     <button
@@ -229,7 +245,7 @@ function NavButton({ side, onClick }: { side: 'left' | 'right'; onClick: () => v
         onClick()
       }}
       aria-label={side === 'left' ? '이전 이미지' : '다음 이미지'}
-      className={`absolute top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/25 ${
+      className={`absolute top-1/2 z-10 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/55 text-white shadow-lg ring-1 ring-white/30 backdrop-blur-sm transition-colors hover:bg-black/80 ${
         side === 'left' ? 'left-4' : 'right-4'
       }`}
     >
