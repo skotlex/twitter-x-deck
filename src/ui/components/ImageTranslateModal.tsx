@@ -8,10 +8,11 @@
  * 파일 입력에는 주소를 넣을 수 없어 사진을 여기서 받아 바이트로 건넨다. 프레임 안에서
  * 도는 우리 스크립트(`papago.ts`)가 그것을 파일로 만들어 넣는다.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CHANNEL,
   isPapagoMessage,
+  LOGIN_REQUIRED,
   PAPAGO_ORIGIN,
   PAPAGO_PARAM,
   type PapagoMessage,
@@ -34,10 +35,23 @@ export function ImageTranslateModal({ imageUrl, target, onClose }: ImageTranslat
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
-  // 요청과 응답을 짝짓는 일회용 값. 창을 다시 열면 새로 만든다.
-  const [id] = useState(() => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`)
+  /** 다시 시도한 횟수. 프레임을 처음부터 다시 띄우는 열쇠로 쓴다. */
+  const [attempt, setAttempt] = useState(0)
+  // 요청과 응답을 짝짓는 일회용 값. 다시 시도할 때마다 새로 만든다 —
+  // 앞선 시도의 뒤늦은 응답을 이번 것으로 잘못 받으면 안 된다.
+  const id = useMemo(
+    () => `${attempt}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    [attempt],
+  )
 
   const source = `${PAPAGO_ORIGIN}/image?${PAPAGO_PARAM}=${id}&tk=${encodeURIComponent(target)}`
+  const needsLogin = error === LOGIN_REQUIRED
+
+  const retry = useCallback(() => {
+    setError(null)
+    setSent(false)
+    setAttempt((prev) => prev + 1)
+  }, [])
 
   /** 사진을 받아 프레임으로 건넨다. 프레임이 준비됐다고 알려온 뒤에 부른다. */
   const send = useCallback(async () => {
@@ -80,7 +94,7 @@ export function ImageTranslateModal({ imageUrl, target, onClose }: ImageTranslat
       setError((prev) => prev ?? 'Papago 가 응답하지 않았습니다')
     }, READY_TIMEOUT_MS)
     return () => window.clearTimeout(timer)
-  }, [])
+  }, [attempt])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -111,9 +125,34 @@ export function ImageTranslateModal({ imageUrl, target, onClose }: ImageTranslat
         onClick={(event) => event.stopPropagation()}
       >
         <span className="text-[13px] font-semibold">사진 번역</span>
-        <span className="text-[12.5px] text-white/60">
+        <span className={`text-[12.5px] ${error ? 'text-white' : 'text-white/60'}`}>
           {error ? error : sent ? 'Papago 로 번역했습니다' : '사진을 넣는 중…'}
         </span>
+
+        {/*
+          Papago 는 이미지 번역에 네이버 로그인을 요구한다. 우리가 대신 로그인해 줄 수는
+          없으므로 새 탭으로 길만 내주고, 돌아와서 다시 시도할 수 있게 한다 —
+          쿠키는 함께 쓰므로 그 탭에서 로그인하면 이 창에서도 통한다.
+        */}
+        {needsLogin && (
+          <button
+            type="button"
+            onClick={() => window.open(`${PAPAGO_ORIGIN}/image`, '_blank', 'noopener,noreferrer')}
+            className="rounded-full bg-white px-3 py-1 text-[12.5px] font-semibold text-black transition-opacity hover:opacity-85"
+          >
+            새 탭에서 로그인
+          </button>
+        )}
+        {error && (
+          <button
+            type="button"
+            onClick={retry}
+            className="rounded-full bg-white/15 px-3 py-1 text-[12.5px] font-semibold text-white transition-colors hover:bg-white/25"
+          >
+            다시 시도
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onClose}
@@ -129,6 +168,9 @@ export function ImageTranslateModal({ imageUrl, target, onClose }: ImageTranslat
         onClick={(event) => event.stopPropagation()}
       >
         <iframe
+          // 열쇠를 바꿔 프레임을 처음부터 다시 띄운다. 주소만 갈아 끼우면 SPA 가
+          // 이미 뜬 상태를 그대로 들고 있어 사진을 다시 넣을 자리가 없다.
+          key={attempt}
           ref={frameRef}
           src={source}
           title="Papago 사진 번역"

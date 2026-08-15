@@ -13,6 +13,7 @@
 import {
   CHANNEL,
   isPapagoMessage,
+  LOGIN_REQUIRED,
   PAPAGO_PARAM,
   X_ORIGIN,
   type PapagoMessage,
@@ -39,6 +40,8 @@ const SOURCE = '[data-testid="source-editor"], #source-editor'
 const TARGET = '[data-testid="target-editor"], #target-editor'
 /** 이미지 번역 화면의 파일 입력. */
 const FILE_INPUT = '[data-testid="file-input"], input#file[type="file"]'
+/** 사진을 넣은 뒤 로그인 안내가 뜨는지 지켜보는 시간. */
+const LOGIN_WALL_TIMEOUT_MS = 5_000
 
 function post(message: PapagoMessage): void {
   window.parent.postMessage(message, X_ORIGIN)
@@ -168,6 +171,24 @@ async function handleImage(blob: Blob, name: string): Promise<void> {
   input.files = transfer.files
   input.dispatchEvent(new Event('change', { bubbles: true }))
   post({ channel: CHANNEL, type: 'papago-loaded', id: id ?? '' })
+
+  // 이미지 번역은 네이버 로그인을 요구한다. 안내가 뜨면 그대로 알린다 — 사진을 넣는
+  // 데까지는 성공했으므로, 사용자에게는 '안 된다' 가 아니라 '로그인이 필요하다' 로
+  // 보여야 다음에 무엇을 할지 알 수 있다.
+  const wall = await waitFor(() => (isLoginWall() ? true : null), LOGIN_WALL_TIMEOUT_MS)
+  if (wall) {
+    post({ channel: CHANNEL, type: 'papago-failed', id: id ?? '', reason: LOGIN_REQUIRED })
+  }
+}
+
+/**
+ * '로그인이 필요한 기능입니다' 안내가 떠 있는지.
+ *
+ * 화면 오른쪽 위의 '로그인' 버튼은 늘 있으므로 그것만으로는 알 수 없다.
+ * 필요하다고 **말하는** 문구만 센다.
+ */
+function isLoginWall(): boolean {
+  return /로그인이?\s*필요|login\s*(is\s*)?required/i.test(document.body?.innerText ?? '')
 }
 
 async function handle(text: string): Promise<void> {
