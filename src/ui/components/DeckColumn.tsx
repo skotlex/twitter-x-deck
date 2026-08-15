@@ -135,6 +135,13 @@ export function DeckColumn({
     >
       <header
         draggable={reorder !== null}
+        // 머리글 아무 데나 눌러 맨 위로 올린다. 컬럼이 길어지면 스크롤바를 찾아
+        // 끌어올리는 것보다 이쪽이 빠르다.
+        onClick={(event) => {
+          // 새로 받기 버튼을 누른 것까지 '맨 위로' 로 삼지 않는다.
+          if (event.target instanceof HTMLElement && event.target.closest('button')) return
+          scrollToTop()
+        }}
         onDragStart={(event) => {
           // 머리글 안의 버튼을 누른 것까지 드래그로 삼지 않는다.
           if (event.target instanceof HTMLElement && event.target.closest('button')) {
@@ -150,12 +157,12 @@ export function DeckColumn({
           reorder?.onEnd()
         }}
         className={`sticky top-0 z-10 flex select-none items-center gap-2.5 bg-surface/85 px-4 py-3 backdrop-blur-xl ${
-          reorder ? 'cursor-grab active:cursor-grabbing' : ''
+          reorder ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
         }`}
       >
         <h2
           className="text-[15px] font-semibold tracking-tight"
-          title={reorder ? '끌어서 컬럼 순서 바꾸기' : undefined}
+          title={reorder ? '눌러서 맨 위로 · 끌어서 컬럼 순서 바꾸기' : '눌러서 맨 위로'}
         >
           {TIMELINE_LABEL[kind]}
         </h2>
