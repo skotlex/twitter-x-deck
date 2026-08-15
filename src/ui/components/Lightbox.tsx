@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { TweetMedia } from '@core/types'
+import { openImageTranslation } from '../../content/imageTranslate'
 import { READING_LANG } from '../../content/translate'
 import { originalMediaUrl } from '../lib/format'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { CloseIcon } from './icons'
-import { ImageTranslateModal } from './ImageTranslateModal'
 
 export interface LightboxProps {
   media: TweetMedia[]
@@ -17,9 +17,31 @@ export interface LightboxProps {
 /** 이미지 원본 보기. 화살표·Esc 로 조작하고, 배경을 누르면 닫힌다. */
 export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProps) {
   const [index, setIndex] = useState(startIndex)
-  const [translating, setTranslating] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const total = media.length
   const current = media[Math.min(index, total - 1)]
+
+  /**
+   * 사진 번역. Papago 이미지 번역 탭을 열어 이 사진을 넣는다.
+   *
+   * 덱 안 창이 아니라 새 탭인 이유는 로그인 때문이다 — 네이버 세션 쿠키가 x.com 이
+   * 최상위인 프레임에는 실리지 않아, 프레임 안의 Papago 는 이미 로그인한 사람에게도
+   * 로그인하라고 한다.
+   */
+  const translate = useCallback(async () => {
+    const url = current ? originalMediaUrl(current.previewUrl) : null
+    if (!url || sending) return
+    setSending(true)
+    setError(null)
+    try {
+      await openImageTranslation(url, READING_LANG)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '사진 번역을 열지 못했습니다')
+    } finally {
+      setSending(false)
+    }
+  }, [current, sending])
 
   const move = useCallback(
     (delta: number) => {
@@ -81,15 +103,18 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         {!current.playbackUrl && (
           <button
             type="button"
+            disabled={sending}
             onClick={(event) => {
               event.stopPropagation()
-              setTranslating(true)
+              void translate()
             }}
-            className="text-[13px] text-white/70 underline-offset-2 hover:text-white hover:underline"
+            className="text-[13px] text-white/70 underline-offset-2 hover:text-white hover:underline disabled:opacity-60"
+            title="Papago 이미지 번역으로 엽니다 (네이버 로그인 필요)"
           >
-            사진 번역
+            {sending ? '사진 번역 여는 중…' : '사진 번역'}
           </button>
         )}
+        {error && <span className="text-[12.5px] text-white/70">{error}</span>}
         <button
           type="button"
           onClick={onClose}
@@ -134,14 +159,6 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
           <NavButton side="left" onClick={() => move(-1)} />
           <NavButton side="right" onClick={() => move(1)} />
         </>
-      )}
-
-      {translating && (
-        <ImageTranslateModal
-          imageUrl={current.previewUrl}
-          target={READING_LANG}
-          onClose={() => setTranslating(false)}
-        />
       )}
     </div>
   )

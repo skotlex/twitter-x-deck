@@ -78,12 +78,6 @@ export interface DeletedMessage {
 /** 덱이 띄운 번역 프레임임을 알리는 표시. 사람이 직접 연 Papago 는 건드리지 않는다. */
 export const PAPAGO_PARAM = 'xdeck_tr'
 
-/**
- * 이미지 번역이 네이버 로그인을 요구할 때의 사유.
- * 프레임과 덱이 같은 문자열을 봐야 창이 로그인 안내를 띄울 수 있다.
- */
-export const LOGIN_REQUIRED = '네이버 로그인이 필요합니다'
-
 /** 번역 프레임의 출처. 이 두 곳 사이에서만 메시지를 주고받는다. */
 export const PAPAGO_ORIGIN = 'https://papago.naver.com'
 export const X_ORIGIN = 'https://x.com'

@@ -8,12 +8,14 @@
  * 번역할 글월은 주소(`st`)에 실려 온다 — Papago 가 공유 링크로 쓰는 방식이라 우리가
  * 입력란을 건드릴 일이 없다. 주소에 담기엔 너무 긴 글만 여기서 직접 넣는다.
  *
- * **덱이 띄운 프레임에서만 돈다.** 사람이 직접 연 Papago 탭에는 표시가 없다.
+ * 글 번역은 보이지 않는 프레임에서, 사진 번역은 새 탭에서 한다. 어느 쪽이든 이
+ * 스크립트가 하는 일은 같고, 우리를 부른 창으로 결과를 돌려준다.
+ *
+ * **덱이 부른 문서에서만 돈다.** 사람이 직접 연 Papago 에는 표시가 없다.
  */
 import {
   CHANNEL,
   isPapagoMessage,
-  LOGIN_REQUIRED,
   PAPAGO_PARAM,
   X_ORIGIN,
   type PapagoMessage,
@@ -40,11 +42,20 @@ const SOURCE = '[data-testid="source-editor"], #source-editor'
 const TARGET = '[data-testid="target-editor"], #target-editor'
 /** 이미지 번역 화면의 파일 입력. */
 const FILE_INPUT = '[data-testid="file-input"], input#file[type="file"]'
-/** 사진을 넣은 뒤 로그인 안내가 뜨는지 지켜보는 시간. */
-const LOGIN_WALL_TIMEOUT_MS = 5_000
+
+/**
+ * 우리를 부른 쪽. 프레임이면 부모, 새 탭이면 그 탭을 연 창이다.
+ *
+ * 글 번역은 보이지 않는 프레임에서 하지만, 사진 번역은 새 탭에서 한다 —
+ * 네이버 로그인 쿠키가 `SameSite=Lax` 라 x.com 이 최상위인 프레임에는 실리지 않아,
+ * 이미 로그인한 사람에게도 프레임 안의 Papago 는 로그인하라고 한다.
+ */
+function caller(): Window | null {
+  return window.parent !== window.self ? window.parent : window.opener
+}
 
 function post(message: PapagoMessage): void {
-  window.parent.postMessage(message, X_ORIGIN)
+  caller()?.postMessage(message, X_ORIGIN)
 }
 
 function sleep(ms: number): Promise<void> {
@@ -153,8 +164,8 @@ async function waitForResult(): Promise<string> {
  * 통째로 보내주고, 여기서 `DataTransfer` 로 목록을 꾸며 넣은 뒤 사람이 고른 것과
  * 같은 `change` 를 낸다.
  *
- * 결과는 우리가 읽지 않는다. 번역된 이미지는 이 화면에 그대로 뜨고, 부모는 이
- * 프레임을 감추지 않고 보여준다 — Papago 의 원문/번역 토글도 그대로 쓸 수 있다.
+ * 결과는 우리가 읽지 않는다. 번역된 이미지는 이 화면에 그대로 뜨고, 사용자는 그
+ * 화면을 직접 본다 — Papago 의 원문/번역 토글도 그대로 쓸 수 있다.
  */
 async function handleImage(blob: Blob, name: string): Promise<void> {
   const input = await waitFor(
@@ -171,24 +182,6 @@ async function handleImage(blob: Blob, name: string): Promise<void> {
   input.files = transfer.files
   input.dispatchEvent(new Event('change', { bubbles: true }))
   post({ channel: CHANNEL, type: 'papago-loaded', id: id ?? '' })
-
-  // 이미지 번역은 네이버 로그인을 요구한다. 안내가 뜨면 그대로 알린다 — 사진을 넣는
-  // 데까지는 성공했으므로, 사용자에게는 '안 된다' 가 아니라 '로그인이 필요하다' 로
-  // 보여야 다음에 무엇을 할지 알 수 있다.
-  const wall = await waitFor(() => (isLoginWall() ? true : null), LOGIN_WALL_TIMEOUT_MS)
-  if (wall) {
-    post({ channel: CHANNEL, type: 'papago-failed', id: id ?? '', reason: LOGIN_REQUIRED })
-  }
-}
-
-/**
- * '로그인이 필요한 기능입니다' 안내가 떠 있는지.
- *
- * 화면 오른쪽 위의 '로그인' 버튼은 늘 있으므로 그것만으로는 알 수 없다.
- * 필요하다고 **말하는** 문구만 센다.
- */
-function isLoginWall(): boolean {
-  return /로그인이?\s*필요|login\s*(is\s*)?required/i.test(document.body?.innerText ?? '')
 }
 
 async function handle(text: string): Promise<void> {
@@ -218,7 +211,7 @@ async function handle(text: string): Promise<void> {
   post({ channel: CHANNEL, type: 'papago-result', id: id ?? '', text: result })
 }
 
-if (id && window.parent !== window.self) {
+if (id && caller()) {
   window.addEventListener('message', (event: MessageEvent) => {
     if (event.origin !== X_ORIGIN || !isPapagoMessage(event.data)) return
     if (event.data.id !== id) return
