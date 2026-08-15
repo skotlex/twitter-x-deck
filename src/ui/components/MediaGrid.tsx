@@ -72,15 +72,35 @@ function MediaItem({
 
     const enter = () => setCardActive(true)
     const leave = () => setCardActive(false)
+
+    /**
+     * 포커스를 잃었다고 다 떠난 것은 아니다.
+     *
+     * 카드 안 버튼을 누르면 포커스가 카드 밖으로 밀려나는 일이 여럿 있다 — 처리하는
+     * 동안 그 버튼이 비활성화되기도 하고(비활성화된 요소는 포커스를 잃는다), 번역이
+     * 띄운 숨은 프레임이 제 입력란에 포커스를 가져가기도 한다. 그걸 이탈로 세면
+     * 보고 있던 영상이 버튼을 눌렀다는 이유만으로 멈춘다.
+     *
+     * 그래서 두 가지를 먼저 본다 — 마우스가 아직 카드 위에 있으면 무엇이 포커스를
+     * 가져갔든 이 카드를 보고 있는 것이고, 포커스가 카드 안에서 자리만 옮겼거나 아예
+     * 사라진 것도 떠난 것이 아니다.
+     */
+    const leaveFocus = (event: FocusEvent) => {
+      if (card.matches(':hover')) return
+      const next = event.relatedTarget as Node | null
+      if (next === null || card.contains(next)) return
+      leave()
+    }
+
     card.addEventListener('mouseenter', enter)
     card.addEventListener('mouseleave', leave)
     card.addEventListener('focusin', enter)
-    card.addEventListener('focusout', leave)
+    card.addEventListener('focusout', leaveFocus)
     return () => {
       card.removeEventListener('mouseenter', enter)
       card.removeEventListener('mouseleave', leave)
       card.removeEventListener('focusin', enter)
-      card.removeEventListener('focusout', leave)
+      card.removeEventListener('focusout', leaveFocus)
     }
   }, [hoverPlay, playable])
 
