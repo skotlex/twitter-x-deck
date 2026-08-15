@@ -260,10 +260,13 @@ export function findTranslateButton(doc: Document): HTMLElement | null {
     if (found) return found
   }
 
-  const buttons = [...article.querySelectorAll<HTMLElement>('[role="button"], button')]
+  const candidates = [...article.querySelectorAll<HTMLElement>('[role="button"], button, a')]
   return (
-    buttons.find((button) => {
-      const text = norm(button.textContent)
+    candidates.find((candidate) => {
+      // 본문 안의 링크는 후보가 아니다. 글에 '번역' 이라는 말이 들어 있을 뿐인데
+      // 그걸 누르면 엉뚱한 곳으로 나간다.
+      if (candidate.closest('[data-testid="tweetText"]')) return false
+      const text = norm(candidate.textContent)
       if (text.length === 0 || text.length > 24) return false
       return TRANSLATE_LABELS.some((label) => text.includes(label))
     }) ?? null

@@ -28,6 +28,8 @@ const LOAD_TIMEOUT_MS = 20_000
 const BUTTON_TIMEOUT_MS = 8_000
 /** 버튼 상태가 바뀔 때까지 기다리는 한계. */
 const SETTLE_TIMEOUT_MS = 8_000
+/** 번역 버튼이 붙을 때까지 기다리는 한계. 본문과 함께 그려지므로 짧게 끊는다. */
+const TRANSLATE_BUTTON_TIMEOUT_MS = 4_000
 /** 번역문이 붙을 때까지 기다리는 한계. 사람이 기다리는 시간이라 넉넉히 준다. */
 const TRANSLATE_TIMEOUT_MS = 12_000
 /** 버튼이 그려진 뒤 x.com 이 핸들러를 붙일 틈. 이 전에 누르면 클릭이 그냥 삼켜진다. */
@@ -59,6 +61,26 @@ async function waitFor<T>(probe: () => T | null, timeoutMs: number): Promise<T |
     if (Date.now() > deadline) return null
     await sleep(POLL_MS)
   }
+}
+
+/**
+ * 숨은 프레임 작업을 한 번에 하나씩만 돌린다.
+ *
+ * 프레임 하나가 x.com 앱을 통째로 부팅한다 — 세션 유지 요청까지 딸려 온다.
+ * 여러 개가 겹치면 그만큼 배로 늘고, 실패한 시도가 몇십 초씩 살아 있으면 네트워크
+ * 탭이 x.com 자체 요청으로 뒤덮인다. 줄을 세우면 살아 있는 앱이 늘 하나뿐이다.
+ *
+ * 앞 작업이 실패해도 다음 작업은 그대로 이어간다.
+ */
+let queue: Promise<unknown> = Promise.resolve()
+
+function enqueue<T>(job: () => Promise<T>): Promise<T> {
+  const next = queue.then(job, job)
+  queue = next.then(
+    () => undefined,
+    () => undefined,
+  )
+  return next
 }
 
 function createHiddenFrame(url: string): HTMLIFrameElement {
@@ -137,6 +159,10 @@ async function attempt(
  * 표시를 되돌릴 수 있게.
  */
 export async function runTweetAction(tweetUrl: string, action: TweetAction): Promise<void> {
+  return enqueue(() => performTweetAction(tweetUrl, action))
+}
+
+async function performTweetAction(tweetUrl: string, action: TweetAction): Promise<void> {
   const plan = PLAN[action]
   const frame = createHiddenFrame(tweetUrl)
 
@@ -193,6 +219,10 @@ export async function runTweetAction(tweetUrl: string, action: TweetAction): Pro
  * x.com 이 번역기를 Grok 으로 갈아 끼워도 우리 쪽은 그대로 따라간다.
  */
 export async function runTweetTranslation(tweetUrl: string): Promise<string> {
+  return enqueue(() => performTweetTranslation(tweetUrl))
+}
+
+async function performTweetTranslation(tweetUrl: string): Promise<string> {
   const frame = createHiddenFrame(tweetUrl)
 
   try {
@@ -213,7 +243,9 @@ export async function runTweetTranslation(tweetUrl: string): Promise<string> {
       throw new TweetActionError('x.com 로그인이 풀렸습니다')
     }
 
-    const ready = await waitFor(() => findTranslateButton(doc), BUTTON_TIMEOUT_MS)
+    // 번역 버튼은 본문과 함께 그려진다. 본문이 뜬 뒤로도 한참 없으면 앞으로도 없다 —
+    // 없는 버튼을 오래 기다릴수록 이 무거운 프레임만 살아 있는다.
+    const ready = await waitFor(() => findTranslateButton(doc), TRANSLATE_BUTTON_TIMEOUT_MS)
     if (!ready) {
       throw new TweetActionError('x.com 이 이 글에는 번역을 제공하지 않습니다')
     }
