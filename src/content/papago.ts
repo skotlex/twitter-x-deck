@@ -246,7 +246,7 @@ function describeCandidates(before: Set<string>): string {
  * 둘은 고칠 곳이 전혀 다르다 — 앞은 문구 판별, 뒤는 사진이 아예 안 올라간 것이다.
  */
 function describeLoginHint(): string {
-  const text = documentText().replace(/\s+/g, ' ')
+  const text = (document.body?.textContent ?? '').replace(/\s+/g, ' ')
   const at = text.search(/로그인|login/i)
   if (at < 0) return `로그인 문구 없음 (${window.location.pathname})`
   return `문구 "${text.slice(Math.max(0, at - 15), at + 35)}"`
@@ -256,31 +256,40 @@ function describeSizes(label: string, sizes: string[]): string {
   return sizes.length ? `${label} ${sizes.slice(0, 5).join(' ')}` : `${label} 없음`
 }
 
-/**
- * '로그인이 필요한 기능입니다' 안내가 떠 있는지.
- * 화면 구석의 '로그인' 버튼은 늘 있으므로, 필요하다고 **말하는** 문구만 센다.
- */
-function isLoginWall(): boolean {
-  return /로그인이?\s*필요|로그인\s*후|login\s*(is\s*)?required/i.test(documentText())
-}
+/** '로그인이 필요한 기능입니다' 안내의 문구. */
+const LOGIN_WALL_RE = /로그인이?\s*필요|login\s*(is\s*)?required/i
 
 /**
- * 이 문서와 같은 출처 프레임의 글자를 모은다.
+ * 로그인 안내가 **눈에 보이게** 떠 있는지.
  *
- * 안내가 프레임 안에 뜨면 이 문서의 글자만 봐서는 영영 못 알아챈다 — 실제로 그 화면에는
- * 프레임이 여럿 있다. `innerText` 가 아니라 `textContent` 로 읽는다. 배경 탭은 화면에
- * 그려지지 않아 `innerText` 가 제 값을 못 낼 수 있고, 되풀이해 부르기에도 이쪽이 싸다.
+ * 문구가 문서에 있다는 것만으로는 어림도 없다. 화면에 안 뜬 안내문이 미리 심어져 있기도
+ * 하고, 어느 조상 요소의 글자를 훑으면 그 안의 숨은 문구까지 딸려 온다. 실제로 로그인을
+ * 마친 뒤에도 로그인하라는 말이 계속 나왔다.
+ *
+ * 그래서 두 가지를 함께 본다 — 그 요소가 **직접 들고 있는 글자** 가 문구와 맞을 것,
+ * 그리고 그 요소가 자리를 차지하고 있을 것. 안내 문구는 늘 문단이나 제목 하나에
+ * 통째로 들어 있으므로 이 조건으로 충분하다.
  */
-function documentText(): string {
-  const parts = [document.body?.textContent ?? '']
-  for (const frame of document.querySelectorAll('iframe')) {
-    try {
-      parts.push(frame.contentDocument?.body?.textContent ?? '')
-    } catch {
-      // 다른 출처의 프레임. 읽을 수 없다.
-    }
+function isLoginWall(): boolean {
+  // 0.15초마다 도는 자리다. 문서 전체 글자를 한 번 훑어 값싸게 거른 뒤,
+  // 걸렸을 때만 요소를 하나씩 들여다본다.
+  if (!LOGIN_WALL_RE.test(document.body?.textContent ?? '')) return false
+
+  for (const element of document.querySelectorAll<HTMLElement>('p, span, strong, h1, h2, h3, div')) {
+    if (!LOGIN_WALL_RE.test(ownText(element))) continue
+    const box = element.getBoundingClientRect()
+    if (box.width > 0 && box.height > 0) return true
   }
-  return parts.join(' ')
+  return false
+}
+
+/** 그 요소가 직접 들고 있는 글자. 자식 요소 안의 글자는 세지 않는다. */
+function ownText(element: HTMLElement): string {
+  let text = ''
+  for (const node of element.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) text += node.textContent ?? ''
+  }
+  return text
 }
 
 /**
