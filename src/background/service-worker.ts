@@ -197,9 +197,22 @@ async function translateImageByApi(request: ImageTranslateRequest): Promise<stri
 
     // 응답 모양은 그쪽이 정하고 우리는 모른다. 그래서 **받아본 것이 정말 그림인지**
     // 로 확인한다 — 주소든 열쇠든 시도해보고, 돌아온 것의 형식이 그림일 때만 받아들인다.
+    let keyTries = 0
     for (const candidate of collectStrings(payload)) {
-      const direct = await fetchImageAsDataUrl(candidate)
-      if (direct) return direct
+      if (candidate.startsWith('data:image/')) return candidate
+
+      const url = imageUrlFor(candidate)
+      if (!url) continue
+      if (!url.startsWith(`${PAPAGO_ORIGIN}/api/image/downloadImage`)) {
+        const found = await fetchImageAsDataUrl(url)
+        if (found) return found
+        continue
+      }
+
+      if (keyTries >= MAX_KEY_TRIES) continue
+      keyTries += 1
+      const found = await fetchImageAsDataUrl(url)
+      if (found) return found
     }
     return null
   } catch {
@@ -207,8 +220,15 @@ async function translateImageByApi(request: ImageTranslateRequest): Promise<stri
   }
 }
 
-/** 다운로드 주소에 붙는 열쇠 이름 후보. 그쪽 화면이 무엇을 쓰는지 확인하지 못했다. */
-const IMAGE_KEY_PARAMS = ['imageId', 'id', 'key', 'requestId']
+/**
+ * 다운로드 주소에 붙는 열쇠 이름. 그쪽 화면이 무엇을 쓰는지 아직 확인하지 못했다.
+ *
+ * 후보를 여럿 늘어놓고 다 찔러보지 않는다 — 사진 한 장에 실패 요청이 열 몇 개씩
+ * 나가는 것은 남의 서버에 할 짓이 아니다. 하나만 시도하고, 아니면 탭으로 물러선다.
+ */
+const IMAGE_KEY_PARAM = 'imageId'
+/** 열쇠로 결과를 받아볼 후보 수의 상한. */
+const MAX_KEY_TRIES = 2
 
 /**
  * 문자열 하나를 그림으로 바꿔본다. 그림이 아니면 null.
@@ -217,30 +237,27 @@ const IMAGE_KEY_PARAMS = ['imageId', 'id', 'key', 'requestId']
  * 받아올 열쇠인가. 어느 쪽이든 **돌아온 응답의 형식이 그림일 때만** 받아들이므로,
  * 엉뚱한 값을 집어도 조용히 넘어간다.
  */
-async function fetchImageAsDataUrl(value: string): Promise<string | null> {
-  if (value.startsWith('data:image/')) return value
-
-  const urls: string[] = []
+function imageUrlFor(value: string): string | null {
   if (/^https?:\/\//.test(value) || value.startsWith('/api/')) {
-    urls.push(new URL(value, PAPAGO_ORIGIN).href)
-  } else if (/^[\w-]{8,}$/.test(value)) {
-    for (const name of IMAGE_KEY_PARAMS) {
-      urls.push(`${PAPAGO_ORIGIN}/api/image/downloadImage?${name}=${encodeURIComponent(value)}`)
-    }
+    return new URL(value, PAPAGO_ORIGIN).href
   }
-
-  for (const url of urls) {
-    try {
-      const response = await fetch(url, { credentials: 'include' })
-      if (!response.ok) continue
-      const blob = await response.blob()
-      if (!blob.type.startsWith('image/')) continue
-      return await blobToDataUrl(blob)
-    } catch {
-      // 다음 후보로 넘어간다.
-    }
+  if (/^[\w-]{8,}$/.test(value)) {
+    const key = encodeURIComponent(value)
+    return `${PAPAGO_ORIGIN}/api/image/downloadImage?${IMAGE_KEY_PARAM}=${key}`
   }
   return null
+}
+
+async function fetchImageAsDataUrl(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, { credentials: 'include' })
+    if (!response.ok) return null
+    const blob = await response.blob()
+    if (!blob.type.startsWith('image/')) return null
+    return await blobToDataUrl(blob)
+  } catch {
+    return null
+  }
 }
 
 /** 응답 안의 문자열을 겉에서 안쪽 순서로 모은다. */
