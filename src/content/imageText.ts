@@ -21,10 +21,12 @@ import { translateText, type Translation } from './translate'
 /**
  * 읽을 언어.
  *
- * 언어를 많이 얹을수록 느려지고 틀리기도 쉬워서, 덱에서 자주 마주치는 글자만 고른다.
+ * 세로쓰기(jpn_vert)를 함께 넣는다. 일본 쪽 포스터·만화는 세로로 쓰는 것이 흔한데,
+ * 가로 판으로 그걸 읽으면 글자가 아니라 부스러기가 나온다.
+ *
  * 한글은 넣지 않는다 — 읽는 언어가 한국어면 번역할 일이 없다.
  */
-const OCR_LANGS = 'jpn+eng'
+const OCR_LANGS = 'jpn+jpn_vert+eng'
 
 /** 결과를 기다리는 한계. 처음 한 번은 글자 데이터까지 받아야 해서 넉넉히 준다. */
 const OCR_TIMEOUT_MS = 4 * 60_000

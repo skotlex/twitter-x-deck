@@ -9,7 +9,7 @@
  * 로그인도 없다. 대신 만화 말풍선이나 손글씨처럼 꾸민 글자는 잘 못 읽는다 —
  * 그건 이 방식의 한계이지 고장이 아니다.
  */
-import { createWorker, type Worker } from 'tesseract.js'
+import { createWorker, type Page, type Worker } from 'tesseract.js'
 import { OCR_DONE, OCR_PROGRESS, OCR_RUN, type OcrRequest, type OcrResult } from '@core/messages'
 
 /**
@@ -71,13 +71,37 @@ function describe(log: { status?: string; progress?: number }): string {
   return percent === null ? label : `${label} ${percent}%`
 }
 
-/** 읽어낸 글에서 쓸모없는 조각을 걷어낸다. */
-function cleanLines(text: string): string[] {
-  return text
-    .split('\n')
-    .map((line) => line.trim())
-    // 한두 글자짜리는 대개 잡음이다. 뜻이 있는 줄만 남긴다.
-    .filter((line) => line.length > 1)
+/** 이 정도는 확신해야 글로 친다. 잘 읽은 줄은 대개 80 을 넘는다. */
+const MIN_CONFIDENCE = 65
+/** 뜻 있는 글자가 이만큼은 돼야 한다. 기호와 부스러기만 남은 줄을 걸러낸다. */
+const MIN_MEANINGFUL = 0.6
+/** 사람이 읽는 글자 — 한자·가나·한글·로마자·숫자. */
+const MEANINGFUL_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}A-Za-z0-9]/u
+
+/**
+ * 읽어낸 줄 중 **믿을 만한 것만** 남긴다.
+ *
+ * 인식기는 못 읽은 자리에서도 무언가를 내놓는다. 그림 무늬나 장식 글꼴을 글자로 잘못
+ * 보고 기호를 늘어놓는데, 그걸 그대로 번역에 넘기면 뜻 없는 문장이 번역 결과랍시고
+ * 화면에 뜬다. 실제로 그랬다 — 포스터 한 장이 알아볼 수 없는 글로 뒤덮였다.
+ *
+ * 그래서 두 가지를 함께 본다. 인식기가 스스로 매긴 확신, 그리고 그 줄에 사람이 읽는
+ * 글자가 얼마나 들어 있는지. 둘 중 하나만 봐도 새는 것이 있다 — 확신은 높은데
+ * 기호만 있는 줄, 글자는 많은데 확신이 바닥인 줄이 다 나온다.
+ */
+function usefulLines(page: Page): string[] {
+  const lines = (page.blocks ?? []).flatMap((block) =>
+    block.paragraphs.flatMap((paragraph) => paragraph.lines),
+  )
+
+  return lines
+    .filter((line) => line.confidence >= MIN_CONFIDENCE)
+    .map((line) => line.text.trim())
+    .filter((text) => {
+      if (text.length < 2) return false
+      const meaningful = [...text].filter((char) => MEANINGFUL_RE.test(char)).length
+      return meaningful / [...text].length >= MIN_MEANINGFUL
+    })
 }
 
 async function run(request: OcrRequest): Promise<OcrResult> {
@@ -90,9 +114,13 @@ async function run(request: OcrRequest): Promise<OcrResult> {
 
   try {
     const engine = await worker(request.langs, report)
-    const { data } = await engine.recognize(request.dataUrl)
-    const lines = cleanLines(data.text ?? '')
-    if (lines.length === 0) return { ok: false, reason: '사진에서 글자를 찾지 못했습니다' }
+    // 줄마다의 확신을 봐야 하므로 글자만이 아니라 구조까지 받는다.
+    const { data } = await engine.recognize(request.dataUrl, {}, { blocks: true, text: true })
+
+    const lines = usefulLines(data)
+    if (lines.length === 0) {
+      return { ok: false, reason: '사진에서 알아볼 만한 글자를 찾지 못했습니다' }
+    }
     return { ok: true, lines }
   } catch (cause) {
     // 한 번 어긋난 워커는 계속 어긋난다. 다음 요청에서 새로 만들게 놓아준다.
