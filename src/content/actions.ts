@@ -13,7 +13,14 @@
  * 부모가 x.com 이라 프레임 문서를 직접 조작할 수 있어 content script 를 거칠 필요가 없다.
  */
 import { describeFrameBlock, refreshRuleReport } from './frameBlock'
-import { findFocalArticle, findMenuItem, findPrimaryTweetAction, simulateClick } from './selectors'
+import {
+  findFocalArticle,
+  findMenuItem,
+  findPrimaryTweetAction,
+  findTranslateButton,
+  readFocalTweetTexts,
+  simulateClick,
+} from './selectors'
 
 /** 상세 페이지가 그려질 때까지 기다리는 한계. */
 const LOAD_TIMEOUT_MS = 20_000
@@ -21,6 +28,8 @@ const LOAD_TIMEOUT_MS = 20_000
 const BUTTON_TIMEOUT_MS = 8_000
 /** 버튼 상태가 바뀔 때까지 기다리는 한계. */
 const SETTLE_TIMEOUT_MS = 8_000
+/** 번역문이 붙을 때까지 기다리는 한계. 사람이 기다리는 시간이라 넉넉히 준다. */
+const TRANSLATE_TIMEOUT_MS = 12_000
 /** 버튼이 그려진 뒤 x.com 이 핸들러를 붙일 틈. 이 전에 누르면 클릭이 그냥 삼켜진다. */
 const HYDRATE_MS = 600
 const POLL_MS = 120
@@ -170,6 +179,63 @@ export async function runTweetAction(tweetUrl: string, action: TweetAction): Pro
     if (second === 'done') return
 
     throw new TweetActionError(second)
+  } finally {
+    frame.remove()
+  }
+}
+
+/**
+ * 게시물 하나를 번역해 그 글월을 돌려준다.
+ *
+ * 번역은 x.com 이 한다 — 우리는 상세 페이지를 숨은 프레임에 띄우고 x.com 이 본문
+ * 아래 달아둔 '번역하기' 를 누른 뒤, 새로 붙은 본문 조각을 읽어올 뿐이다.
+ * 하트·리포스트와 같은 방식이라 번역 API 주소도, 요청 서명도, 별도 키도 필요 없다.
+ * x.com 이 번역기를 Grok 으로 갈아 끼워도 우리 쪽은 그대로 따라간다.
+ */
+export async function runTweetTranslation(tweetUrl: string): Promise<string> {
+  const frame = createHiddenFrame(tweetUrl)
+
+  try {
+    const doc = await waitFor(() => {
+      try {
+        const candidate = frame.contentDocument
+        return candidate && findFocalArticle(candidate) ? candidate : null
+      } catch {
+        return null
+      }
+    }, LOAD_TIMEOUT_MS)
+
+    if (!doc) {
+      await refreshRuleReport()
+      throw new TweetActionError(`게시물 페이지가 뜨지 않았습니다 (${describeFrame(frame)})`)
+    }
+    if (doc.querySelector('[data-testid="loginButton"], [data-testid="signupButton"]')) {
+      throw new TweetActionError('x.com 로그인이 풀렸습니다')
+    }
+
+    const ready = await waitFor(() => findTranslateButton(doc), BUTTON_TIMEOUT_MS)
+    if (!ready) {
+      throw new TweetActionError('x.com 이 이 글에는 번역을 제공하지 않습니다')
+    }
+    // 버튼이 그려진 것과 누를 수 있는 것은 다르다. 핸들러가 붙을 틈을 준다.
+    await sleep(HYDRATE_MS)
+
+    // 누르기 전의 본문 조각을 기억해두고, 새로 붙는 조각을 번역문으로 본다.
+    const before = readFocalTweetTexts(doc)
+    const grab = async (): Promise<string | null> => {
+      const button = findTranslateButton(doc)
+      // 버튼이 사라졌다면 앞선 클릭이 먹은 것이다. 결과만 기다린다.
+      if (button) simulateClick(button)
+      return await waitFor(() => {
+        const added = readFocalTweetTexts(doc).find((text) => !before.includes(text))
+        return added ?? null
+      }, TRANSLATE_TIMEOUT_MS)
+    }
+
+    // 첫 클릭이 삼켜졌으면 한 번 더 눌러본다 — 하트·리포스트와 같은 이유다.
+    const translated = (await grab()) ?? (await grab())
+    if (!translated) throw new TweetActionError('번역이 돌아오지 않았습니다')
+    return translated
   } finally {
     frame.remove()
   }

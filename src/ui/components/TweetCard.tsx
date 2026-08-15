@@ -7,7 +7,12 @@ import {
   type MediaSize,
   type Settings,
 } from '@core/settings'
-import { runTweetAction, type ComposeMode, type TweetAction } from '../../content/actions'
+import {
+  runTweetAction,
+  runTweetTranslation,
+  type ComposeMode,
+  type TweetAction,
+} from '../../content/actions'
 import { formatCount, formatRelative, formatStamp } from '../lib/format'
 import { Lightbox } from './Lightbox'
 import { MediaSlot } from './MediaGrid'
@@ -394,6 +399,78 @@ function ToggleAction({
   )
 }
 
+/**
+ * 내가 읽는 언어. 게시물 언어와 다를 때만 번역을 권한다 — x.com 과 같은 기준이라,
+ * 한국어 글마다 쓸모없는 '번역하기' 가 붙는 일이 없다.
+ */
+const READING_LANG = (navigator.language || 'ko').split('-')[0]?.toLowerCase() ?? 'ko'
+
+const translatable = (tweet: Tweet): boolean =>
+  tweet.text.length > 0 && Boolean(tweet.lang) && tweet.lang !== READING_LANG
+
+/**
+ * x.com 의 번역을 덱 안에서 받아 원문 아래에 붙인다.
+ *
+ * 번역은 x.com 이 한다 — 우리는 숨은 프레임에서 그쪽의 '번역하기' 를 누르고 결과를
+ * 읽어올 뿐이다(`runTweetTranslation`). 그래서 x.com 이 번역기를 Grok 으로 갈아
+ * 끼워도 여기는 그대로 따라간다.
+ *
+ * 원문을 지우지 않고 아래에 덧붙인다. 좁은 컬럼에서는 원문과 번역을 나란히 볼 수
+ * 없으니, 무엇을 읽고 있는지가 늘 분명해야 한다.
+ */
+function TranslateBlock({ tweet, textClass }: { tweet: Tweet; textClass: string }) {
+  const [text, setText] = useState<string | null>(null)
+  const [shown, setShown] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = async () => {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      setText(await runTweetTranslation(tweet.url))
+      setShown(true)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '번역하지 못했습니다')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const label = busy ? '번역하는 중…' : text ? (shown ? '번역 숨기기' : '번역 보기') : '번역하기'
+
+  return (
+    <div className="mt-1">
+      {text && shown && (
+        <div className="mb-1 border-l-2 border-line-strong pl-2.5">
+          <RichText text={text} className={textClass} />
+          <p className="mt-0.5 text-[11.5px] text-faint">x.com 번역</p>
+        </div>
+      )}
+
+      <button
+        type="button"
+        disabled={busy}
+        onClick={(event) => {
+          event.stopPropagation()
+          if (text) setShown(!shown)
+          else void run()
+        }}
+        className={`text-[13px] font-medium text-accent hover:underline ${busy ? 'opacity-60' : ''}`}
+      >
+        {label}
+      </button>
+
+      {error && (
+        <p className="mt-1 text-[12px] text-danger" role="status">
+          번역하지 못했습니다 — {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function MenuItem({
   icon,
   label,
@@ -599,6 +676,8 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
           <div className="mt-1">
             <RichText text={tweet.text} className={`${metrics.text} ${metrics.clamp}`} />
           </div>
+
+          {translatable(tweet) && <TranslateBlock tweet={tweet} textClass={metrics.text} />}
 
           <MediaSlot
             media={tweet.media}
