@@ -14,7 +14,14 @@
  */
 import { describeFrameBlock, refreshRuleReport } from './frameBlock'
 import { enqueue } from './frameQueue'
-import { findFocalArticle, findMenuItem, findPrimaryTweetAction, simulateClick } from './selectors'
+import {
+  findAccountMenuButton,
+  findFocalArticle,
+  findLogoutMenuItem,
+  findMenuItem,
+  findPrimaryTweetAction,
+  simulateClick,
+} from './selectors'
 
 /** 상세 페이지가 그려질 때까지 기다리는 한계. */
 const LOAD_TIMEOUT_MS = 20_000
@@ -22,6 +29,8 @@ const LOAD_TIMEOUT_MS = 20_000
 const BUTTON_TIMEOUT_MS = 8_000
 /** 버튼 상태가 바뀔 때까지 기다리는 한계. */
 const SETTLE_TIMEOUT_MS = 8_000
+/** 눌러서 연 메뉴가 그려질 때까지 기다리는 한계. */
+const MENU_TIMEOUT_MS = 3_000
 /** 버튼이 그려진 뒤 x.com 이 핸들러를 붙일 틈. 이 전에 누르면 클릭이 그냥 삼켜진다. */
 const HYDRATE_MS = 600
 const POLL_MS = 120
@@ -178,6 +187,26 @@ async function performTweetAction(tweetUrl: string, action: TweetAction): Promis
   } finally {
     frame.remove()
   }
+}
+
+/**
+ * x.com 의 로그아웃 확인 화면까지 데려간다. 열렸으면 true.
+ *
+ * 숨은 프레임이 아니라 **눈에 보이는 이 문서** 에서 한다. 로그아웃은 되돌리기 어려운
+ * 일이라 마지막 확인은 x.com 이 띄우는 진짜 대화상자에서 사용자가 직접 눌러야 한다.
+ * 우리는 계정 메뉴를 열고 로그아웃 항목까지 누르는 데서 멈춘다.
+ *
+ * 부르기 전에 덱을 비켜세워야 한다. 그러지 않으면 대화상자가 덱 아래에 깔린다.
+ */
+export async function openLogout(): Promise<boolean> {
+  const menu = findAccountMenuButton(document)
+  if (!menu) return false
+  simulateClick(menu)
+
+  const item = await waitFor(() => findLogoutMenuItem(document), MENU_TIMEOUT_MS)
+  if (!item) return false
+  simulateClick(item)
+  return true
 }
 
 /** 글을 써야 끝나는 동작. 셋 다 x.com 작성 화면을 그대로 빌려 쓴다. */

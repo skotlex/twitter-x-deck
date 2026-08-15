@@ -26,6 +26,8 @@ export interface TopBarProps {
   onSelectColumn: (kind: TimelineKind) => void
   onToggleTheme: () => void
   onOpenSettings: () => void
+  /** x.com 로그아웃 화면으로 데려간다. */
+  onLogout: () => void
   /** 덱을 비켜 아래 x.com 을 보여준다. */
   onPeek: () => void
   /** 컬럼이 둘 이상인지. 하나뿐이면 배치를 고를 이유가 없다. */
@@ -65,6 +67,7 @@ export function TopBar({
   onCompose,
   viewer,
   onOpenProfile,
+  onLogout,
 }: TopBarProps) {
   const total = settings.columns.reduce((sum, kind) => sum + columns[kind].tweets.length, 0)
   const [stashOpen, setStashOpen] = useState(false)
@@ -145,28 +148,7 @@ export function TopBar({
       <div className="ml-auto flex items-center gap-1">
 
         {viewer && (
-          <button
-            type="button"
-            onClick={onOpenProfile}
-            // 테두리는 평소에도 둘러둔다 — 사진이 어두우면 배경과 붙어 버튼인지 안 보인다.
-            // border 가 아니라 ring 을 쓰는 이유는 사진과 선 사이의 여백 때문이다.
-            // border 는 사진에 딱 붙지만 ring 은 offset 만큼 띄워 두를 수 있다.
-            className="mr-1.5 shrink-0 rounded-full ring-2 ring-line-strong ring-offset-2 ring-offset-canvas transition-shadow hover:ring-button focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-            aria-label={`${viewer.name} 프로필 보기`}
-            title={`@${viewer.handle}`}
-          >
-            {viewer.avatarUrl ? (
-              <img
-                src={viewer.avatarUrl}
-                alt={viewer.name}
-                className="block h-8 w-8 rounded-full bg-surface-2 object-cover"
-              />
-            ) : (
-              <span className="grid h-8 w-8 place-items-center rounded-full bg-surface-2 text-[12px] font-semibold text-muted">
-                {viewer.handle.slice(0, 2).toUpperCase()}
-              </span>
-            )}
-          </button>
+          <ViewerMenu viewer={viewer} onOpenProfile={onOpenProfile} onLogout={onLogout} />
         )}
 
         <button
@@ -236,5 +218,92 @@ export function TopBar({
         </button>
       </div>
     </header>
+  )
+}
+
+/**
+ * 내 프로필 사진. 누르면 무엇을 할지 먼저 고르게 한다 —
+ * 리포스트 버튼과 같은 방식이다. 프로필 보기와 로그아웃은 무게가 너무 달라서,
+ * 사진을 눌렀다는 것만으로 어느 한쪽이 일어나면 안 된다.
+ */
+function ViewerMenu({
+  viewer,
+  onOpenProfile,
+  onLogout,
+}: {
+  viewer: ViewerInfo
+  onOpenProfile: () => void
+  onLogout: () => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div
+      className="relative mr-1.5 shrink-0"
+      // 바깥을 눌러 닫는 길. 화면을 덮는 판은 쓸 수 없다 — 상단 바의 backdrop-blur 가
+      // fixed 자식을 이 머리글 안에 가둔다(위 보관량 말풍선과 같은 사정). 그래서 초점이
+      // 이 상자 밖으로 나가는 것으로 받는다. 메뉴 항목도 버튼이라 그리로 옮겨간
+      // 초점은 안쪽으로 세어, 항목을 누르는 순간 메뉴가 먼저 닫혀 클릭을 잃는 일이 없다.
+      onBlur={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+        setOpen(false)
+      }}
+    >
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+        // 테두리는 평소에도 둘러둔다 — 사진이 어두우면 배경과 붙어 버튼인지 안 보인다.
+        // border 가 아니라 ring 을 쓰는 이유는 사진과 선 사이의 여백 때문이다.
+        // border 는 사진에 딱 붙지만 ring 은 offset 만큼 띄워 두를 수 있다.
+        className="block rounded-full ring-2 ring-line-strong ring-offset-2 ring-offset-canvas transition-shadow hover:ring-button focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+        aria-label={`${viewer.name} 계정 메뉴`}
+        title={`@${viewer.handle}`}
+      >
+        {viewer.avatarUrl ? (
+          <img
+            src={viewer.avatarUrl}
+            alt={viewer.name}
+            className="block h-8 w-8 rounded-full bg-surface-2 object-cover"
+          />
+        ) : (
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-surface-2 text-[12px] font-semibold text-muted">
+            {viewer.handle.slice(0, 2).toUpperCase()}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="animate-fade absolute right-0 top-full z-50 mt-2 w-44 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-lg shadow-black/30"
+        >
+          <p className="truncate px-3 py-1.5 text-[12px] text-faint">@{viewer.handle}</p>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              onOpenProfile()
+            }}
+            className="flex w-full items-center px-3 py-2 text-left text-[13px] text-text transition-colors hover:bg-surface-2"
+          >
+            프로필 보기
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              onLogout()
+            }}
+            className="flex w-full items-center px-3 py-2 text-left text-[13px] text-danger transition-colors hover:bg-surface-2"
+          >
+            로그아웃
+          </button>
+        </div>
+      )}
+    </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DeckLayout } from '@core/settings'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
+import { openLogout } from '../content/actions'
 import { CollectorFrame } from './components/CollectorFrame'
 import { DeckColumn, type ColumnReorder } from './components/DeckColumn'
 import { PostComposer } from './components/PostComposer'
@@ -132,6 +133,20 @@ export function App({ hostKind, onPassthrough }: AppProps) {
 
   useEffect(() => () => actedTimers.current.forEach(window.clearTimeout), [])
 
+  /**
+   * 로그아웃. 덱을 먼저 비켜세우고 x.com 의 계정 메뉴를 열어 로그아웃까지 누른다.
+   *
+   * **마지막 확인은 사용자가 x.com 의 대화상자에서 직접 한다.** 계정에서 나가는 일을
+   * 우리가 대신 눌러줄 이유가 없고, 비켜서지 않으면 그 대화상자가 덱 아래에 깔린다.
+   *
+   * 선택자가 어긋나 못 찾으면 비켜선 채로 둔다 — 사용자가 그 자리에서 직접 로그아웃할
+   * 수 있고, '덱으로 돌아가기' 로 언제든 되돌아온다.
+   */
+  const handleLogout = useCallback(() => {
+    setPeeking(true)
+    void openLogout()
+  }, [])
+
   const handleLoadMore = useCallback(
     (kind: TimelineKind) => {
       void collector.loadMore(kind)
@@ -202,6 +217,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
             onCompose={() => setComposing(true)}
             viewer={viewer}
             onOpenProfile={() => setProfileOpen(true)}
+            onLogout={handleLogout}
           />
 
           <main

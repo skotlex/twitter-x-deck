@@ -93,7 +93,11 @@ function byKind<T>(make: (kind: TimelineKind) => T): Record<TimelineKind, T> {
  * 힌트가 틀렸더라도 수집기의 첫 판정이 곧바로 덮어쓴다.
  */
 const initialColumns = (): ColumnMap =>
-  byKind((kind) => emptyColumn(kind, wasLoggedOut() ? 'login-required' : 'idle'))
+  byKind((kind) =>
+    // 이 문서가 담당하는 컬럼에만 건다. 프레임 담당까지 걸면 그 프레임이 상태를
+    // 알려줄 때까지 덱이 비켜선 채로 남는데, 프레임은 덱이 뜬 뒤에야 만들어진다.
+    emptyColumn(kind, wasLoggedOut() && hostOwns(kind) ? 'login-required' : 'idle'),
+  )
 
 /**
  * 이 컬럼에 실제로 보여줄 항목만 남긴다.
@@ -494,8 +498,19 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     }
   }, [])
 
+  /**
+   * 덱을 비켜세워야 하는 컬럼. 없으면 null.
+   *
+   * **이 문서가 담당하는 컬럼만 본다.** 비켜서는 것은 이 문서의 x.com 을 드러내는
+   * 일이라, 로그인 화면이 뜰 자리도 여기다. 프레임이 로그인 필요를 알려오는 것은
+   * 그 프레임이 아직 자리를 못 잡았을 때도 생기는데, 그것 때문에 멀쩡한 덱이 통째로
+   * 비켜서면 돌아올 길이 없다 — 프레임 사정은 컬럼 배지로 알리는 것으로 충분하다.
+   */
   const loginNeededFor = useMemo(
-    () => TIMELINE_KINDS.find((kind) => columns[kind].status.state === 'login-required') ?? null,
+    () =>
+      TIMELINE_KINDS.find(
+        (kind) => hostOwns(kind) && columns[kind].status.state === 'login-required',
+      ) ?? null,
     [columns],
   )
 

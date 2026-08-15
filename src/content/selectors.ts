@@ -305,6 +305,38 @@ export function findViewer(): ViewerInfo | null {
   return { handle, name: name || handle, avatarUrl }
 }
 
+/** 계정 메뉴 안의 로그아웃 항목 문구. 계정 이름이 함께 적히므로 부분 일치로 본다. */
+const LOGOUT_LABELS = ['로그아웃', 'log out', 'sign out', 'ログアウト', 'cerrar sesión', 'abmelden']
+
+/**
+ * 사이드바 아래쪽의 계정 메뉴 버튼. 로그아웃으로 가는 첫 걸음이다.
+ */
+export function findAccountMenuButton(doc: Document): HTMLElement | null {
+  return doc.querySelector<HTMLElement>(
+    '[data-testid="SideNav_AccountSwitcher_Button"], [data-testid="AccountSwitcher_Button"]',
+  )
+}
+
+/**
+ * 계정 메뉴가 열린 뒤 나오는 '로그아웃' 항목.
+ *
+ * 실제 로그아웃은 이걸 누른 다음 x.com 이 띄우는 확인 대화상자에서 일어난다.
+ * 우리는 거기까지만 데려가고 마지막 확인은 사용자가 직접 한다 — 계정에서 나가는
+ * 일을 우리가 대신 눌러줄 이유가 없다.
+ */
+export function findLogoutMenuItem(doc: Document): HTMLElement | null {
+  const direct = doc.querySelector<HTMLElement>('[data-testid="AccountSwitcher_Logout_Button"]')
+  if (direct) return direct
+
+  const items = doc.querySelectorAll<HTMLElement>('[role="menuitem"], [role="button"], a')
+  for (const item of items) {
+    const text = norm(item.textContent)
+    if (text.length === 0 || text.length > 60) continue
+    if (LOGOUT_LABELS.some((label) => text.includes(label))) return item
+  }
+  return null
+}
+
 /**
  * 로그인이 풀렸는지 판단한다.
  *
