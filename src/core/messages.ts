@@ -36,9 +36,40 @@ export interface OcrRequest {
   dataUrl: string
   /** 읽을 언어. tesseract 표기를 그대로 쓴다 (예: `jpn+eng`). */
   langs: string
+  /** 진행 상황을 돌려보낼 덱 탭. 배경 워커가 채워 넣는다. */
+  tabId?: number
 }
 
 export type OcrResult = { ok: true; lines: string[] } | { ok: false; reason: string }
+
+/**
+ * 인식 결과 (오프스크린 → 배경 워커 → 덱).
+ *
+ * 결과를 요청의 **응답으로** 돌려주지 않는다. 처음 한 번은 글자 데이터를 받느라 몇 분이
+ * 걸리는데, 그동안 배경 워커가 잠들면 그 통로가 끊긴다 — 'message channel closed
+ * before a response was received' 가 그 소리다. 진행 상황과 같은 길로 따로 보낸다.
+ */
+export const OCR_DONE = 'xdeck:ocr-done'
+
+export interface OcrDone {
+  type: typeof OCR_DONE
+  tabId?: number
+  result: OcrResult
+}
+
+/**
+ * 진행 상황 (오프스크린 → 배경 워커 → 덱).
+ *
+ * 처음 한 번은 글자 데이터를 내려받느라 오래 걸린다. 그동안 아무 말이 없으면 멈춘
+ * 것과 구별되지 않는다.
+ */
+export const OCR_PROGRESS = 'xdeck:ocr-progress'
+
+export interface OcrProgress {
+  type: typeof OCR_PROGRESS
+  tabId?: number
+  note: string
+}
 
 /** MAIN world 인터셉터 → ISOLATED world 브리지 (같은 프레임 안). */
 export interface CapturedPayload {

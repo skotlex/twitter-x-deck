@@ -6,11 +6,14 @@
  */
 import {
   DECK_PARAM,
+  OCR_DONE,
+  OCR_PROGRESS,
   OCR_RUN,
   ROLE_PARAM,
   RULE_REPORT,
+  type OcrDone,
+  type OcrProgress,
   type OcrRequest,
-  type OcrResult,
 } from '@core/messages'
 
 /** 최상위 탭이 맡는 컬럼. 나머지는 그 탭 안의 숨은 프레임이 맡는다. */
@@ -105,16 +108,22 @@ function ensureOcrDocument(): Promise<void> {
   return ocrReady
 }
 
-async function runOcr(request: OcrRequest): Promise<OcrResult> {
+/**
+ * 인식을 시켜만 놓는다. 결과는 기다리지 않는다.
+ *
+ * 처음 한 번은 몇 분이 걸리는데, 그 시간을 응답 채널에 매달아 두면 그 사이 이 워커가
+ * 잠들며 통로가 끊긴다. 결과는 오프스크린 문서가 따로 보내오고, 그때 탭으로 옮긴다.
+ */
+async function startOcr(request: OcrRequest, tabId: number): Promise<void> {
   try {
     await ensureOcrDocument()
     // 오프스크린 문서도 같은 메시지 통로를 듣는다. 보낸 것이 그대로 그쪽으로 간다.
-    return (await chrome.runtime.sendMessage(request)) as OcrResult
+    void chrome.runtime.sendMessage({ ...request, tabId }).catch(() => undefined)
   } catch (cause) {
-    return {
-      ok: false,
-      reason: cause instanceof Error ? cause.message : '글자 인식을 시작하지 못했습니다',
-    }
+    const reason = cause instanceof Error ? cause.message : '글자 인식을 시작하지 못했습니다'
+    void chrome.tabs
+      .sendMessage(tabId, { type: OCR_DONE, tabId, result: { ok: false, reason } })
+      .catch(() => undefined)
   }
 }
 
@@ -129,9 +138,32 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
 
   // 덱이 보낸 것만 받는다. 오프스크린 문서가 답으로 보내는 같은 이름의 메시지를
   // 여기서 다시 집으면 서로를 부르며 맴돈다.
-  if (type === OCR_RUN && sender.tab !== undefined) {
-    void runOcr(message as OcrRequest).then(sendResponse)
-    return true
+  // 덱이 보낸 것만 받는다(tabId 가 없다). 오프스크린 문서로 넘긴 것을 여기서 다시
+  // 집으면 서로를 부르며 맴돈다.
+  if (type === OCR_RUN && sender.tab?.id !== undefined) {
+    void startOcr(message as OcrRequest, sender.tab.id)
+    sendResponse(null)
+    return false
+  }
+
+  // 오프스크린 문서가 보낸 결과·진행 상황을 물어본 탭으로 넘긴다. 확장 메시지는
+  // 콘텐츠 스크립트까지 저절로 가지 않아 여기서 한 번 옮겨줘야 한다.
+  if (type === OCR_DONE) {
+    const done = message as OcrDone
+    if (done.tabId !== undefined) {
+      void chrome.tabs.sendMessage(done.tabId, done).catch(() => undefined)
+    }
+    sendResponse(null)
+    return false
+  }
+
+  if (type === OCR_PROGRESS) {
+    const progress = message as OcrProgress
+    if (progress.tabId !== undefined) {
+      void chrome.tabs.sendMessage(progress.tabId, progress).catch(() => undefined)
+    }
+    sendResponse(null)
+    return false
   }
 
   return undefined

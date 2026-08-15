@@ -18,6 +18,8 @@ export interface LightboxProps {
 export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProps) {
   const [index, setIndex] = useState(startIndex)
   const [reading, setReading] = useState(false)
+  /** 인식이 어디까지 왔는지. 처음 한 번은 글자 데이터를 받느라 오래 걸린다. */
+  const [note, setNote] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   /** 사진마다 읽어낸 글. 넘겼다 돌아와도 다시 읽지 않는다. */
   const [texts, setTexts] = useState<Record<number, ImageText>>({})
@@ -36,13 +38,15 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
     if (!url || reading) return
     setReading(true)
     setError(null)
+    setNote(null)
     try {
-      const result = await readImageText(url, READING_LANG)
+      const result = await readImageText(url, READING_LANG, setNote)
       setTexts((prev) => ({ ...prev, [index]: result }))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '글자를 읽지 못했습니다')
     } finally {
       setReading(false)
+      setNote(null)
     }
   }, [current, index, reading])
 
@@ -115,7 +119,7 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
             className="text-[13px] leading-none text-white/70 underline-offset-2 hover:text-white hover:underline disabled:opacity-60"
             title="사진 속 글자를 읽어 번역합니다. 인식은 이 브라우저 안에서 하며, 처음 한 번은 글자 데이터를 내려받아 오래 걸립니다"
           >
-            {reading ? '글자 읽는 중…' : found ? '글자 닫기' : '사진 속 글자'}
+            {reading ? `${note ?? '글자 읽는 중'}…` : found ? '글자 닫기' : '사진 속 글자'}
           </button>
         )}
         {error && <span className="text-[13px] leading-none text-white/70">{error}</span>}
