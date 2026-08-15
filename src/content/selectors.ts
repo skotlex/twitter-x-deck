@@ -31,6 +31,16 @@ function onNotificationsPage(): boolean {
   return window.location.pathname.startsWith('/notifications')
 }
 
+/**
+ * 이 문서가 그 컬럼을 수집할 수 있는 화면에 있는지.
+ *
+ * 홈 컬럼(추천·팔로잉)은 홈에서, 알림 컬럼(멘션·알림)은 알림 화면에서만 나온다.
+ * 엉뚱한 화면에 있으면 탭도 알약도 찾을 수 없으니 그것부터 바로잡아야 한다.
+ */
+export function isOnPageFor(kind: TimelineKind): boolean {
+  return isNotificationKind(kind) === onNotificationsPage()
+}
+
 /** '3개의 게시물 보기' / 'Show 3 posts' 등에서 건수를 뽑는다. */
 const PILL_COUNT_RE = /(\d[\d,.\s]*)\s*(?:개(?:의)?\s*)?(?:new\s+)?(?:게시물|포스트|posts?|tweets?)/i
 

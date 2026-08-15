@@ -95,13 +95,16 @@ export function isAppWindow(): boolean {
 /**
  * 덱이 대신하려는 화면인지.
  *
- * 덱은 홈 타임라인을 대신하는 물건이므로 그 자리에서는 부르지 않아도 얹는다.
+ * 덱의 네 컬럼이 그대로 대신하는 자리 — 홈 타임라인(추천·팔로잉)과 알림 화면
+ * (멘션·알림) — 에서는 부르지 않아도 얹는다. 로그인을 마치면 홈이 아니라 알림
+ * 화면에 떨어지기도 하는데, 홈만 보고 있으면 그 자리에서는 덱이 뜨지 않는다.
+ *
  * 게시물·프로필 같은 나머지 주소는 건드리지 않는다 — 우리 화면의 '원문 보기' 나
  * '새 탭에서 열기' 가 여는 곳이 바로 거기라, 그것까지 덮으면 빠져나갈 길이 없다.
  */
-export function isTimelineHome(): boolean {
+export function isDeckScreen(): boolean {
   const path = window.location.pathname
-  return path === '/home' || path === '/'
+  return path === '/home' || path === '/' || path.startsWith('/notifications')
 }
 
 /**
@@ -141,7 +144,7 @@ export function isDeckTab(): boolean {
 export function isDeckHostDocument(): boolean {
   if (window.top !== window.self) return false
   if (isDeckTab()) return true
-  return isTimelineHome() && readMirror()?.autoMount !== false
+  return isDeckScreen() && readMirror()?.autoMount !== false
 }
 
 /** 주소가 바뀌었는지 살피는 주기. */

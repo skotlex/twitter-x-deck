@@ -37,6 +37,7 @@ import {
   findRefreshPill,
   findTab,
   isLoggedOut,
+  isOnPageFor,
   isTabSelected,
   pressLoadNewPostsShortcut,
   simulateClick,
@@ -50,6 +51,8 @@ const STATE_RESEND_MS = 5_000
 const PILL_COOLDOWN_MS = 3_000
 /** 탭 선택이 어긋났을 때 다시 누르기까지의 최소 간격. */
 const TAB_ASSERT_COOLDOWN_MS = 4_000
+/** 담당 화면으로 돌아가는 클릭 사이의 최소 간격. SPA 이동에 시간이 걸린다. */
+const NAV_COOLDOWN_MS = 5_000
 /** 교대 수집에서 한 탭에 머무는 시간. */
 const ROTATE_MS = 30_000
 /** 대타 방문에서 다른 탭에 머무는 최대 시간. 응답이 잡히면 그 즉시 돌아온다. */
@@ -154,6 +157,8 @@ export function startCollector(
   let lastStateEmitAt = 0
   /** 지금까지 알고 있는 로그인 상태. 바뀔 때만 문서 밖에 남긴다. */
   let knownLoggedOut: boolean | null = null
+  /** 담당 화면으로 돌아가려고 마지막으로 누른 시각. */
+  let lastNavAt = 0
   /** 대타로 들러 있는 타임라인. 없으면 null. */
   let priming: TimelineKind | null = null
   let primingUntil = 0
@@ -503,6 +508,23 @@ export function startCollector(
     // 다만 로그인이 돌아온 것은 알린다 — 그러지 않으면 '로그인 필요' 에 갇혀
     // 덱으로 돌아갈 길까지 막힌다.
     if (paused) {
+      setState(receiving() ? 'streaming' : 'loading')
+      return
+    }
+
+    /*
+     * 담당 화면이 아니면 그리로 돌아간다.
+     *
+     * 홈 컬럼은 홈에서, 알림 컬럼은 알림 화면에서만 나온다. 로그인을 마치고 알림
+     * 화면에 떨어지는 것처럼 엉뚱한 자리에 서 있으면 탭도 알약도 찾을 수 없어
+     * 아무 것도 못 한다. 덱이 얹힌 문서는 우리가 지키는 자리이므로 되돌린다.
+     * 사용자가 직접 쓰는 동안(통과 모드)은 위에서 이미 물러난 뒤다.
+     */
+    if (!isOnPageFor(target())) {
+      if (now - lastNavAt > NAV_COOLDOWN_MS) {
+        lastNavAt = now
+        clickOwnNav()
+      }
       setState(receiving() ? 'streaming' : 'loading')
       return
     }

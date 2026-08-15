@@ -11,7 +11,7 @@
  */
 import { createRoot } from 'react-dom/client'
 import css from '../ui/index.css?inline'
-import { isDeckTab, isTimelineHome, readFrameRole, whenTrue } from '@core/role'
+import { isDeckScreen, isDeckTab, readFrameRole, whenTrue } from '@core/role'
 import { loadSettings } from '@core/settings'
 import type { TimelineKind } from '@core/types'
 import { App } from '../ui/App'
@@ -157,6 +157,6 @@ if (isDeckTab()) {
 } else {
   void loadSettings().then((settings) => {
     if (!settings.autoMount) return
-    whenTrue(isTimelineHome, mountWhenReady)
+    whenTrue(isDeckScreen, mountWhenReady)
   })
 }
