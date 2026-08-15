@@ -172,29 +172,22 @@ async function hasNaverSession(): Promise<boolean> {
  */
 async function translateImageByApi(request: ImageTranslateRequest): Promise<string | null> {
   try {
-    const body = new FormData()
-    body.append('image', dataUrlToBlob(request.dataUrl), 'image.jpg')
+    const blob = dataUrlToBlob(request.dataUrl)
+    const requestId = crypto.randomUUID()
 
-    // 출발 언어를 모를 때 그쪽 화면이 보내는 값을 그대로 흉내낸다 —
-    // source 자리에 target 을 넣고 langDetect 를 켠다.
-    const params = new URLSearchParams({
-      source: request.target,
-      target: request.target,
-      langDetect: 'true',
-      rotation: '0',
-      useGlossary: 'false',
-      requestId: crypto.randomUUID(),
-    })
+    let payload = await postTranslation(request.target, requestId, blob)
 
-    const response = await fetch(`${PAPAGO_ORIGIN}/api/image/translation?${params.toString()}`, {
-      method: 'POST',
-      body,
-      credentials: 'include',
-    })
-    if (!response.ok) return null
+    /*
+     * 서버 쪽에서 한 번 미끄러지는 일이 있다(errorCode 61129 'Internal server errors').
+     * 그때도 imageId 는 함께 오는데, 그건 사진이 이미 올라갔다는 뜻이다. 그쪽 화면도
+     * 같은 자리에서 사진 대신 그 열쇠를 다시 보내므로 우리도 그렇게 한 번만 더 청한다 —
+     * 같은 사진을 두 번 올리지 않는다.
+     */
+    if (payload?.errorCode && payload.imageId) {
+      payload = await postTranslation(request.target, requestId, null, payload.imageId)
+    }
 
-    const payload = (await response.json()) as ImageTranslateResponse
-    if (!payload?.imageId) return null
+    if (!payload || payload.errorCode || !payload.imageId) return null
 
     /*
      * 번역된 사진은 따로 받아온다. 주소 조립식은 그쪽 번들에서 확인했다.
@@ -218,19 +211,65 @@ async function translateImageByApi(request: ImageTranslateRequest): Promise<stri
     )
     if (!image.ok) return null
 
-    const blob = await image.blob()
+    const rendered = await image.blob()
     // 그림이 아니면 오류 문서다. 그것을 사진이라고 덱에 올려보내지 않는다.
-    if (!blob.type.startsWith('image/')) return null
-    return await blobToDataUrl(blob)
+    if (!rendered.type.startsWith('image/')) return null
+    return await blobToDataUrl(rendered)
   } catch {
     return null
   }
+}
+
+/**
+ * 이미지 번역을 한 번 청한다.
+ *
+ * 사진을 올릴 때는 `image` 에 파일을, 이미 올린 것을 다시 부를 때는 `imageId` 를 준다 —
+ * 그쪽 화면이 쓰는 방식 그대로다. 출발 언어를 모를 때 `source` 자리에 도착 언어를 넣고
+ * `langDetect` 를 켜는 것도 그쪽을 따른 것이다.
+ */
+async function postTranslation(
+  target: string,
+  requestId: string,
+  blob: Blob | null,
+  imageId?: string,
+): Promise<ImageTranslateResponse | null> {
+  const body = new FormData()
+  // 파일 이름의 확장자를 실제 형식에 맞춘다. PNG 를 image.jpg 라는 이름으로 보내면
+  // 받는 쪽이 이름을 보고 형식을 짐작하다 사진을 못 읽는다.
+  if (blob) body.append('image', blob, `image.${extensionFor(blob.type)}`)
+
+  const params = new URLSearchParams({
+    source: target,
+    target,
+    langDetect: 'true',
+    rotation: '0',
+    useGlossary: 'false',
+    requestId,
+    ...(imageId ? { imageId } : {}),
+  })
+
+  const response = await fetch(`${PAPAGO_ORIGIN}/api/image/translation?${params.toString()}`, {
+    method: 'POST',
+    body,
+    credentials: 'include',
+  })
+  if (!response.ok) return null
+  return (await response.json()) as ImageTranslateResponse
 }
 
 /** 이미지 번역 응답에서 우리가 쓰는 부분. 글월 목록도 함께 오지만 지금은 안 쓴다. */
 interface ImageTranslateResponse {
   imageId?: string
   detectedLang?: string
+  errorCode?: string
+}
+
+/** 형식에 맞는 확장자. 모르는 형식이면 사진에서 가장 흔한 것으로 둔다. */
+function extensionFor(type: string): string {
+  if (type.includes('png')) return 'png'
+  if (type.includes('gif')) return 'gif'
+  if (type.includes('webp')) return 'webp'
+  return 'jpg'
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
