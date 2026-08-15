@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { TweetMedia } from '@core/types'
+import { READING_LANG } from '../../content/translate'
 import { originalMediaUrl } from '../lib/format'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { CloseIcon } from './icons'
+import { ImageTranslateModal } from './ImageTranslateModal'
 
 export interface LightboxProps {
   media: TweetMedia[]
@@ -15,6 +17,7 @@ export interface LightboxProps {
 /** 이미지 원본 보기. 화살표·Esc 로 조작하고, 배경을 누르면 닫힌다. */
 export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProps) {
   const [index, setIndex] = useState(startIndex)
+  const [translating, setTranslating] = useState(false)
   const total = media.length
   const current = media[Math.min(index, total - 1)]
 
@@ -74,6 +77,19 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         >
           원문 게시물
         </a>
+        {/* 사진에만 붙인다. 영상은 Papago 이미지 번역이 받지 않는다. */}
+        {!current.playbackUrl && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              setTranslating(true)
+            }}
+            className="text-[13px] text-white/70 underline-offset-2 hover:text-white hover:underline"
+          >
+            사진 번역
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}
@@ -118,6 +134,14 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
           <NavButton side="left" onClick={() => move(-1)} />
           <NavButton side="right" onClick={() => move(1)} />
         </>
+      )}
+
+      {translating && (
+        <ImageTranslateModal
+          imageUrl={current.previewUrl}
+          target={READING_LANG}
+          onClose={() => setTranslating(false)}
+        />
       )}
     </div>
   )

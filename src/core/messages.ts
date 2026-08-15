@@ -93,8 +93,22 @@ export type PapagoMessage =
   | { channel: typeof CHANNEL; type: 'papago-ask'; id: string; text: string; target: string }
   | { channel: typeof CHANNEL; type: 'papago-result'; id: string; text: string }
   | { channel: typeof CHANNEL; type: 'papago-failed'; id: string; reason: string }
+  /**
+   * 이미지 번역. 파일 입력에는 주소를 넣을 수 없어 바이트를 통째로 건넨다 —
+   * Blob 은 구조화 복제로 그대로 건너간다.
+   */
+  | { channel: typeof CHANNEL; type: 'papago-image'; id: string; blob: Blob; name: string }
+  /** 이미지를 넣었다. 결과는 프레임 안 Papago 화면에 그대로 뜬다. */
+  | { channel: typeof CHANNEL; type: 'papago-loaded'; id: string }
 
-const PAPAGO_MESSAGE_TYPES = new Set(['papago-ready', 'papago-ask', 'papago-result', 'papago-failed'])
+const PAPAGO_MESSAGE_TYPES = new Set([
+  'papago-ready',
+  'papago-ask',
+  'papago-result',
+  'papago-failed',
+  'papago-image',
+  'papago-loaded',
+])
 
 export function isPapagoMessage(value: unknown): value is PapagoMessage {
   return (

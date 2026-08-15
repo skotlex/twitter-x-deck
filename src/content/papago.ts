@@ -37,6 +37,8 @@ const id = new URLSearchParams(window.location.search).get(PAPAGO_PARAM)
 /** 입력·출력 칸. 둘 다 textarea 가 아니라 편집 가능한 div 다. */
 const SOURCE = '[data-testid="source-editor"], #source-editor'
 const TARGET = '[data-testid="target-editor"], #target-editor'
+/** 이미지 번역 화면의 파일 입력. */
+const FILE_INPUT = '[data-testid="file-input"], input#file[type="file"]'
 
 function post(message: PapagoMessage): void {
   window.parent.postMessage(message, X_ORIGIN)
@@ -141,6 +143,33 @@ async function waitForResult(): Promise<string> {
   }
 }
 
+/**
+ * 이미지 번역 화면의 파일 입력에 사진을 넣는다.
+ *
+ * 파일 입력에는 주소를 넣을 수 없다 — 파일 객체여야 한다. 그래서 부모가 바이트를
+ * 통째로 보내주고, 여기서 `DataTransfer` 로 목록을 꾸며 넣은 뒤 사람이 고른 것과
+ * 같은 `change` 를 낸다.
+ *
+ * 결과는 우리가 읽지 않는다. 번역된 이미지는 이 화면에 그대로 뜨고, 부모는 이
+ * 프레임을 감추지 않고 보여준다 — Papago 의 원문/번역 토글도 그대로 쓸 수 있다.
+ */
+async function handleImage(blob: Blob, name: string): Promise<void> {
+  const input = await waitFor(
+    () => document.querySelector<HTMLInputElement>(FILE_INPUT),
+    EDITOR_TIMEOUT_MS,
+  )
+  if (!input) {
+    post({ channel: CHANNEL, type: 'papago-failed', id: id ?? '', reason: '사진을 넣을 자리를 찾지 못했습니다' })
+    return
+  }
+
+  const transfer = new DataTransfer()
+  transfer.items.add(new File([blob], name, { type: blob.type || 'image/jpeg' }))
+  input.files = transfer.files
+  input.dispatchEvent(new Event('change', { bubbles: true }))
+  post({ channel: CHANNEL, type: 'papago-loaded', id: id ?? '' })
+}
+
 async function handle(text: string): Promise<void> {
   const fail = (reason: string): void => {
     post({ channel: CHANNEL, type: 'papago-failed', id: id ?? '', reason })
@@ -171,8 +200,9 @@ async function handle(text: string): Promise<void> {
 if (id && window.parent !== window.self) {
   window.addEventListener('message', (event: MessageEvent) => {
     if (event.origin !== X_ORIGIN || !isPapagoMessage(event.data)) return
-    if (event.data.type !== 'papago-ask' || event.data.id !== id) return
-    void handle(event.data.text)
+    if (event.data.id !== id) return
+    if (event.data.type === 'papago-ask') void handle(event.data.text)
+    else if (event.data.type === 'papago-image') void handleImage(event.data.blob, event.data.name)
   })
 
   post({ channel: CHANNEL, type: 'papago-ready', id })

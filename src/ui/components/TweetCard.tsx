@@ -8,7 +8,12 @@ import {
   type Settings,
 } from '@core/settings'
 import { runTweetAction, type ComposeMode, type TweetAction } from '../../content/actions'
-import { translateText, type Translation, type TranslateEngine } from '../../content/translate'
+import {
+  READING_LANG,
+  translateText,
+  type Translation,
+  type TranslateEngine,
+} from '../../content/translate'
 import { useColumnActivity } from '../columnActivity'
 import { formatCount, formatRelative, formatStamp } from '../lib/format'
 import { Lightbox } from './Lightbox'
@@ -396,12 +401,7 @@ function ToggleAction({
   )
 }
 
-/**
- * 내가 읽는 언어. 게시물 언어와 다를 때만 번역을 권한다 — x.com 과 같은 기준이라,
- * 한국어 글마다 쓸모없는 '번역하기' 가 붙는 일이 없다.
- */
-const READING_LANG = (navigator.language || 'ko').split('-')[0]?.toLowerCase() ?? 'ko'
-
+/** 게시물 언어가 읽는 언어와 다를 때만 번역을 권한다 — 한국어 글마다 붙으면 성가시다. */
 const translatable = (tweet: Tweet): boolean =>
   tweet.text.length > 0 && Boolean(tweet.lang) && tweet.lang !== READING_LANG
 

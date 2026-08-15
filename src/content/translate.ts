@@ -19,6 +19,12 @@ const PAPAGO_TIMEOUT_MS = 20_000
 
 export class TranslateError extends Error {}
 
+/**
+ * 사람이 읽는 언어. 번역의 도착 언어이자, 번역을 권할지 가리는 기준이다.
+ * 게시물 언어가 이것과 같으면 번역 버튼을 달지 않는다 — x.com 과 같은 기준이다.
+ */
+export const READING_LANG = (navigator.language || 'ko').split('-')[0]?.toLowerCase() ?? 'ko'
+
 /** 어느 번역기가 한 것인지. 화면에 그대로 적어 사용자가 알 수 있게 한다. */
 export type TranslateEngine = 'papago' | 'browser'
 
