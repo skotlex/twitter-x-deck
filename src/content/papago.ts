@@ -47,8 +47,6 @@ const SOURCE = '[data-testid="source-editor"], #source-editor'
 const TARGET = '[data-testid="target-editor"], #target-editor'
 /** 이미지 번역 화면의 파일 입력. */
 const FILE_INPUT = '[data-testid="file-input"], input#file[type="file"]'
-/** 사진을 넣은 뒤 로그인 안내가 뜨는지 지켜보는 시간. */
-const LOGIN_WALL_MS = 4_000
 /** 번역된 사진이 나올 때까지 기다리는 한계. OCR 이 도는 시간이다. */
 const RESULT_IMAGE_TIMEOUT_MS = 20_000
 /** 결과로 셀 만한 최소 크기. 아이콘·장식 그림을 걸러낸다. */
@@ -182,16 +180,26 @@ async function handleImage(blob: Blob, name: string): Promise<string | null> {
   input.files = transfer.files
   input.dispatchEvent(new Event('change', { bubbles: true }))
 
-  // 로그인 벽이 먼저 뜨는지부터 본다. 사진을 넣는 데까지는 성공했으므로 사용자에게는
-  // '안 된다' 가 아니라 '로그인이 필요하다' 로 보여야 다음에 무엇을 할지 알 수 있다.
-  const wall = await waitFor(() => (isLoginWall() ? true : null), LOGIN_WALL_MS)
-  if (wall) throw new Error(LOGIN_REQUIRED)
+  /*
+   * 번역문과 로그인 안내 중 **먼저 오는 쪽** 을 답으로 삼는다.
+   *
+   * 로그인 안내를 몇 초만 지켜보고 넘어가면 안 된다. 그 안내는 사진이 서버에 다녀온
+   * 뒤에야 뜨기도 하는데, 그 창을 놓치면 있지도 않을 결과를 끝까지 기다린 다음
+   * '번역된 사진을 찾지 못했습니다' 라는 엉뚱한 말로 끝난다. 실제로 그랬다.
+   */
+  const outcome = await waitFor<{ login: true } | { image: string }>(() => {
+    if (isLoginWall()) return { login: true }
+    const image = readTranslatedImage(before)
+    return image ? { image } : null
+  }, RESULT_IMAGE_TIMEOUT_MS)
 
-  const found = await waitFor(() => readTranslatedImage(before), RESULT_IMAGE_TIMEOUT_MS)
-  // 못 찾았으면 **무엇이 있었는지** 함께 알린다. 이 탭 화면은 밖에서 볼 수 없어,
-  // 다음에 어디를 고쳐야 할지는 이 한 줄로만 알 수 있다.
-  if (!found) throw new Error(`번역된 사진을 찾지 못했습니다 — ${describeCandidates(before)}`)
-  return found
+  if (!outcome) {
+    // 못 찾았으면 **무엇이 있었는지** 함께 알린다. 이 탭 화면은 밖에서 볼 수 없어,
+    // 다음에 어디를 고쳐야 할지는 이 한 줄로만 알 수 있다.
+    throw new Error(`번역된 사진을 찾지 못했습니다 — ${describeCandidates(before)}`)
+  }
+  if ('login' in outcome) throw new Error(LOGIN_REQUIRED)
+  return outcome.image
 }
 
 /**
@@ -250,15 +258,15 @@ function isLoginWall(): boolean {
  * 생기지만 번역본이 그보다 뒤에 붙는다.
  */
 function readTranslatedImage(before: Set<string>): string | null {
-  const { canvases, images, backgrounds } = collectCandidates()
-
-  for (const canvas of canvases) {
+  // 여기는 0.15초마다 도는 자리다. 문서 전체를 훑는 무거운 검사는 두지 않는다 —
+  // 그런 검사는 실패했을 때 진단 한 번에만 쓴다(`describeCandidates`).
+  for (const canvas of document.querySelectorAll('canvas')) {
     if (canvas.width < MIN_RESULT_PX || canvas.height < MIN_RESULT_PX) continue
     const drawn = readCanvas(canvas)
     if (drawn) return drawn
   }
 
-  const fresh = images.filter(
+  const fresh = [...document.images].filter(
     (image) =>
       !before.has(image.src) &&
       image.complete &&
@@ -266,15 +274,7 @@ function readTranslatedImage(before: Set<string>): string | null {
       image.naturalHeight >= MIN_RESULT_PX,
   )
   const found = fresh.at(-1)
-  if (found) return drawToDataUrl(found, found.naturalWidth, found.naturalHeight)
-
-  // 배경 그림으로 깔리는 판. 주소만으로는 덱에서 못 여니 여기서 그려 바이트로 만든다.
-  const background = backgrounds.at(-1)
-  if (!background) return null
-  const loaded = new Image()
-  loaded.src = background.url
-  if (!loaded.complete || loaded.naturalWidth < MIN_RESULT_PX) return null
-  return drawToDataUrl(loaded, loaded.naturalWidth, loaded.naturalHeight)
+  return found ? drawToDataUrl(found, found.naturalWidth, found.naturalHeight) : null
 }
 
 /** 그림 하나를 캔버스에 옮겨 그려 data URL 로 만든다. */
@@ -293,11 +293,11 @@ interface Candidates {
 }
 
 /**
- * 결과가 있을 만한 자리를 모두 훑는다.
+ * 결과가 있을 만한 자리를 모두 훑는다. **실패했을 때 진단용으로만** 부른다.
  *
- * `document.images` 만 보면 놓치는 자리가 많다 — 요즘 화면은 그림자 DOM 안에도,
- * 같은 출처 프레임 안에도 그린다. CSS 배경으로 까는 판도 있다. 실제로 큰 그림이
- * 하나도 안 잡혀 결과를 못 찾았고, 그래서 세 곳을 함께 본다.
+ * 문서 전체를 돌며 모든 요소의 계산된 스타일까지 읽으므로 되풀이해 부를 것이 못 된다.
+ * 평소 결과 찾기가 보는 곳(`document.images`·캔버스) 밖에 무엇이 있었는지를 한 번
+ * 훑어, 다음에 어디를 봐야 할지 알려주는 것이 이 함수의 쓸모다.
  */
 function collectCandidates(): Candidates {
   const found: Candidates = { canvases: [], images: [], backgrounds: [] }
