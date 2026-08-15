@@ -193,66 +193,33 @@ async function translateImageByApi(request: ImageTranslateRequest): Promise<stri
     })
     if (!response.ok) return null
 
-    const payload: unknown = await response.json()
+    const payload = (await response.json()) as ImageTranslateResponse
+    if (!payload?.imageId) return null
 
-    // 응답 모양은 그쪽이 정하고 우리는 모른다. 그래서 **받아본 것이 정말 그림인지**
-    // 로 확인한다 — 주소든 열쇠든 시도해보고, 돌아온 것의 형식이 그림일 때만 받아들인다.
-    let keyTries = 0
-    for (const candidate of collectStrings(payload)) {
-      if (candidate.startsWith('data:image/')) return candidate
+    /*
+     * 번역된 사진은 따로 받아온다. 주소 조립식은 그쪽 번들에서 확인했다.
+     *
+     *   `${DOWNLOAD}?imageId=${id}&imageType=rendered&source=${source}&target=${target}`
+     *
+     * `imageType` 이 빠지면 400 이 돌아온다 — 원본(origin)·번역본(rendered) 중 어느
+     * 것을 달라는 것인지가 이 값이다. 출발 언어는 그쪽이 알아낸 것을 그대로 돌려준다.
+     */
+    const source = payload.detectedLang ?? request.target
+    const download = new URLSearchParams({
+      imageId: payload.imageId,
+      imageType: 'rendered',
+      source,
+      target: request.target,
+    })
 
-      const url = imageUrlFor(candidate)
-      if (!url) continue
-      if (!url.startsWith(`${PAPAGO_ORIGIN}/api/image/downloadImage`)) {
-        const found = await fetchImageAsDataUrl(url)
-        if (found) return found
-        continue
-      }
+    const image = await fetch(
+      `${PAPAGO_ORIGIN}/api/image/downloadImage?${download.toString()}`,
+      { credentials: 'include' },
+    )
+    if (!image.ok) return null
 
-      if (keyTries >= MAX_KEY_TRIES) continue
-      keyTries += 1
-      const found = await fetchImageAsDataUrl(url)
-      if (found) return found
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
-/**
- * 다운로드 주소에 붙는 열쇠 이름. 그쪽 화면이 무엇을 쓰는지 아직 확인하지 못했다.
- *
- * 후보를 여럿 늘어놓고 다 찔러보지 않는다 — 사진 한 장에 실패 요청이 열 몇 개씩
- * 나가는 것은 남의 서버에 할 짓이 아니다. 하나만 시도하고, 아니면 탭으로 물러선다.
- */
-const IMAGE_KEY_PARAM = 'imageId'
-/** 열쇠로 결과를 받아볼 후보 수의 상한. */
-const MAX_KEY_TRIES = 2
-
-/**
- * 문자열 하나를 그림으로 바꿔본다. 그림이 아니면 null.
- *
- * 세 가지를 차례로 본다 — 그 자체가 그림 데이터인가, 그림 주소인가, 아니면 결과를
- * 받아올 열쇠인가. 어느 쪽이든 **돌아온 응답의 형식이 그림일 때만** 받아들이므로,
- * 엉뚱한 값을 집어도 조용히 넘어간다.
- */
-function imageUrlFor(value: string): string | null {
-  if (/^https?:\/\//.test(value) || value.startsWith('/api/')) {
-    return new URL(value, PAPAGO_ORIGIN).href
-  }
-  if (/^[\w-]{8,}$/.test(value)) {
-    const key = encodeURIComponent(value)
-    return `${PAPAGO_ORIGIN}/api/image/downloadImage?${IMAGE_KEY_PARAM}=${key}`
-  }
-  return null
-}
-
-async function fetchImageAsDataUrl(url: string): Promise<string | null> {
-  try {
-    const response = await fetch(url, { credentials: 'include' })
-    if (!response.ok) return null
-    const blob = await response.blob()
+    const blob = await image.blob()
+    // 그림이 아니면 오류 문서다. 그것을 사진이라고 덱에 올려보내지 않는다.
     if (!blob.type.startsWith('image/')) return null
     return await blobToDataUrl(blob)
   } catch {
@@ -260,21 +227,10 @@ async function fetchImageAsDataUrl(url: string): Promise<string | null> {
   }
 }
 
-/** 응답 안의 문자열을 겉에서 안쪽 순서로 모은다. */
-function collectStrings(node: unknown, depth = 0, out: string[] = []): string[] {
-  if (depth > 5 || out.length > 40) return out
-  if (typeof node === 'string') {
-    if (node.length >= 8) out.push(node)
-    return out
-  }
-  if (Array.isArray(node)) {
-    for (const item of node) collectStrings(item, depth + 1, out)
-    return out
-  }
-  if (node && typeof node === 'object') {
-    for (const value of Object.values(node)) collectStrings(value, depth + 1, out)
-  }
-  return out
+/** 이미지 번역 응답에서 우리가 쓰는 부분. 글월 목록도 함께 오지만 지금은 안 쓴다. */
+interface ImageTranslateResponse {
+  imageId?: string
+  detectedLang?: string
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
