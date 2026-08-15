@@ -54,12 +54,20 @@ function worker(langs: string, onProgress: (note: string) => void): Promise<Work
  * 멈춘 것과 구별되지 않는다 — 실제로 몇 분을 그렇게 기다리게 만든 적이 있다.
  */
 function describe(log: { status?: string; progress?: number }): string {
+  const status = log.status ?? ''
   const percent = typeof log.progress === 'number' ? Math.round(log.progress * 100) : null
-  const label = (log.status ?? '').includes('loading language')
+
+  // 단계를 뭉뚱그리지 않는다. 어디서 멈췄는지가 곧 어디를 고쳐야 하는지다 —
+  // '준비 중' 하나로 묶어두는 바람에 코어를 못 여는 것을 한참 못 알아봤다.
+  const label = status.includes('loading language')
     ? '글자 데이터 받는 중'
-    : (log.status ?? '').includes('recognizing')
+    : status.includes('recognizing')
       ? '글자 읽는 중'
-      : '준비 중'
+      : status.includes('core')
+        ? '인식기 불러오는 중'
+        : status.includes('initializ')
+          ? '인식기 여는 중'
+          : '준비 중'
   return percent === null ? label : `${label} ${percent}%`
 }
 
