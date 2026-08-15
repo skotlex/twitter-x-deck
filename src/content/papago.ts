@@ -53,6 +53,34 @@ function read(selector: string): string {
   return (box?.innerText ?? box?.textContent ?? '').trim()
 }
 
+/**
+ * 번역문을 줄바꿈까지 살려 읽는다.
+ *
+ * `innerText` 로 그냥 읽으면 줄마다 빈 줄이 하나씩 더 낀다. 편집기가 줄을 문단
+ * 요소로 그리는데, `innerText` 는 문단 사이의 **여백까지 줄바꿈으로 옮기기** 때문이다.
+ * 그래서 줄 요소를 직접 모아 한 줄씩 잇는다.
+ *
+ * 줄이 한 겹 더 안쪽에 들어 있어 줄 요소가 안 잡히는 판을 위해 `innerText` 로도
+ * 물러선다. 그때는 겹친 빈 줄을 하나로 줄인다 — 원문에 있던 빈 줄까지 함께 줄지만,
+ * 줄마다 빈 줄이 끼는 것보다는 낫다.
+ */
+function readResult(): string {
+  const box = document.querySelector<HTMLElement>(TARGET)
+  if (!box) return ''
+
+  const lines = [...box.children].filter(
+    (child): child is HTMLElement => child instanceof HTMLElement,
+  )
+  if (lines.length > 1) {
+    return lines
+      .map((line) => (line.innerText ?? line.textContent ?? '').trim())
+      .join('\n')
+      .trim()
+  }
+
+  return (box.innerText ?? box.textContent ?? '').replace(/\n[ \t]*\n/g, '\n').trim()
+}
+
 /** 조건이 참이 될 때까지 기다린다. 시간을 넘기면 null. */
 async function waitFor<T>(probe: () => T | null, timeoutMs: number): Promise<T | null> {
   const deadline = Date.now() + timeoutMs
@@ -100,7 +128,7 @@ async function waitForResult(): Promise<string> {
   let stableSince = 0
 
   for (;;) {
-    const now = read(TARGET)
+    const now = readResult()
     if (now.length > 0 && now === last) {
       if (stableSince === 0) stableSince = Date.now()
       if (Date.now() - stableSince >= SETTLE_MS) return now
