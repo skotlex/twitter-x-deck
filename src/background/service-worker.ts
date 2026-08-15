@@ -86,8 +86,8 @@ async function ruleReport(tabId?: number): Promise<string> {
 /**
  * 사진 번역 중개.
  *
- * 덱과 Papago 탭은 서로 다른 사이트라 직접 말을 주고받을 수 없다. 여기서 잇는다 —
- * 탭을 **배경으로** 열어 일을 시키고, 결과만 덱에 돌려준 뒤 탭을 닫는다.
+ * 덱과 Papago 문서는 서로 다른 사이트라 직접 말을 주고받을 수 없다. 여기서 잇는다 —
+ * 최소화한 창을 따로 띄워 일을 시키고, 결과만 덱에 돌려준 뒤 그 창을 닫는다.
  * 사용자 눈에는 라이트박스에 번역된 사진이 뜨는 것으로만 보인다.
  *
  * 탭을 쓰는 이유는 하나뿐이다 — 네이버 로그인 쿠키는 Papago 가 최상위인 문서에만
@@ -100,6 +100,8 @@ interface ImageJob {
   width: number
   height: number
   tabId: number | null
+  /** 이 일을 위해 따로 띄운 창. 보던 창의 탭 목록을 건드리지 않으려고 쓴다. */
+  windowId: number | null
   settle: (result: ImageTranslateResult) => void
 }
 
@@ -113,8 +115,36 @@ const imageJobs = new Map<string, ImageJob>()
  * 실패는 덱에서 알리고 다시 시도하게 하는 편이 낫다.
  */
 async function settleJobTab(job: ImageJob): Promise<void> {
+  if (job.windowId !== null) {
+    await chrome.windows.remove(job.windowId).catch(() => null)
+    return
+  }
   if (job.tabId === null) return
   await chrome.tabs.remove(job.tabId).catch(() => null)
+}
+
+/**
+ * 번역할 문서를 띄운다. 사용자가 보던 창은 건드리지 않는다.
+ *
+ * 최소화한 **별도 창** 으로 띄운다. 같은 창에 탭으로 열면 포커스는 안 뺏겨도 탭 목록에
+ * 났다 사라지는 것이 그대로 보인다. 아주 안 보이게 할 수는 없다 — 네이버 로그인 쿠키는
+ * Papago 가 최상위인 문서에만 실리고, 크롬이 주는 최상위 문서는 탭과 창뿐이다.
+ * 최소화한 창은 적어도 보던 화면 안으로 끼어들지는 않는다.
+ *
+ * 창을 못 띄우는 환경이면 예전처럼 배경 탭으로 물러선다.
+ */
+async function openJobDocument(job: ImageJob, url: string): Promise<void> {
+  try {
+    const created = await chrome.windows.create({ url, focused: false, state: 'minimized' })
+    job.windowId = created?.id ?? null
+    job.tabId = created?.tabs?.[0]?.id ?? null
+    if (job.windowId !== null) return
+  } catch {
+    // 창을 못 띄우는 환경. 탭으로 간다.
+  }
+
+  const tab = await chrome.tabs.create({ url, active: false })
+  job.tabId = tab.id ?? null
 }
 
 /**
@@ -158,6 +188,7 @@ async function translateImage(request: ImageTranslateRequest): Promise<ImageTran
       width: request.width,
       height: request.height,
       tabId: null,
+      windowId: null,
       settle: finish,
     }
     imageJobs.set(id, job)
@@ -174,14 +205,9 @@ async function translateImage(request: ImageTranslateRequest): Promise<ImageTran
       finish({ ok: false, reason: 'Papago 가 응답하지 않았습니다', needsLogin: false })
     }, IMAGE_JOB_TIMEOUT_MS)
 
-    void chrome.tabs
-      .create({ url, active: false })
-      .then((tab) => {
-        job.tabId = tab.id ?? null
-      })
-      .catch(() => {
-        finish({ ok: false, reason: '번역 탭을 열지 못했습니다', needsLogin: false })
-      })
+    void openJobDocument(job, url).catch(() => {
+      finish({ ok: false, reason: '번역 창을 열지 못했습니다', needsLogin: false })
+    })
   })
 }
 
