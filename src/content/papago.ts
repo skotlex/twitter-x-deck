@@ -200,29 +200,46 @@ function isLoginWall(): boolean {
  * 번역된 사진을 data URL 로 꺼낸다. 아직 안 나왔으면 null.
  *
  * Papago 가 결과를 캔버스로 그리는지 이미지로 그리는지는 확인하지 못했다. 그래서 둘 다
- * 본다 — 여기는 Papago 자신의 문서라 캔버스도 이미지도 같은 출처이므로 그대로 읽힌다.
+ * 본다 — 여기는 Papago 자신의 문서라 어느 쪽이든 같은 출처로 읽힌다.
  *
- * 이미지 쪽은 **넣기 전에 없던 것 중 가장 큰 것** 을 고른다. 올린 원본도 새로 생기지만
- * 번역본과 크기가 같아 구별이 어려워, 마지막에 나타난 것을 결과로 본다.
+ * 이미지도 **캔버스에 옮겨 그려서** 바이트를 얻는다. 주소를 그대로 넘기면 그 주소는
+ * 이 탭에서만 살아 있어 덱에서는 못 연다. `fetch` 로 받아오는 길은 이 탭에 살아 있는
+ * Papago CSP 에 막힐 수 있어 쓰지 않는다.
+ *
+ * 이미지 쪽은 넣기 전에 없던 것 중 마지막에 나타난 것을 고른다. 올린 원본도 새로
+ * 생기지만 번역본이 그보다 뒤에 붙는다.
  */
 function readTranslatedImage(before: Set<string>): string | null {
   for (const canvas of document.querySelectorAll('canvas')) {
     if (canvas.width < MIN_RESULT_PX || canvas.height < MIN_RESULT_PX) continue
-    try {
-      return canvas.toDataURL('image/png')
-    } catch {
-      // 다른 출처가 섞여 오염된 캔버스. 이미지 쪽으로 넘어간다.
-    }
+    const drawn = readCanvas(canvas)
+    if (drawn) return drawn
   }
 
   const fresh = [...document.images].filter(
     (image) =>
       !before.has(image.src) &&
+      image.complete &&
       image.naturalWidth >= MIN_RESULT_PX &&
       image.naturalHeight >= MIN_RESULT_PX,
   )
   const found = fresh.at(-1)
-  return found ? found.src : null
+  if (!found) return null
+
+  const canvas = document.createElement('canvas')
+  canvas.width = found.naturalWidth
+  canvas.height = found.naturalHeight
+  canvas.getContext('2d')?.drawImage(found, 0, 0)
+  return readCanvas(canvas)
+}
+
+/** 캔버스를 data URL 로. 다른 출처가 섞여 오염됐으면 null. */
+function readCanvas(canvas: HTMLCanvasElement): string | null {
+  try {
+    return canvas.toDataURL('image/png')
+  } catch {
+    return null
+  }
 }
 
 async function handle(text: string): Promise<void> {
@@ -266,12 +283,8 @@ async function runImageJob(jobId: string): Promise<void> {
     })) as { dataUrl: string } | null
     if (!asked) return
 
-    const blob = await (await fetch(asked.dataUrl)).blob()
-    const result = await handleImage(blob, 'image.jpg')
-    if (!result) throw new Error('번역된 사진을 찾지 못했습니다')
-
-    // 결과가 주소면 바이트로 바꿔 보낸다 — 그 주소는 이 탭에서만 살아 있다.
-    const dataUrl = result.startsWith('data:') ? result : await toDataUrl(result)
+    const dataUrl = await handleImage(decodeDataUrl(asked.dataUrl), 'image.jpg')
+    if (!dataUrl) throw new Error('번역된 사진을 찾지 못했습니다')
     await chrome.runtime.sendMessage({ type: IMAGE_TRANSLATE_DONE, id: jobId, dataUrl })
   } catch (cause) {
     await chrome.runtime.sendMessage({
@@ -282,14 +295,20 @@ async function runImageJob(jobId: string): Promise<void> {
   }
 }
 
-async function toDataUrl(url: string): Promise<string> {
-  const blob = await (await fetch(url)).blob()
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(new Error('사진을 읽지 못했습니다'))
-    reader.readAsDataURL(blob)
-  })
+/**
+ * data URL 을 그림 조각으로 되돌린다.
+ *
+ * `fetch` 로 읽지 않는다. 이 탭은 Papago 가 최상위라 그쪽 CSP 가 그대로 살아 있는데,
+ * `data:` 는 보통 `connect-src` 에 없어 요청이 막히고 'Failed to fetch' 로 끝난다.
+ * 직접 풀면 네트워크를 아예 쓰지 않으므로 걸릴 곳이 없다.
+ */
+function decodeDataUrl(dataUrl: string): Blob {
+  const comma = dataUrl.indexOf(',')
+  const head = dataUrl.slice(0, comma)
+  const binary = atob(dataUrl.slice(comma + 1))
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes], { type: /:(.*?);/.exec(head)?.[1] ?? 'image/jpeg' })
 }
 
 if (id) {

@@ -24,7 +24,15 @@ export class ImageTranslateError extends Error {
 /** 사진을 바이트로 읽어 data URL 로 바꾼다. 확장 메시지는 Blob 을 실어 나르지 못한다. */
 async function toDataUrl(imageUrl: string): Promise<string> {
   // 사진 서버가 x.com 오리진에 CORS 를 열어두어 이 문서에서 그대로 받아올 수 있다.
-  const response = await fetch(imageUrl)
+  // 그래도 실패하면 어느 걸음에서 막혔는지 함께 적는다 — 'Failed to fetch' 만으로는
+  // 사진을 못 받은 것인지 번역 탭이 막힌 것인지 밖에서 구별할 수 없다.
+  let response: Response
+  try {
+    response = await fetch(imageUrl)
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : '알 수 없는 이유'
+    throw new ImageTranslateError(`사진을 받지 못했습니다 (${detail})`)
+  }
   if (!response.ok) throw new ImageTranslateError(`사진을 받지 못했습니다 (${response.status})`)
 
   const blob = await response.blob()
