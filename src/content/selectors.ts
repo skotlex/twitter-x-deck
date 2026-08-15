@@ -272,13 +272,29 @@ header[role="banner"],
 /**
  * 작성창에 지금 들어 있는 글. 편집기를 못 찾으면 null.
  *
- * 자리표시자 문구까지 딸려 들어오지만 상관없다 — 이 값은 처음 열렸을 때와
- * 비교하는 데만 쓰므로, 변하지 않는 것은 저절로 상쇄된다. 인용처럼 처음부터
- * 내용이 들어 있는 경우도 같은 이유로 알아서 걸러진다.
+ * **자리표시자는 빼고 읽는다.** x.com 은 '답글 게시하기' 같은 안내를 편집기와 같은
+ * 접두사(`tweetTextarea_0_label`)로 그리고, 그것이 편집기보다 문서 앞쪽에 오기도
+ * 한다. 접두사만 보고 집으면 안내 문구를 사용자가 쓴 글로 읽는데, 그 문구는 편집기가
+ * 자리를 잡는 동안 생겼다 없어지므로 처음 적어둔 값과 어긋난다 — 아무 것도 안 썼는데
+ * '쓰던 글이 있어 닫지 않았습니다' 로 버티게 된다. 실제로 그랬다.
+ *
+ * 이 값은 처음 열렸을 때와 비교하는 데만 쓴다. 인용처럼 처음부터 내용이 들어 있는
+ * 경우가 걸러지는 것도 그 때문이다.
  */
 export function readComposerText(doc: Document): string | null {
-  const editor = doc.querySelector('[data-testid^="tweetTextarea_"]')
-  return editor ? (editor.textContent ?? '') : null
+  const editor =
+    doc.querySelector('[data-testid="tweetTextarea_0"]') ??
+    [...doc.querySelectorAll('[data-testid^="tweetTextarea_"]')].find(
+      (element) => !(element.getAttribute('data-testid') ?? '').endsWith('_label'),
+    )
+  if (!editor) return null
+
+  // 편집기 **안** 에 자리표시자가 들어앉는 판도 있다. 그 글자는 빼고 센다.
+  const text = editor.textContent ?? ''
+  const label = [...editor.querySelectorAll('[data-testid$="_label"]')]
+    .map((element) => element.textContent ?? '')
+    .join('')
+  return label ? text.replace(label, '') : text
 }
 
 /** 사진·GIF 를 붙여뒀는지. 글은 안 썼어도 이건 지우면 아까운 것이다. */
