@@ -12,7 +12,7 @@ import { XPageModal } from './components/XPageModal'
 import { useCollector } from './hooks/useCollector'
 import { pauseHostCollector } from './hostCollector'
 import { fontStack } from './lib/fonts'
-import { countSince } from './lib/unread'
+import { countUniqueSince, type UnreadSlice } from './lib/unread'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import { useSettings } from './hooks/useSettings'
 import { useViewer } from './hooks/useViewer'
@@ -103,16 +103,28 @@ export function App({ hostKind, onPassthrough }: AppProps) {
   const openedAt = useRef(Date.now())
   const [seenAt, setSeenAt] = useState<Partial<Record<TimelineKind, number>>>({})
 
-  const unreadFor = useCallback(
-    (kind: TimelineKind) => {
+  /** 한 타임라인에서 안 본 것이 담길 자리. 대기시켜 둔 것도 안 본 것이다 — 판을 내려 읽다 닫으면 그쪽에 쌓인다. */
+  const slicesFor = useCallback(
+    (kind: TimelineKind): UnreadSlice[] => {
       const since = seenAt[kind] ?? openedAt.current
       const column = collector.columns[kind]
-      // 대기시켜 둔 것도 안 본 것이다 — 판을 내려 읽다 닫으면 그쪽에 쌓인다.
-      return countSince(column.tweets, since) + countSince(column.buffered, since)
+      return [
+        { items: column.tweets, since },
+        { items: column.buffered, since },
+      ]
     },
     [collector.columns, seenAt],
   )
-  const unread = watching.reduce((sum, kind) => sum + unreadFor(kind), 0)
+
+  const unreadFor = useCallback(
+    (kind: TimelineKind) => countUniqueSince(slicesFor(kind)),
+    [slicesFor],
+  )
+  /**
+   * 종 하나에 지켜보는 타임라인이 모두 묶인다. 갈래별 수를 더하지 않는 이유는
+   * 같은 멘션이 알림(전체)과 멘션 양쪽에 실려 오기 때문이다 — 더하면 한 건이 두 건이 된다.
+   */
+  const unread = countUniqueSince(watching.flatMap(slicesFor))
 
   /** 판에 띄운 동안은 보고 있는 것이다. 열 때와 닫을 때 양쪽에서 본 시각을 찍는다. */
   useEffect(() => {
