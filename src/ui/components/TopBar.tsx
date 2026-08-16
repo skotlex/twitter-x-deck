@@ -161,12 +161,15 @@ export function TopBar({
         {/*
           컬럼으로 띄우지 않고 지켜보는 타임라인이 있을 때만 단다. 안 본 수는 배지로
           얹되 아이콘 자리를 밀지 않는다 — 수가 늘고 줄 때마다 옆 단추들이 흔들린다.
+          오른쪽 여백을 따로 두는 이유는 옆의 프로필 사진 때문이다. 사진에 두른 고리가
+          ring-offset 까지 4px 을 제 상자 밖으로 내미는데, 줄의 기본 간격(gap-1)이
+          딱 그만큼이라 배지가 사진 고리와 겹쳐 보인다.
         */}
         {watching.length > 0 && (
           <button
             type="button"
             onClick={onOpenWatch}
-            className="relative grid h-9 w-9 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            className="relative mr-2 grid h-9 w-9 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
             aria-label={`${watching.map((kind) => TIMELINE_LABEL[kind]).join(' · ')} 보기${
               unread > 0 ? ` — 안 본 글 ${unread}개` : ''
             }`}
