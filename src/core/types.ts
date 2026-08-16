@@ -12,11 +12,18 @@ export const TIMELINE_KINDS: readonly TimelineKind[] = [
   'mentions',
 ]
 
+/**
+ * 화면에 적는 이름. 컬럼 머리글·탭·설정이 모두 이것 하나를 쓴다.
+ *
+ * 알림에 '(전체)' 를 붙여 둔다. 멘션과 나란히 놓이는 자리가 많은데, 알림은 멘션까지
+ * 담은 전체 목록이고 멘션은 그중 한 갈래라서 이름만으로 갈리지 않으면 어느 쪽에
+ * 무엇이 쌓이는지 알 수 없다.
+ */
 export const TIMELINE_LABEL: Record<TimelineKind, string> = {
   foryou: '추천',
   following: '팔로잉',
   mentions: '멘션',
-  notifications: '알림',
+  notifications: '알림(전체)',
 }
 
 /** 이 컬럼을 수집하려면 x.com 의 어느 주소에 앉아 있어야 하는지. */
