@@ -83,14 +83,6 @@ const MANUAL_RETRY_MS = 2_500
  */
 const MANUAL_WINDOW_MS = 12_000
 /**
- * 절전 중에 밀린 건수를 세어보는 주기.
- *
- * 알약을 **읽는** 것은 누르는 것과 값이 전혀 다르다 — 읽기만 하면 x.com 은 아무
- * 것도 다시 그리지 않는다. 그래도 매 초 할 일은 아니다. 밀린 수는 급히 알아야 할
- * 값이 아니고, 세는 김에 기하 질의가 한 번 나가 배치를 강제로 끝내게 한다.
- */
-const POWER_SAVE_PEEK_MS = 10_000
-/**
  * 강제 갱신 사다리의 칸 수. 이 칸을 다 밟고도 조용하면 문서를 다시 띄운다.
  * `ladder()` 가 돌려주는 칸 수와 반드시 같아야 한다.
  */
@@ -191,8 +183,6 @@ export function startCollector(
   let primeNudgeAt = 0
   /** 사람이 새로고침을 누른 뒤 사다리를 빠르게 올라가는 구간의 끝. */
   let manualUntil = 0
-  /** 절전 중에 밀린 건수를 마지막으로 세어본 시각. */
-  let lastPowerSavePeekAt = 0
 
   /** 담당 몫으로 선택돼 있어야 하는 타임라인. */
   const home = (): TimelineKind => kinds[activeIndex % kinds.length] ?? 'foryou'
@@ -574,32 +564,6 @@ export function startCollector(
     }
 
     /*
-     * 절전 중에는 아무 것도 두드리지 않고 세어만 둔다.
-     *
-     * 새 글을 받아오는 값의 대부분은 우리 것이 아니다 — 알약을 누르면 x.com 이
-     * 응답을 주면서 **자기 타임라인도 함께 다시 그린다.** 덱에 가려 보이지도 않는
-     * 화면인데 React 재실행 · 스타일 재계산 · 레이아웃을 전부 치른다. 새 글 한 뭉치가
-     * 들어올 때마다 CPU 가 70% 까지 튀던 자리다.
-     *
-     * 그리지 말라고 할 방법이 없으므로 부르지 않는다. 대신 몇 건이 밀려 있는지는
-     * 계속 세어 머리글에 띄운다 — 알약을 읽는 것은 누르는 것과 값이 다르다.
-     * 다만 그것도 매 초 할 일은 아니라 이따금만 본다.
-     *
-     * 응답이 제 발로 들어오면 그때는 받는다. 사용자가 통과 모드에서 직접 넘긴
-     * 타임라인도 그대로 우리 것이 된다.
-     */
-    if (settings.powerSave) {
-      if (now - lastPowerSavePeekAt > POWER_SAVE_PEEK_MS) {
-        lastPowerSavePeekAt = now
-        const wanted = target()
-        const tab = findTab(wanted)
-        setPending(wanted, tab && isTabSelected(tab) ? (findRefreshPill()?.count ?? null) : null)
-      }
-      setState(receiving() ? 'streaming' : 'loading')
-      return
-    }
-
-    /*
      * 담당 화면이 아니면 그리로 돌아간다.
      *
      * 홈 컬럼은 홈에서, 알림 컬럼은 알림 화면에서만 나온다. 로그인을 마치고 알림
@@ -631,7 +595,8 @@ export function startCollector(
     }
 
     // 담당이 둘 이상이면 주기적으로 다음 탭으로 넘어간다.
-    if (!priming && kinds.length > 1 && now - lastRotateAt > ROTATE_MS) {
+    // 절전 중에는 넘어가지 않는다 — 탭을 옮기는 것이 곧 x.com 의 재렌더다.
+    if (!priming && !settings.powerSave && kinds.length > 1 && now - lastRotateAt > ROTATE_MS) {
       activeIndex = (activeIndex + 1) % kinds.length
       lastRotateAt = now
       lastForcedRefreshAt = now
@@ -665,9 +630,16 @@ export function startCollector(
     setState(receiving() ? 'streaming' : 'loading')
 
     // 알약은 지금 그려져 있는 목록의 것이다. 담당 탭이 아직 안 잡혔으면 남의 것이다.
+    /*
+     * 알약은 **읽기만 하면 공짜다.**
+     *
+     * 값이 드는 것은 누르는 쪽이다 — 누르면 x.com 이 응답을 주면서 자기 타임라인도
+     * 함께 다시 그린다. 읽는 것은 문구를 보는 일이라 아무 것도 다시 그려지지 않는다.
+     * 그래서 절전 중에도 계속 읽어 몇 건이 밀렸는지 머리글에 띄운다.
+     */
     const pill = selected ? findRefreshPill() : null
     setPending(wanted, pill?.count ?? null)
-    if (pill && settings.autoAdvance && now - lastPillClickAt > PILL_COOLDOWN_MS) {
+    if (pill && settings.autoAdvance && !settings.powerSave && now - lastPillClickAt > PILL_COOLDOWN_MS) {
       simulateClick(pill.element)
       lastPillClickAt = now
       report(pill.count === null ? '새 게시물 알림 클릭' : `새 게시물 알림 ${pill.count}건 클릭`)
@@ -696,8 +668,14 @@ export function startCollector(
       : climbing
         ? Math.min(settings.idleRefreshMs, ESCALATE_RETRY_MS)
         : settings.idleRefreshMs
+    /*
+     * 절전 중에는 스스로 두드리지 않는다 — 강제 갱신은 결국 x.com 에게 타임라인을
+     * 다시 만들라고 시키는 일이다. 다만 **사람이 방금 누른 것은 끝까지 처리한다.**
+     * 절전이 막으려는 것은 저절로 도는 일이지 사용자의 조작이 아니다.
+     */
+    const mayForce = hurrying || !settings.powerSave
     // 유휴 갱신을 꺼두었어도 사람이 누른 것은 끝까지 처리한다.
-    if (!priming && (hurrying || settings.idleRefreshMs > 0) && idleFor > wait) {
+    if (!priming && mayForce && (hurrying || settings.idleRefreshMs > 0) && idleFor > wait) {
       forceRefresh()
     }
   }
