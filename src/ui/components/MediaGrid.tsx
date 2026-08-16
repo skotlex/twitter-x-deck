@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { MEDIA_MAX_HEIGHT, type MediaMode, type MediaSize } from '@core/settings'
 import type { TweetMedia } from '@core/types'
 import { useColumnActivity } from '../columnActivity'
-import { aspectRatio } from '../lib/format'
+import { GRID_SHARE, useColumnPixels } from '../columnWidth'
+import { aspectRatio, sizedMediaUrl } from '../lib/format'
 import { isUserVolume, mediaClick } from '../lib/mediaPlayback'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { ImageIcon, PlayIcon } from './icons'
@@ -39,6 +40,7 @@ function regionOf(node: Element): Element | null {
 function MediaItem({
   media,
   fit,
+  pixels,
   sourceUrl,
   hoverPlay,
   onOpen,
@@ -46,6 +48,8 @@ function MediaItem({
   media: TweetMedia
   /** 높이가 잘리는 크기에서는 채워서 자르고, 원본 크기에서는 비율을 지킨다. */
   fit: 'cover' | 'contain'
+  /** 이 칸에 필요한 가로 기기 픽셀. 사진을 어느 크기로 받을지가 여기서 갈린다. */
+  pixels: number
   sourceUrl: string
   hoverPlay: boolean
   onOpen: () => void
@@ -61,6 +65,8 @@ function MediaItem({
 
   const playable = media.kind !== 'photo' && Boolean(media.playbackUrl)
   const silent = media.kind === 'animated_gif'
+  // 이 자리에 들어갈 만큼만 받는다. 확대해서 볼 때는 라이트박스가 원본을 따로 받는다.
+  const previewUrl = sizedMediaUrl(media.previewUrl, pixels)
 
   /**
    * 돌아야 하는지.
@@ -202,7 +208,7 @@ function MediaItem({
         <video
           ref={videoRef}
           src={media.playbackUrl}
-          poster={media.previewUrl}
+          poster={previewUrl}
           // 재생바는 마우스를 올렸을 때만 띄운다. 저절로 도는 동안에도 늘 떠 있으면
           // 목록이 조작 장치로 뒤덮인다.
           controls={hovered || engaged}
@@ -231,7 +237,7 @@ function MediaItem({
         />
       ) : (
         <img
-          src={media.previewUrl}
+          src={previewUrl}
           alt={media.altText ?? ''}
           loading="lazy"
           decoding="async"
@@ -336,6 +342,7 @@ export interface MediaGridProps {
 }
 
 export function MediaGrid({ media, size, sourceUrl, hoverPlay, onOpen }: MediaGridProps) {
+  const columnPixels = useColumnPixels()
   if (media.length === 0) return null
 
   const single = media.length === 1
@@ -349,6 +356,17 @@ export function MediaGrid({ media, size, sourceUrl, hoverPlay, onOpen }: MediaGr
   // 높이를 자르는 크기에서는 여백이 생기지 않도록 채워서 자른다.
   const fit: 'cover' | 'contain' = maxHeight === null && single ? 'contain' : 'cover'
 
+  /*
+   * 이 격자의 칸 하나에 필요한 가로 픽셀.
+   *
+   * 사진이 여러 장이면 2열로 깔리므로 칸은 컬럼의 절반만 쓴다 — 4 장짜리 글은
+   * 필요한 픽셀이 4 분의 1 로 떨어진다.
+   *
+   * 폭을 아직 재지 못했으면(컬럼 밖에서 그려질 때) 가장 큰 크기로 물러선다.
+   * 작게 받았다가 곧바로 다시 받는 것이 제일 나쁘다.
+   */
+  const itemPixels = columnPixels > 0 ? columnPixels * (single ? 1 : GRID_SHARE) : Infinity
+
   return (
     <div
       className={`mt-2.5 grid gap-0.5 overflow-hidden rounded-xl border border-line-soft ${layoutClass(media.length)}`}
@@ -359,6 +377,7 @@ export function MediaGrid({ media, size, sourceUrl, hoverPlay, onOpen }: MediaGr
           <MediaItem
             media={item}
             fit={fit}
+            pixels={itemPixels}
             sourceUrl={sourceUrl}
             hoverPlay={hoverPlay}
             onOpen={() => onOpen?.(index)}

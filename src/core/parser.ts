@@ -49,7 +49,14 @@ function upgradeAvatar(url: string): string {
   return url.replace(/_normal\.(jpg|jpeg|png|gif|webp)$/i, '_bigger.$1')
 }
 
-function sizedMediaUrl(url: string): string {
+/**
+ * 저장해 둘 기본 주소.
+ *
+ * 실제로 목록에 그릴 때는 [format.ts](../ui/lib/format.ts) 의 `sizedMediaUrl` 이 자리
+ * 폭에 맞춰 `name` 을 다시 정하고, 확대해서 볼 때는 `originalMediaUrl` 이 원본으로
+ * 되돌린다. 여기서 박아두는 값은 그 둘이 손대기 전의 출발점일 뿐이다.
+ */
+function defaultMediaUrl(url: string): string {
   return url.includes('?') ? url : `${url}?name=medium`
 }
 
@@ -79,7 +86,7 @@ function parseMedia(legacy: Raw): TweetMedia[] {
       .sort((a, b) => toNumber(b.bitrate) - toNumber(a.bitrate))[0]
     const media: TweetMedia = {
       kind,
-      previewUrl: sizedMediaUrl(m.media_url_https ?? ''),
+      previewUrl: defaultMediaUrl(m.media_url_https ?? ''),
       width: toNumber(m.original_info?.width ?? m.sizes?.large?.w),
       height: toNumber(m.original_info?.height ?? m.sizes?.large?.h),
     }

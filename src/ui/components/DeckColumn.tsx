@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Settings } from '@core/settings'
 import { isNotification, TIMELINE_LABEL, type CollectorState, type TimelineKind } from '@core/types'
 import { ColumnActivityContext, type ColumnActivity } from '../columnActivity'
+import { ColumnPixelsContext, useMeasuredColumnPixels } from '../columnWidth'
 import type { ColumnState } from '../hooks/useCollector'
 import { formatClock } from '../lib/format'
 import { NotificationCard } from './NotificationCard'
@@ -129,6 +130,9 @@ export function DeckColumn({
 
   // 컬럼이 사라질 때 표시를 남겨두지 않는다.
   useEffect(() => () => onBusy(kind, false), [kind, onBusy])
+
+  // 사진을 어느 크기로 받을지는 이 칸의 실제 폭이 정한다.
+  const columnPixels = useMeasuredColumnPixels(scrollRef)
 
   const { state, pendingCount, lastReceivedAt } = column.status
   // 상태만으로는 멈춘 것을 알 수 없다 — 마지막으로 실제 글이 들어온 시각을 함께 짚는다.
@@ -275,30 +279,33 @@ export function DeckColumn({
 
         <div ref={scrollRef} onScroll={handleScroll} className="scroll-thin h-full overflow-y-auto overscroll-contain">
           {/* 카드들이 '지금 진행 중' 을 알려오는 자리. 그동안 새 글은 알약으로 세워둔다. */}
-          <ColumnActivityContext.Provider value={activity}>
-            {column.tweets.length === 0 ? (
-              <EmptyState state={state} />
-            ) : (
-              column.tweets.map((item, index) =>
-                isNotification(item) ? (
-                  <NotificationCard
-                    key={item.key}
-                    notification={item}
-                    settings={settings}
-                    animate={settledRef.current && atTop && index < 12}
-                  />
-                ) : (
-                  <TweetCard
-                    key={item.key}
-                    tweet={item}
-                    settings={settings}
-                    animate={settledRef.current && atTop && index < 12}
-                    onActed={onActed}
-                  />
-                ),
-              )
-            )}
-          </ColumnActivityContext.Provider>
+          {/* 사진을 어느 크기로 받을지도 이 안에서 갈린다 — 기준은 이 칸의 실제 폭이다. */}
+          <ColumnPixelsContext.Provider value={columnPixels}>
+            <ColumnActivityContext.Provider value={activity}>
+              {column.tweets.length === 0 ? (
+                <EmptyState state={state} />
+              ) : (
+                column.tweets.map((item, index) =>
+                  isNotification(item) ? (
+                    <NotificationCard
+                      key={item.key}
+                      notification={item}
+                      settings={settings}
+                      animate={settledRef.current && atTop && index < 12}
+                    />
+                  ) : (
+                    <TweetCard
+                      key={item.key}
+                      tweet={item}
+                      settings={settings}
+                      animate={settledRef.current && atTop && index < 12}
+                      onActed={onActed}
+                    />
+                  ),
+                )
+              )}
+            </ColumnActivityContext.Provider>
+          </ColumnPixelsContext.Provider>
 
           {column.tweets.length > 0 && !column.hasMore && (
             <p className="py-8 text-center text-[13px] text-faint">보관된 게시물의 끝</p>

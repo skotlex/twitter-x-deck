@@ -6,7 +6,7 @@
  * 대신 **어느 갈래로 갔는지** 와 경계값을 잰다.
  */
 import { describe, expect, it } from 'vitest'
-import { aspectRatio, formatCount, formatRelative, originalMediaUrl } from '@ui/lib/format'
+import { aspectRatio, formatCount, formatRelative, originalMediaUrl, sizedMediaUrl } from '@ui/lib/format'
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
@@ -80,6 +80,75 @@ describe('originalMediaUrl', () => {
 
   it('주소로 못 읽으면 원본을 그대로 돌려준다', () => {
     expect(originalMediaUrl('pbs.twimg.com/깨진 주소')).toBe('pbs.twimg.com/깨진 주소')
+  })
+})
+
+describe('sizedMediaUrl — 그 자리에 필요한 만큼만 받기', () => {
+  const PHOTO = 'https://pbs.twimg.com/media/x.jpg?name=medium'
+
+  /**
+   * 디코딩 메모리는 화면에 그려지는 크기가 아니라 받은 픽셀 수로 정해진다.
+   * 예전에는 파싱 시점에 1200px 로 굳혀 두어, 컬럼이 340px 이든 1200px 이든 같은
+   * 사진을 받았다.
+   */
+  it('좁은 자리에는 작은 사진을 고른다', () => {
+    expect(sizedMediaUrl(PHOTO, 460)).toContain('name=small')
+  })
+
+  it('넓은 자리에는 큰 사진을 고른다', () => {
+    expect(sizedMediaUrl(PHOTO, 900)).toContain('name=medium')
+  })
+
+  it('경계값은 그 단계로 담는다 — 딱 맞으면 키울 이유가 없다', () => {
+    expect(sizedMediaUrl(PHOTO, 680)).toContain('name=small')
+    expect(sizedMediaUrl(PHOTO, 681)).toContain('name=medium')
+  })
+
+  /**
+   * 목록에서 2048px(`large`) 를 들고 있을 이유가 없다. 넓은 컬럼 + 고DPI 화면에서
+   * 상한 없이 계산하면 지금보다 큰 사진을 받게 되어, 메모리를 줄이려던 것이
+   * 정반대로 간다. 확대해서 볼 때는 라이트박스가 `originalMediaUrl` 로 원본을 받는다.
+   */
+  it('아무리 넓어도 medium 을 넘지 않는다', () => {
+    expect(sizedMediaUrl(PHOTO, 5000)).toContain('name=medium')
+    expect(sizedMediaUrl(PHOTO, Number.POSITIVE_INFINITY)).toContain('name=medium')
+  })
+
+  it('정사각 크롭인 thumb 은 절대 고르지 않는다', () => {
+    for (const needed of [1, 10, 149, 150, 151]) {
+      expect(sizedMediaUrl(PHOTO, needed), String(needed)).not.toContain('name=thumb')
+    }
+  })
+
+  /** `name` 을 덮어쓰는 방식이라 이미 저장된 글에도 그대로 듣는다. */
+  it('이미 박혀 있는 크기를 덮어쓴다 — 저장값을 옮길 필요가 없다', () => {
+    expect(sizedMediaUrl('https://pbs.twimg.com/media/x.jpg?name=medium', 400)).toBe(
+      'https://pbs.twimg.com/media/x.jpg?name=small',
+    )
+  })
+
+  it('name 이 없으면 붙인다', () => {
+    expect(sizedMediaUrl('https://pbs.twimg.com/media/x.jpg', 400)).toContain('name=small')
+  })
+
+  it('다른 파라미터는 건드리지 않는다', () => {
+    expect(sizedMediaUrl('https://pbs.twimg.com/media/x.jpg?format=jpg&name=medium', 400)).toContain(
+      'format=jpg',
+    )
+  })
+
+  it('다른 호스트는 손대지 않는다 — 영상은 크기 이름이 없다', () => {
+    const url = 'https://video.twimg.com/clip/x.mp4?tag=1'
+    expect(sizedMediaUrl(url, 400)).toBe(url)
+  })
+
+  it('주소로 못 읽으면 원본을 그대로 돌려준다', () => {
+    expect(sizedMediaUrl('pbs.twimg.com/깨진 주소', 400)).toBe('pbs.twimg.com/깨진 주소')
+  })
+
+  /** 라이트박스는 이 값을 쓰지 않고 원본으로 갈아 끼운다. 둘이 어긋나면 안 된다. */
+  it('라이트박스로 넘어가면 크기 제한이 풀린다', () => {
+    expect(originalMediaUrl(sizedMediaUrl(PHOTO, 400))).toContain('name=orig')
   })
 })
 
