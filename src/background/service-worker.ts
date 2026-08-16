@@ -137,10 +137,19 @@ let knownPort: number | null = null
  */
 let probeNote: string | null = null
 
+/**
+ * 한 자리를 두드려보는 데 주는 시간.
+ *
+ * 닫힌 포트는 곧바로 거절이 돌아오므로 원래는 짧아도 된다. 넉넉히 잡는 이유는
+ * 브라우저가 로컬 주소로 나가는 요청을 한 번 걸러보는 경우가 있어서다 — 그 몇 백
+ * 밀리초에 걸려 멀쩡한 브리지를 못 봤다고 답하면 원인을 찾을 길이 없어진다.
+ */
+const PROBE_TIMEOUT_MS = 5_000
+
 /** 그 포트에 우리 브리지가 있는지. 남의 서버가 앉아 있을 수도 있어 표시를 확인한다. */
 async function isBridge(port: number): Promise<boolean> {
   try {
-    const response = await request(port, '/hello', undefined, 1_500)
+    const response = await request(port, '/hello', undefined, PROBE_TIMEOUT_MS)
     if (!response.ok) {
       probeNote ??= `${port} 번에서 ${response.status} 이 돌아왔습니다.`
       return false
@@ -166,16 +175,16 @@ async function findBridge(): Promise<number | null> {
   probeNote = null
   if (knownPort !== null && (await isBridge(knownPort))) return knownPort
 
-  for (let at = 0; at < BRIDGE_PORT_TRIES; at += 1) {
-    const port = BRIDGE_PORT_BASE + at
-    if (port === knownPort) continue
-    if (await isBridge(port)) {
-      knownPort = port
-      return port
-    }
-  }
-  knownPort = null
-  return null
+  // 한 자리씩 차례로 두드리면 후보 수만큼 기다림이 쌓인다 — 열여섯 자리가 다 비어
+  // 있으면 그 합이 그대로 사용자가 보는 시간이 된다. 한꺼번에 두드려 가장 늦은
+  // 하나만큼만 기다린다.
+  const ports = Array.from({ length: BRIDGE_PORT_TRIES }, (_, at) => BRIDGE_PORT_BASE + at)
+  const found = await Promise.all(
+    ports.map(async (port) => ((await isBridge(port)) ? port : null)),
+  )
+
+  knownPort = found.find((port) => port !== null) ?? null
+  return knownPort
 }
 
 async function callBridge(path: string, body: unknown, timeoutMs: number): Promise<unknown> {
