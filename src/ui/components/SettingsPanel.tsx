@@ -4,8 +4,8 @@ import type { BridgeStatus, TranslateEngineId } from '@core/messages'
 import type { Settings } from '@core/settings'
 import { TIMELINE_KINDS, TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import {
+  ENGINE_CAN,
   ENGINE_LABEL,
-  ENGINE_OUTPUT,
   fetchBridgeStatus,
   pickEngine,
   requestLogin,
@@ -396,7 +396,7 @@ function TranslateSettings({
                       />
                       <span className="text-[13px] font-medium text-text">{ENGINE_LABEL[id]}</span>
                       <span className="min-w-0 flex-1 truncate text-[12px] text-faint">
-                        {engine.loggedIn ? `${ENGINE_OUTPUT[id]}로 번역합니다` : engine.note}
+                        {engine.loggedIn ? `${ENGINE_CAN[id]} 번역합니다` : engine.note}
                       </span>
                       {!engine.loggedIn && engine.installed && (
                         <button
@@ -421,15 +421,15 @@ function TranslateSettings({
           {bothReady && (
             <Row
               label="주로 쓸 명령"
-              hint="Codex 는 글자를 바꿔 그림을 다시 그리고, Claude 는 읽은 글과 번역을 글자로 줍니다. 고른 쪽이 로그인돼 있지 않으면 나머지로 갑니다."
+              hint="Codex 는 이미지와 텍스트 중에서 고를 수 있고(아래), Claude 는 텍스트만 줍니다. 고른 쪽이 로그인돼 있지 않으면 나머지로 갑니다."
               control={
                 <Select
                   label="주로 쓸 명령"
                   value={settings.imageTranslateEngine}
                   onChange={(next) => onUpdate({ imageTranslateEngine: next })}
                   options={[
-                    { value: 'codex' as TranslateEngineId, label: 'Codex — 이미지' },
-                    { value: 'claude' as TranslateEngineId, label: 'Claude — 텍스트' },
+                    { value: 'codex' as TranslateEngineId, label: 'Codex' },
+                    { value: 'claude' as TranslateEngineId, label: 'Claude (텍스트만)' },
                   ]}
                 />
               }

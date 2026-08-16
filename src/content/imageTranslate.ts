@@ -21,10 +21,15 @@ export const ENGINE_LABEL: Record<TranslateEngineId, string> = {
   claude: 'Claude',
 }
 
-/** 그 명령이 무엇을 내주는지. claude 는 그림을 만들지 못한다. */
-export const ENGINE_OUTPUT: Record<TranslateEngineId, '이미지' | '텍스트'> = {
-  codex: '이미지',
-  claude: '텍스트',
+/**
+ * 그 명령이 무엇을 내줄 수 있는지.
+ *
+ * codex 는 둘 다 되므로 어느 쪽인지는 설정에서 따로 고른다 — 여기에 '이미지' 라고
+ * 적어두면 그 선택이 없는 것처럼 읽힌다. claude 는 그림을 만들지 못해 하나뿐이다.
+ */
+export const ENGINE_CAN: Record<TranslateEngineId, string> = {
+  codex: '이미지·텍스트 모두',
+  claude: '텍스트만',
 }
 
 export class ImageTranslateError extends Error {}
