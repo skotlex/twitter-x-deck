@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { loadTranslation, saveTranslation } from '@core/db'
 import type { ImageTranslation, TranslateEngineId } from '@core/messages'
-import { loadSettings, watchSettings } from '@core/settings'
+import { loadSettings, saveSettings, watchSettings } from '@core/settings'
 import type { TweetMedia } from '@core/types'
 import {
   ENGINE_LABEL,
@@ -53,6 +53,8 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
    * 지금은 사진을 보고 싶다는 뜻이지, 이 사진만 그렇다는 뜻이 아니다.
    */
   const [panelOpen, setPanelOpen] = useState(true)
+  /** 사진을 보다 말고 방식을 바꿀 수 있게 여는 작은 차림표. */
+  const [menuOpen, setMenuOpen] = useState(false)
   const [translation, setTranslation] = useState<ImageTranslation | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -152,7 +154,9 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      // 차림표가 열려 있으면 그것부터 닫는다. 방식을 고르다 말았다고 사진까지 닫히면 안 된다.
+      if (event.key === 'Escape' && menuOpen) setMenuOpen(false)
+      else if (event.key === 'Escape') onClose()
       else if (event.key === 'ArrowRight') move(1)
       else if (event.key === 'ArrowLeft') move(-1)
       else return
@@ -162,7 +166,9 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
     // 버블 단계에서는 window 까지 올라오지 않는다.
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [move, onClose])
+    // menuOpen 을 함께 적는다 — 빼면 처음 걸어둔 값(닫힘)을 계속 붙잡아, 차림표가
+    // 열려 있어도 Esc 가 사진을 닫아버린다.
+  }, [move, onClose, menuOpen])
 
   if (!current) return null
 
@@ -229,6 +235,82 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
                   ? '다시 번역'
                   : '사진 번역'}
             </button>
+            {/*
+              Codex 만 고를 것이 있다. Claude 는 그림을 만들지 못해 늘 글이라
+              열어봐야 바꿀 것이 없다.
+            */}
+            {engine === 'codex' && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((prev) => !prev)}
+                  aria-expanded={menuOpen}
+                  aria-label="번역 방식"
+                  title="번역 방식"
+                  className={`grid h-7 w-7 place-items-center rounded-full transition-colors ${
+                    menuOpen ? 'bg-white/25 text-white' : 'bg-white/10 text-white/75 hover:bg-white/20 hover:text-white'
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5">
+                    <circle cx="12" cy="12" r="3" />
+                    <path
+                      d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+
+                {menuOpen && (
+                  <>
+                    {/* 바깥을 누르면 닫히게 하는 자리. 라이트박스까지 닫히면 안 되므로 여기서 멈춘다. */}
+                    <div
+                      className="fixed inset-0 z-20"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setMenuOpen(false)
+                      }}
+                    />
+                    <div className="absolute right-0 top-9 z-30 w-52 overflow-hidden rounded-xl border border-white/15 bg-neutral-900/95 py-1 shadow-2xl backdrop-blur">
+                      <p className="px-3 pb-1 pt-1.5 text-[11px] font-medium text-white/40">결과</p>
+                      {(['image', 'text'] as const).map((value) => (
+                        <MenuItem
+                          key={value}
+                          selected={output === value}
+                          label={value === 'image' ? '이미지로 다시 그리기' : '글자만 옮기기'}
+                          hint={value === 'image' ? '80초쯤' : '훨씬 빠름'}
+                          onClick={() => {
+                            setMenuOpen(false)
+                            void saveSettings({ codexOutput: value })
+                          }}
+                        />
+                      ))}
+
+                      {output === 'text' && (
+                        <>
+                          <p className="mt-1 border-t border-white/10 px-3 pb-1 pt-2 text-[11px] font-medium text-white/40">
+                            속도
+                          </p>
+                          {[false, true].map((value) => (
+                            <MenuItem
+                              key={String(value)}
+                              selected={fast === value}
+                              label={value ? '빠르게' : '일반'}
+                              hint={value ? '사용량 더 씀' : undefined}
+                              onClick={() => {
+                                setMenuOpen(false)
+                                void saveSettings({ codexTextFast: value })
+                              }}
+                            />
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {translation?.kind === 'image' && (
               <button
                 type="button"
@@ -350,6 +432,42 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * 차림표의 한 줄.
+ *
+ * 고른 것을 다시 눌러도 그대로 저장한다 — 같은 값을 쓰는 것이라 바뀌는 것이 없고,
+ * 누르면 닫히는 것이 자연스럽다. 닫는 일은 설정 변경을 지켜보는 쪽이 아니라 여기서
+ * 곧바로 한다.
+ */
+function MenuItem({
+  selected,
+  label,
+  hint,
+  onClick,
+}: {
+  selected: boolean
+  label: string
+  hint?: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] transition-colors ${
+        selected ? 'text-white' : 'text-white/65 hover:bg-white/10 hover:text-white'
+      }`}
+    >
+      <span aria-hidden="true" className={`w-3 shrink-0 ${selected ? 'text-accent' : 'text-transparent'}`}>
+        ✓
+      </span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {hint && <span className="shrink-0 text-[11px] text-white/35">{hint}</span>}
+    </button>
   )
 }
 
