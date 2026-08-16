@@ -17,7 +17,7 @@ import {
 import { useColumnActivity } from '../columnActivity'
 import { formatCount, formatRelative, formatStamp } from '../lib/format'
 import { Lightbox } from './Lightbox'
-import { MediaSlot } from './MediaGrid'
+import { MEDIA_REGION_MARK, MediaSlot } from './MediaGrid'
 import { PostComposer } from './PostComposer'
 import { RichText } from './RichText'
 import { XPageModal } from './XPageModal'
@@ -148,6 +148,9 @@ function QuotedTweet({
 }) {
   return (
     <div
+      // 영상 미리보기에서 원글과 갈리는 경계다. 이 상자를 가리키면 인용글 영상이,
+      // 바깥을 가리키면 원글 영상이 돈다.
+      {...{ [MEDIA_REGION_MARK]: '' }}
       // 인용 상자 안의 클릭은 여기서 가로챈다. 그러지 않으면 원글 상세가 열린다.
       onClick={(event) => {
         if (!opensDetail(event)) return

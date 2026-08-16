@@ -18,12 +18,28 @@ function itemClass(count: number, index: number): string {
   return count === 3 && index === 0 ? 'row-span-2' : ''
 }
 
+/** 가리킨 영역에서 돌 영상을 고르는 표식. 영역 안에서 맨 앞에 달린 것 하나가 대표다. */
+const PLAYABLE_MARK = 'data-playable'
+
+/**
+ * 카드 안에서 따로 떼어 볼 영역의 표식.
+ *
+ * 인용 상자가 여기에 해당한다 — 인용 상자를 가리키면 그 안 영상이, 원글 쪽을
+ * 가리키면 원글 영상이 돈다. 상자가 눈에 띄게 갈려 있으니 어느 쪽을 볼 셈인지도
+ * 마우스 위치로 갈린다.
+ */
+export const MEDIA_REGION_MARK = 'data-media-region'
+
+/** 이 요소가 든 영역. 표식이 붙은 상자가 있으면 그 상자, 없으면 카드 전체다. */
+function regionOf(node: Element): Element | null {
+  return node.closest(`[${MEDIA_REGION_MARK}]`) ?? node.closest('article')
+}
+
 function MediaItem({
   media,
   fit,
   sourceUrl,
   hoverPlay,
-  leads,
   onOpen,
 }: {
   media: TweetMedia
@@ -31,14 +47,12 @@ function MediaItem({
   fit: 'cover' | 'contain'
   sourceUrl: string
   hoverPlay: boolean
-  /** 이 카드에서 맨 앞에 오는 영상인지. 카드만 가리켰을 때 돌 대상을 하나로 정한다. */
-  leads: boolean
   onOpen: () => void
 }) {
   const [failed, setFailed] = useState(false)
   const [hovered, setHovered] = useState(false)
-  /** 이 영상이 실린 카드를 지금 가리키고 있거나 그 안에 포커스가 있는지. */
-  const [cardActive, setCardActive] = useState(false)
+  /** 이 영상이 실린 영역을 지금 보고 있고, 그 영역의 대표 영상이 이것인지. */
+  const [regionLeads, setRegionLeads] = useState(false)
   /** 사용자가 눌러 소리를 켠 상태. 한 번 켜면 마우스가 떠나도 계속 돈다. */
   const [engaged, setEngaged] = useState(false)
   const hostRef = useRef<HTMLButtonElement | null>(null)
@@ -51,32 +65,49 @@ function MediaItem({
    * 돌아야 하는지.
    *
    *   1순위 — 이 영상을 직접 가리켰다.
-   *   2순위 — 이 영상이 실린 카드를 가리켰거나 그 안에 포커스가 있다.
-   *           카드에 영상이 여럿이면 맨 앞 하나만 돈다.
+   *   2순위 — 이 영상이 실린 영역을 가리켰거나 그 안에 포커스가 있다.
+   *           한 영역에 영상이 여럿이면 맨 앞 하나만 돈다.
    *   그리고 한 번 소리를 켠 영상은 조건과 무관하게 계속 돈다.
    */
-  const showVideo =
-    playable && !failed && (engaged || (hoverPlay && (hovered || (cardActive && leads))))
+  const showVideo = playable && !failed && (engaged || (hoverPlay && (hovered || regionLeads)))
 
   // 영상이 도는 동안에는 새 글을 목록에 끼워 넣지 않는다 — 보고 있던 화면이
   // 그 높이만큼 아래로 밀려난다. 그동안 온 글은 알약으로 세워둔다.
   useColumnActivity(showVideo)
 
   /**
-   * 이 영상이 실린 카드를 지금 보고 있는지 지켜본다.
+   * 이 영상이 든 영역을 지금 보고 있는지 지켜본다.
    *
-   * 영상 자체가 아니라 카드 전체를 기준으로 삼는다 — 글을 읽으려고 카드 위에
+   * 영상 자체가 아니라 그 영상이 든 영역을 기준으로 삼는다 — 글을 읽으려고 그 위에
    * 마우스를 둔 것만으로도 그 글의 영상은 볼 뜻이 있는 것이고, 반대로 지나가는
    * 카드의 영상까지 돌 이유는 없다. 키보드로 옮겨 다닐 때를 위해 포커스도 함께 본다.
+   *
+   * 한 영역에서 도는 영상은 하나다. 문서 순서로 맨 앞의 영상을 그때그때 찾으므로,
+   * 라벨 모드에서 한쪽만 펼쳐 두었을 때처럼 목록이 도중에 바뀌어도 대표가 어긋나지
+   * 않는다. 마우스가 어디에 있는지는 카드 전체에서 지켜본다 — 원글과 인용 상자
+   * 사이를 오갈 때는 카드를 벗어나지 않아 각 영역의 mouseenter 만으로는 모자란다.
    */
   useEffect(() => {
     const node = hostRef.current
     if (!hoverPlay || !playable || !node) return
     const card = node.closest('article')
-    if (!card) return
+    const region = regionOf(node)
+    if (!card || !region) return
 
-    const enter = () => setCardActive(true)
-    const leave = () => setCardActive(false)
+    /** 지금 가리킨(또는 포커스가 간) 곳이 내 영역이고, 그 영역의 대표가 나인지. */
+    const active = (target: EventTarget | null) =>
+      target instanceof Element &&
+      regionOf(target) === region &&
+      region.querySelector(`[${PLAYABLE_MARK}]`) === node
+
+    // 영역 안을 옮겨 다녀도 같은 값이 다시 계산될 뿐이고, 원글 ↔ 인용 상자로 건너가는
+    // 순간에만 값이 갈린다. 그래서 영역별 mouseenter 대신 카드에서 올라오는 이벤트를 본다.
+    const enter = (event: Event) => setRegionLeads(active(event.target))
+    const leave = () => setRegionLeads(false)
+
+    /** 마우스가 지금 내 영역 위에 있는지. 안에 든 별도 영역(인용 상자) 위는 셈에서 뺀다. */
+    const pointerInside = () =>
+      region.matches(':hover') && !region.querySelector(`[${MEDIA_REGION_MARK}]:hover`)
 
     /**
      * 포커스를 잃었다고 다 떠난 것은 아니다.
@@ -86,23 +117,23 @@ function MediaItem({
      * 띄운 숨은 프레임이 제 입력란에 포커스를 가져가기도 한다. 그걸 이탈로 세면
      * 보고 있던 영상이 버튼을 눌렀다는 이유만으로 멈춘다.
      *
-     * 그래서 두 가지를 먼저 본다 — 마우스가 아직 카드 위에 있으면 무엇이 포커스를
-     * 가져갔든 이 카드를 보고 있는 것이고, 포커스가 카드 안에서 자리만 옮겼거나 아예
+     * 그래서 두 가지를 먼저 본다 — 마우스가 아직 내 영역 위에 있으면 무엇이 포커스를
+     * 가져갔든 이쪽을 보고 있는 것이고, 포커스가 카드 안에서 자리만 옮겼거나 아예
      * 사라진 것도 떠난 것이 아니다.
      */
     const leaveFocus = (event: FocusEvent) => {
-      if (card.matches(':hover')) return
+      if (pointerInside()) return
       const next = event.relatedTarget as Node | null
       if (next === null || card.contains(next)) return
       leave()
     }
 
-    card.addEventListener('mouseenter', enter)
+    card.addEventListener('mouseover', enter)
     card.addEventListener('mouseleave', leave)
     card.addEventListener('focusin', enter)
     card.addEventListener('focusout', leaveFocus)
     return () => {
-      card.removeEventListener('mouseenter', enter)
+      card.removeEventListener('mouseover', enter)
       card.removeEventListener('mouseleave', leave)
       card.removeEventListener('focusin', enter)
       card.removeEventListener('focusout', leaveFocus)
@@ -151,6 +182,7 @@ function MediaItem({
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      {...(playable ? { [PLAYABLE_MARK]: '' } : {})}
       // 눌렀을 때 할 일이 다르면 커서도 달라야 한다. 동영상·GIF 는 그 자리에서
       // 재생되고, 사진만 원본 보기로 확대된다.
       className={`group/media relative block h-full w-full overflow-hidden bg-surface-2 ${
@@ -304,8 +336,6 @@ export function MediaGrid({ media, size, sourceUrl, hoverPlay, onOpen }: MediaGr
 
   // 높이를 자르는 크기에서는 여백이 생기지 않도록 채워서 자른다.
   const fit: 'cover' | 'contain' = maxHeight === null && single ? 'contain' : 'cover'
-  // 카드만 가리켰을 때 돌 하나. 영상이 여럿이면 맨 앞의 것으로 정한다.
-  const firstPlayable = media.findIndex((item) => item.kind !== 'photo' && item.playbackUrl)
 
   return (
     <div
@@ -319,7 +349,6 @@ export function MediaGrid({ media, size, sourceUrl, hoverPlay, onOpen }: MediaGr
             fit={fit}
             sourceUrl={sourceUrl}
             hoverPlay={hoverPlay}
-            leads={index === firstPlayable}
             onOpen={() => onOpen?.(index)}
           />
         </div>
