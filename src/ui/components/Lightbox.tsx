@@ -45,6 +45,14 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
   /** Codex 가 무엇을 내줄지와, 글로 옮길 때 빠른 등급을 쓸지. */
   const [output, setOutput] = useState<'image' | 'text'>('image')
   const [fast, setFast] = useState(false)
+  /**
+   * 번역문 칸을 펼쳐둘지.
+   *
+   * 글이 길면 그만큼 사진이 눌려 작아진다. 사진을 보려고 연 화면이니 글은 접을 수
+   * 있어야 한다. 사진을 넘겨도 접어둔 상태는 그대로 둔다 — 한 번 접었다는 것은
+   * 지금은 사진을 보고 싶다는 뜻이지, 이 사진만 그렇다는 뜻이 아니다.
+   */
+  const [panelOpen, setPanelOpen] = useState(true)
   const [translation, setTranslation] = useState<ImageTranslation | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -293,19 +301,44 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
       {translation?.kind === 'text' && (
         <div
           onClick={(event) => event.stopPropagation()}
-          className="scroll-thin max-h-[38vh] shrink-0 overflow-y-auto border-t border-white/15 bg-black/70 px-6 py-4"
+          className="shrink-0 border-t border-white/15 bg-black/70"
         >
-          {translation.items.length === 0 ? (
-            <p className="text-[13px] text-white/60">읽을 글자가 없습니다.</p>
-          ) : (
-            <ul className="mx-auto flex max-w-3xl flex-col gap-3">
-              {translation.items.map((item, at) => (
-                <li key={at}>
-                  <p className="text-[12.5px] leading-relaxed text-white/45">{item.source}</p>
-                  <p className="text-[14px] leading-relaxed text-white">{item.korean}</p>
-                </li>
-              ))}
-            </ul>
+          <button
+            type="button"
+            onClick={() => setPanelOpen((prev) => !prev)}
+            aria-expanded={panelOpen}
+            className="flex w-full items-center gap-2 px-6 py-2 text-[12.5px] text-white/60 transition-colors hover:text-white"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              aria-hidden="true"
+              className="h-3.5 w-3.5 transition-transform"
+              style={{ transform: panelOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+            >
+              <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            번역 {translation.items.length}개
+            <span className="ml-auto">{panelOpen ? '접기' : '펼치기'}</span>
+          </button>
+
+          {panelOpen && (
+            <div className="scroll-thin max-h-[38vh] overflow-y-auto px-6 pb-4">
+              {translation.items.length === 0 ? (
+                <p className="text-[13px] text-white/60">읽을 글자가 없습니다.</p>
+              ) : (
+                <ul className="mx-auto flex max-w-3xl flex-col gap-3">
+                  {translation.items.map((item, at) => (
+                    <li key={at}>
+                      <p className="text-[12.5px] leading-relaxed text-white/45">{item.source}</p>
+                      <p className="text-[14px] leading-relaxed text-white">{item.korean}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </div>
       )}
