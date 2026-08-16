@@ -223,6 +223,19 @@ export function DeckColumn({
           </span>
         )}
 
+        {/*
+          절전 중에는 새 글이 들어오지 않는다. 그 사실을 화면에 적어두지 않으면
+          수집이 고장난 것과 구별되지 않는다 — 조용한 컬럼은 둘 다 똑같이 보인다.
+        */}
+        {settings.powerSave && (
+          <span
+            className="rounded-full bg-button px-2 py-0.5 text-[11px] font-medium text-button-text"
+            title="절전 중입니다. 새 글을 받아오지 않습니다 — 상단 바의 번개를 끄거나 새로고침을 누르면 최신 글을 받아옵니다."
+          >
+            절전
+          </span>
+        )}
+
         {column.note && (
           <span className="animate-fade rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">
             {column.note}
