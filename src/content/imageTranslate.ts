@@ -66,11 +66,17 @@ export function pickEngine(
 export async function translateImage(
   imageUrl: string,
   engine: TranslateEngineId,
+  /** Codex 가 그림을 다시 그릴지, 글만 옮길지. claude 는 늘 글이라 무시된다. */
+  mode: 'image' | 'text' = 'image',
+  /** 글을 옮길 때만 뜻이 있다. 그림 쪽은 등급이 듣지 않는다. */
+  fast = false,
 ): Promise<ImageTranslation> {
   const answer = (await chrome.runtime.sendMessage({
     type: IMAGE_TRANSLATE,
     engine,
     imageUrl,
+    mode,
+    fast,
   })) as BridgeStatus & Partial<ImageTranslation>
 
   if (!answer?.reachable) {

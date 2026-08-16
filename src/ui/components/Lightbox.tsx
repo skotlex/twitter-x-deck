@@ -42,6 +42,9 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
    * 자리를 비워두지 말고 확인 중이라고 말해준다.
    */
   const [probing, setProbing] = useState(false)
+  /** Codex 가 무엇을 내줄지와, 글로 옮길 때 빠른 등급을 쓸지. */
+  const [output, setOutput] = useState<'image' | 'text'>('image')
+  const [fast, setFast] = useState(false)
   const [translation, setTranslation] = useState<ImageTranslation | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -80,13 +83,26 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         })
     }
 
-    void loadSettings().then((settings) => {
-      if (alive) resolve(settings.imageTranslate, settings.imageTranslateEngine)
-    })
-    return watchSettings((settings) => {
+    const apply = (settings: {
+      imageTranslate: boolean
+      imageTranslateEngine: TranslateEngineId
+      codexOutput: 'image' | 'text'
+      codexTextFast: boolean
+    }) => {
+      if (!alive) return
+      setOutput(settings.codexOutput)
+      setFast(settings.codexTextFast)
       resolve(settings.imageTranslate, settings.imageTranslateEngine)
-    })
+    }
+
+    void loadSettings().then(apply)
+    return watchSettings(apply)
   }, [])
+
+  /** claude 는 늘 글이다. codex 만 그림과 글 사이에서 갈린다. */
+  const mode: 'image' | 'text' = engine === 'claude' ? 'text' : output
+  /** 쟁여둘 때 쓰는 열쇠. 명령과 결과 종류가 함께 들어가야 서로의 답을 집어가지 않는다. */
+  const cacheKey = `${engine ?? '-'}:${mode}`
 
   // 사진을 넘기면 앞 사진의 번역은 남아 있으면 안 된다.
   const previewUrl = current?.previewUrl
@@ -97,8 +113,9 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
     if (!previewUrl || !engine) return
 
     // 쟁여둔 것이 있으면 부르지 않는다. 한 번이 30초 넘게 걸리고 구독 한도도 함께 닳는다.
+    // 열쇠에 무엇을 내줬는지까지 담는다 — 같은 명령이라도 그림과 글은 다른 결과다.
     let alive = true
-    void loadTranslation(originalMediaUrl(previewUrl), engine)
+    void loadTranslation(originalMediaUrl(previewUrl), cacheKey)
       .then((found) => {
         if (alive && found) setTranslation(found)
       })
@@ -106,24 +123,24 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
     return () => {
       alive = false
     }
-  }, [previewUrl, engine])
+  }, [previewUrl, engine, cacheKey])
 
   const runTranslate = useCallback(() => {
     if (!previewUrl || !engine || busy) return
     const url = originalMediaUrl(previewUrl)
     setBusy(true)
     setError(null)
-    void translateImage(url, engine)
+    void translateImage(url, engine, mode, fast)
       .then((result) => {
         setTranslation(result)
         setShowTranslated(true)
-        return saveTranslation(url, engine, result)
+        return saveTranslation(url, cacheKey, result)
       })
       .catch((cause: unknown) => {
         setError(cause instanceof Error ? cause.message : '번역하지 못했습니다.')
       })
       .finally(() => setBusy(false))
-  }, [previewUrl, engine, busy])
+  }, [previewUrl, engine, busy, mode, fast, cacheKey])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

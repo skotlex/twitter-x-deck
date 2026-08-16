@@ -224,7 +224,12 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     // 그림을 다시 그리는 데 1분을 넘기기도 한다. 브리지 쪽 한계보다 넉넉히 잡는다.
     void callBridge(
       'translate',
-      { engine: payload.engine, imageUrl: payload.imageUrl },
+      {
+        engine: payload.engine,
+        imageUrl: payload.imageUrl,
+        mode: payload.mode,
+        fast: payload.fast,
+      },
       320_000,
     ).then(sendResponse)
     return true

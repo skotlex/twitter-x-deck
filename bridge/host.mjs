@@ -337,7 +337,24 @@ async function translateWithCodex(imagePath) {
   const before = snapshotGenerated()
   const result = await run(
     'codex',
-    ['exec', '--skip-git-repo-check', '-s', 'read-only', '-i', `"${imagePath}"`],
+    [
+      'exec',
+      '--skip-git-repo-check',
+      '-s',
+      'read-only',
+      // 그림을 다시 그리는 데는 처리 등급이 영향을 주지 않는다. 재보니 표준과 fast 가
+      // 77.2초 대 79.0초로 같았다 — 시간을 잡아먹는 것은 텍스트 생성이 아니라 그림
+      // 생성이기 때문이다. 사용자가 코딩 때문에 전역을 fast 로 켜 두었더라도 여기서는
+      // 되돌린다. 그러지 않으면 이득 없이 사용량만 더 쓴다.
+      //
+      // `null` 은 TOML 값이 아니라 codex 가 리터럴로 받아 흘리는 경로일 수 있다. 결과가
+      // '등급 없음' 인 것은 확인했지만(전역 fast 상태에서 53.8초 → 62.2초로 되돌아왔다),
+      // codex 판이 올라가며 달라질 수 있는 의존이다.
+      '-c',
+      'service_tier=null',
+      '-i',
+      `"${imagePath}"`,
+    ],
     TRANSLATE_TIMEOUT_MS,
     CODEX_PROMPT,
   )
@@ -363,6 +380,52 @@ async function translateWithCodex(imagePath) {
     dataUrl: `data:${type};base64,${bytes.toString('base64')}`,
     engine: 'codex',
   }
+}
+
+/**
+ * 글자만 읽어 옮길 때 쓰는 말.
+ *
+ * 그림을 다시 그리지 않으므로 훨씬 빠르다 — 그림 쪽이 80초 안팎인데 이쪽은 그 몇
+ * 분의 일이다. 배치가 뜻을 갖지 않는 사진(스크린샷, 짧은 문구)에는 이쪽이 낫다.
+ */
+const CODEX_TEXT_PROMPT = [
+  'Read the attached image and extract every piece of visible text.',
+  'Translate each into natural Korean.',
+  'Japanese vertical writing (縦書き) reads top-to-bottom, right column first — follow that order.',
+  'For speech bubbles, order them right-to-left, top-to-bottom.',
+  'Do not generate or edit any image. Do not use the image generation tool.',
+  'Do not write or modify any file. Do not ask any follow-up question.',
+  'Reply with ONLY a JSON array, no prose and no code fence:',
+  '[{"source":"<original text>","korean":"<Korean translation>"}]',
+  'If the image has no text at all, reply with [].',
+].join('\n')
+
+async function translateWithCodexText(imagePath, fast) {
+  const result = await run(
+    'codex',
+    [
+      'exec',
+      '--skip-git-repo-check',
+      '-s',
+      'read-only',
+      // 이쪽은 텍스트 생성이 곧 일이라 등급이 실제로 듣는다 (재보니 약 14% 차이).
+      // 그래서 사용자가 고른 대로 따른다.
+      '-c',
+      `service_tier=${fast ? 'fast' : 'null'}`,
+      '-i',
+      `"${imagePath}"`,
+    ],
+    TRANSLATE_TIMEOUT_MS,
+    CODEX_TEXT_PROMPT,
+  )
+
+  const complaint = configComplaint(result.stderr)
+  if (complaint) throw new Error(complaint)
+  if (result.timedOut || result.code !== 0) throw new Error(explain('Codex', result))
+
+  const items = parsePairs(result.stdout)
+  if (!items) throw new Error('Codex 의 답을 읽지 못했습니다. 다시 시도해 보세요.')
+  return { kind: 'text', items, engine: 'codex' }
 }
 
 const CLAUDE_PROMPT = (imagePath) =>
@@ -461,10 +524,18 @@ async function downloadImage(url) {
   return path
 }
 
-async function translate(engine, imageUrl) {
+/**
+ * @param mode 'image' 면 글자를 바꿔 다시 그리고, 'text' 면 읽은 글과 번역만 준다.
+ *             claude 는 그림을 만들지 못하므로 언제나 'text' 다.
+ * @param fast 텍스트로 옮길 때만 뜻이 있다. 그림 쪽은 등급이 듣지 않아 무시한다.
+ */
+async function translate(engine, imageUrl, mode, fast) {
   const path = await downloadImage(imageUrl)
   try {
-    return engine === 'claude' ? await translateWithClaude(path) : await translateWithCodex(path)
+    if (engine === 'claude') return await translateWithClaude(path)
+    return mode === 'text'
+      ? await translateWithCodexText(path, fast === true)
+      : await translateWithCodex(path)
   } finally {
     try {
       rmSync(path, { force: true })
@@ -527,7 +598,11 @@ async function handle(message) {
         return
       }
       const engine = message.engine === 'claude' ? 'claude' : 'codex'
-      reply(id, { ok: true, ...(await enqueue(() => translate(engine, message.imageUrl))) })
+      const mode = message.mode === 'text' ? 'text' : 'image'
+      reply(id, {
+        ok: true,
+        ...(await enqueue(() => translate(engine, message.imageUrl, mode, message.fast))),
+      })
       return
     }
 

@@ -436,6 +436,42 @@ function TranslateSettings({
             />
           )}
 
+          {/*
+            Codex 만 갈린다. Claude 는 그림을 만들지 못해 늘 글이므로 물을 것이 없다.
+            쓸 수 있는 명령이 Codex 로 정해진 뒤에만 보여준다.
+          */}
+          {active === 'codex' && (
+            <Row
+              label="Codex 결과"
+              hint="그림은 글자를 바꿔 다시 그립니다 — 배치가 뜻을 갖는 포스터·만화에 어울리지만 한 장에 80초쯤 걸립니다. 글만 옮기면 훨씬 빠릅니다."
+              control={
+                <Select
+                  label="Codex 결과"
+                  value={settings.codexOutput}
+                  onChange={(next) => onUpdate({ codexOutput: next })}
+                  options={[
+                    { value: 'image' as const, label: '이미지' },
+                    { value: 'text' as const, label: '텍스트' },
+                  ]}
+                />
+              }
+            />
+          )}
+
+          {active === 'codex' && settings.codexOutput === 'text' && (
+            <Row
+              label="빠른 등급으로"
+              hint="글을 옮기는 일은 약 14% 빨라집니다. 대신 구독 사용량을 더 씁니다. 그림을 다시 그릴 때는 등급이 듣지 않아 이 설정과 무관합니다."
+              control={
+                <Toggle
+                  checked={settings.codexTextFast}
+                  onChange={(next) => onUpdate({ codexTextFast: next })}
+                  label="빠른 등급으로"
+                />
+              }
+            />
+          )}
+
           {status?.reachable && !active && (
             <p className="py-3.5 text-[12.5px] leading-relaxed text-danger">
               쓸 수 있는 명령이 없습니다. 위에서 하나 이상 로그인해야 사진 번역 단추가 뜹니다.

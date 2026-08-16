@@ -124,6 +124,21 @@ export interface Settings {
   imageTranslate: boolean
   /** 어느 명령을 주로 쓸지. 하나만 로그인돼 있으면 그쪽으로 자동으로 간다. */
   imageTranslateEngine: TranslateEngineId
+  /**
+   * Codex 가 무엇을 내줄지. 그림을 다시 그릴지, 읽은 글만 옮길지.
+   *
+   * 그림은 배치가 뜻을 갖는 사진(포스터·만화)에 어울리지만 한 장에 80초쯤 걸린다.
+   * 글만 옮기면 훨씬 빨라서, 스크린샷처럼 읽기만 하면 되는 사진에는 그쪽이 낫다.
+   * Claude 는 그림을 만들지 못하므로 이 값과 무관하게 늘 글이다.
+   */
+  codexOutput: 'image' | 'text'
+  /**
+   * Codex 로 글을 옮길 때 빠른 등급을 쓸지.
+   *
+   * 글을 옮기는 일은 텍스트 생성이 곧 일이라 등급이 실제로 듣는다 (약 14% 빨라진다).
+   * 대신 구독 사용량을 더 쓴다. 그림을 다시 그릴 때는 등급이 듣지 않아 이 값과 무관하다.
+   */
+  codexTextFast: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -146,6 +161,8 @@ export const DEFAULT_SETTINGS: Settings = {
   autoMount: true,
   imageTranslate: false,
   imageTranslateEngine: 'codex',
+  codexOutput: 'image',
+  codexTextFast: false,
 }
 
 /** 컬럼과 지켜보기를 가르는 데 필요한 만큼만 받는다 — 테스트에서 설정 전체를 짓지 않아도 된다. */
