@@ -227,8 +227,17 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
               type="button"
               onClick={runTranslate}
               disabled={busy}
-              className="rounded-full bg-white/10 px-3 py-1 text-[12.5px] text-white/85 transition-colors hover:bg-white/20 hover:text-white disabled:cursor-progress disabled:text-white/50"
+              className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[12.5px] text-white/85 transition-colors hover:bg-white/20 hover:text-white disabled:cursor-progress disabled:text-white/50"
             >
+              {/* 도는 동안에는 같은 자리에 물레를 돌린다 — 자리가 흔들리지 않게 크기를 맞춘다. */}
+              {busy ? (
+                <span
+                  aria-hidden="true"
+                  className="h-3.5 w-3.5 animate-spin rounded-full border border-white/30 border-t-white/80"
+                />
+              ) : (
+                <TranslateIcon className="h-3.5 w-3.5" />
+              )}
               {busy
                 ? `${ENGINE_LABEL[engine]} 번역 중…`
                 : translation
@@ -432,6 +441,19 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         </>
       )}
     </div>
+  )
+}
+
+/** 글자를 옮긴다는 표시. 설정 › 번역 탭의 것과 같은 모양이라 둘이 한 기능으로 읽힌다. */
+function TranslateIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path
+        d="M4 5h10M9 3v2m0 0c0 4-2 7-5 9m3-4c0 2 3 4 6 4m1 6 4-10 4 10m-7-3h6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 
