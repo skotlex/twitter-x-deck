@@ -353,8 +353,9 @@ function TranslateSettings({
           <div className="py-3.5">
             <p className="text-[14px] font-medium text-text">브리지</p>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-faint">
-              터미널에서 <code className="text-muted">npm run bridge</code> 를 실행해 두면 알아서
-              찾아옵니다. 포트는 비어 있는 자리를 골라 쓰므로 지정할 것이 없습니다.
+              내려받은 폴더의 <code className="text-muted">install-bridge.bat</code> 을 한 번
+              실행하면 끝입니다. 그 뒤로는 번역이 필요할 때 브라우저가 알아서 켜므로 띄워둘
+              것도, 맞출 값도 없습니다.
             </p>
 
             <div className="mt-2.5 flex items-center gap-2">
