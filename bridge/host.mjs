@@ -1,35 +1,37 @@
 /**
- * 이미지 번역 브리지.
+ * 이미지 번역 브리지 — 네이티브 메시징 호스트.
  *
  * 확장은 파일도 프로세스도 만질 수 없다. 그런데 우리가 쓰려는 것은 이 PC 에 깔린
  * `codex` · `claude` 명령이고, 그 둘은 구독 계정으로 로그인되어 있다 — 별도 API 키가
- * 아니라 사용자가 이미 내고 있는 요금제를 그대로 쓴다. 그래서 확장과 명령 사이를
- * 잇는 작은 서버가 하나 필요하다. 이 파일이 그것이다.
+ * 아니라 사용자가 이미 내고 있는 요금제를 그대로 쓴다. 그 사이를 잇는 것이 이 파일이다.
+ *
+ * **사용자가 직접 띄우지 않는다.** 브라우저가 확장의 부름을 받아 이 프로그램을 켜고,
+ * 연결이 끊기면 함께 내린다. 터미널을 열어둘 이유도, 포트를 맞출 이유도 없다.
+ *
+ * 말은 표준 입출력으로 오간다 — 4바이트 길이(리틀엔디언) 뒤에 UTF-8 JSON 한 덩이.
+ * 그래서 이 파일은 **stdout 에 아무 것도 함부로 찍으면 안 된다.** 로그 한 줄이 곧
+ * 깨진 프레임이 된다. 할 말이 있으면 stderr 로 보낸다.
  *
  * 로그인도 여기서 한다. `codex login` 은 브라우저를 열어 사람이 직접 마치는 절차라
- * 확장 안에서는 시작조차 할 수 없다. 브리지가 콘솔 창을 하나 띄워주고, 확장은
- * 상태를 다시 물어보는 것까지만 한다.
+ * 확장 안에서는 시작조차 할 수 없다. 콘솔 창을 하나 띄워주고, 확장은 끝났는지를
+ * 다시 물어보는 것까지만 한다.
  *
  * 의존성은 없다. Node 18 이상이면 그대로 돈다.
  */
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { createServer } from 'node:http'
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
- * 처음 시도할 포트와, 막혔을 때 훑어볼 개수.
+ * 한 덩이로 보낼 수 있는 크기.
  *
- * 확장은 이 범위를 차례로 두드려 우리를 찾는다. 그래서 여기 값이 바뀌면
- * `src/background/service-worker.ts` 의 같은 값도 함께 바뀌어야 한다.
+ * 브라우저는 호스트가 보내는 메시지를 1MB 로 끊는다. 다시 그린 그림은 그보다 크므로
+ * (2MB 안팎) 답을 잘라 여러 덩이로 보낸다. 넘길 때 여유를 두는 이유는 프레임에 붙는
+ * 껍데기(id·순번 따위)도 같은 한도 안에 들어가야 하기 때문이다.
  */
-const PORT_BASE = Number(process.env.XDECK_BRIDGE_PORT ?? 8765)
-const PORT_TRIES = 16
-
-/** 우리라는 표시. 확장이 이 값을 보고 같은 포트에 있는 남의 서버와 가려낸다. */
-const SERVICE = 'x-deck-bridge'
+const CHUNK_LIMIT = 512 * 1024
 
 /** 한 번의 번역에 허용하는 시간. 이미지 재생성은 1분을 넘기기도 한다. */
 const TRANSLATE_TIMEOUT_MS = 300_000
@@ -41,23 +43,12 @@ const PROBE_TIMEOUT_MS = 60_000
 const STATUS_CACHE_MS = 30_000
 
 /**
- * 부르는 쪽이 우리 확장이 맞는지 가린다.
+ * 누가 부를 수 있는지는 이제 우리가 가리지 않는다.
  *
- * 열쇠를 주고받지 않는다. 웹페이지는 이 헤더를 붙이려는 순간 브라우저가 먼저
- * 예비 요청(preflight)을 보내는데, 우리는 그것을 허락하지 않으므로 본 요청 자체가
- * 나가지 못한다. 확장은 호스트 권한이 있어 그 검사를 거치지 않는다.
- *
- * 그래서 막아야 할 것(다른 웹사이트)은 막히고, 사용자는 아무것도 붙여넣지 않아도 된다.
- * 이 PC 에서 도는 프로그램은 무엇이든 흉내 낼 수 있지만, 그건 열쇠를 파일에 두던
- * 예전 방식도 마찬가지였다 — 그 파일을 읽으면 그만이었다.
+ * 예전에는 localhost 에 서버를 열어두고 헤더로 걸렀다. 지금은 브라우저가 이 프로그램을
+ * 직접 켜고 표준 입출력으로만 말을 건다 — 등록해 둔 확장(`allowed_origins`)이 아니면
+ * 애초에 켜지지도 않으므로, 통로 자체가 하나뿐이다.
  */
-function fromOurExtension(req) {
-  if (req.headers['x-deck-bridge'] !== '1') return false
-  // 웹페이지가 보낸 것은 받지 않는다. 확장 워커의 요청에는 사이트 출처가 붙지 않는다.
-  const origin = req.headers.origin
-  if (typeof origin === 'string' && /^https?:\/\//i.test(origin)) return false
-  return true
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 명령 실행
@@ -437,144 +428,91 @@ async function translate(engine, imageUrl) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HTTP
+// 표준 입출력
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 한 덩이를 내보낸다. 길이(4바이트 리틀엔디언)를 앞에 붙이는 것이 이 통로의 약속이다. */
+function writeFrame(value) {
+  const body = Buffer.from(JSON.stringify(value), 'utf8')
+  const header = Buffer.alloc(4)
+  header.writeUInt32LE(body.length, 0)
+  process.stdout.write(Buffer.concat([header, body]))
+}
+
 /**
- * 응답에 CORS 허가를 붙이지 않는다.
+ * 답 하나를 보낸다. 크면 잘라서 여러 덩이로 나간다.
  *
- * 허가를 내주지 않으면 브라우저는 웹페이지가 받은 답을 읽지 못하게 막는다.
- * 우리를 부르는 확장 워커는 호스트 권한으로 오므로 그 허가가 필요 없다.
+ * 브라우저가 한 덩이를 1MB 로 끊으므로 다시 그린 그림은 통째로 보낼 수 없다.
+ * 받는 쪽은 `seq` 를 세어 `total` 만큼 모은 뒤 이어 붙여 원래 글로 되돌린다.
+ * 대부분의 답은 한 덩이로 끝나지만 셈하는 방식은 똑같이 둔다 — 예외를 만들면
+ * 그 예외에서만 어긋난다.
  */
-function send(res, status, body) {
-  res.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store',
-  })
-  res.end(JSON.stringify(body))
+function reply(id, value) {
+  const text = JSON.stringify(value)
+  const total = Math.max(1, Math.ceil(text.length / CHUNK_LIMIT))
+  for (let seq = 0; seq < total; seq += 1) {
+    writeFrame({ id, seq, total, body: text.slice(seq * CHUNK_LIMIT, (seq + 1) * CHUNK_LIMIT) })
+  }
 }
 
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let raw = ''
-    req.on('data', (chunk) => {
-      raw += chunk
-      // 주소만 오간다. 그보다 크면 우리 것이 아니다.
-      if (raw.length > 64_000) reject(new Error('요청이 너무 큽니다.'))
-    })
-    req.on('end', () => {
-      try {
-        resolve(raw ? JSON.parse(raw) : {})
-      } catch {
-        reject(new Error('본문을 읽지 못했습니다.'))
-      }
-    })
-    req.on('error', reject)
-  })
-}
+async function handle(message) {
+  const { id, type } = message
+  if (typeof id !== 'string') return
 
-const server = createServer((req, res) => {
-  void (async () => {
-    // 예비 요청에 아무 허가도 내주지 않는다. 웹페이지의 본 요청은 여기서 끝난다.
-    if (req.method === 'OPTIONS') return send(res, 403, { error: '허용하지 않습니다.' })
-
-    if (!fromOurExtension(req)) {
-      return send(res, 403, { error: '이 브리지는 X Deck 확장만 부를 수 있습니다.' })
+  try {
+    if (type === 'status') {
+      reply(id, { ok: true, engines: await readStatus(message.force === true) })
+      return
     }
 
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+    if (type === 'login') {
+      const engine = message.engine === 'claude' ? 'claude' : 'codex'
+      startLogin(engine)
+      // 다음에 물으면 다시 재게 한다. 방금 로그인을 마쳤을 수 있다.
+      statusCache = { at: 0, value: null }
+      reply(id, { ok: true, engine })
+      return
+    }
 
+    if (type === 'translate') {
+      if (typeof message.imageUrl !== 'string') {
+        reply(id, { error: '이미지 주소가 없습니다.' })
+        return
+      }
+      const engine = message.engine === 'claude' ? 'claude' : 'codex'
+      reply(id, { ok: true, ...(await enqueue(() => translate(engine, message.imageUrl))) })
+      return
+    }
+
+    reply(id, { error: `모르는 요청입니다: ${String(type)}` })
+  } catch (cause) {
+    reply(id, { error: cause instanceof Error ? cause.message : String(cause) })
+  }
+}
+
+/**
+ * 들어오는 덩이를 모아 읽는다.
+ *
+ * 표준 입력은 흐름이라 한 번에 한 덩이씩 얌전히 오지 않는다. 길이만큼 모이면 그만큼
+ * 잘라 처리하고 나머지는 다음 것으로 남긴다.
+ */
+let inbox = Buffer.alloc(0)
+
+process.stdin.on('data', (chunk) => {
+  inbox = Buffer.concat([inbox, chunk])
+  for (;;) {
+    if (inbox.length < 4) return
+    const size = inbox.readUInt32LE(0)
+    if (inbox.length < 4 + size) return
+    const body = inbox.subarray(4, 4 + size)
+    inbox = inbox.subarray(4 + size)
     try {
-      // 포트를 훑는 확장이 가장 먼저 두드리는 자리. 아무 일도 하지 않고 곧바로 답한다 —
-      // `/status` 는 CLI 를 실제로 돌려보므로 찾기용으로 쓰면 한참 걸린다.
-      if (url.pathname === '/hello') {
-        return send(res, 200, { service: SERVICE })
-      }
-
-      if (url.pathname === '/status') {
-        const engines = await readStatus(url.searchParams.get('force') === '1')
-        // `service` 는 우리라는 표시다. 확장이 포트를 훑을 때 이 값으로 가려낸다.
-        return send(res, 200, { ok: true, service: SERVICE, engines })
-      }
-
-      if (url.pathname === '/login' && req.method === 'POST') {
-        const body = await readBody(req)
-        const engine = body.engine === 'claude' ? 'claude' : 'codex'
-        startLogin(engine)
-        statusCache = { at: 0, value: null }
-        return send(res, 200, { ok: true, engine })
-      }
-
-      if (url.pathname === '/translate' && req.method === 'POST') {
-        const body = await readBody(req)
-        if (typeof body.imageUrl !== 'string') {
-          return send(res, 400, { error: '이미지 주소가 없습니다.' })
-        }
-        const engine = body.engine === 'claude' ? 'claude' : 'codex'
-        const result = await enqueue(() => translate(engine, body.imageUrl))
-        return send(res, 200, { ok: true, ...result })
-      }
-
-      return send(res, 404, { error: '없는 자리입니다.' })
-    } catch (cause) {
-      return send(res, 500, { error: cause instanceof Error ? cause.message : String(cause) })
+      void handle(JSON.parse(body.toString('utf8')))
+    } catch {
+      // 읽지 못한 덩이는 버린다. 짝이 될 id 를 모르니 답할 자리도 없다.
     }
-  })()
+  }
 })
 
-/**
- * 빈 포트를 찾아 자리를 잡는다.
- *
- * 8765 가 늘 비어 있으리라는 보장이 없다. 다른 프로그램이 쓰고 있을 수도 있고,
- * 윈도우에서는 시스템이 미리 잡아둔 구간(Hyper-V 등)이라 아예 묶을 수 없기도 하다.
- * 이유를 가리지 않고 실패하면 다음 번호로 넘어간다 — 확장도 같은 범위를 훑으므로
- * 어느 자리에 앉든 찾아온다.
- */
-let attempt = 0
-
-/**
- * 알림은 여기 한 곳에만 건다.
- *
- * `server.listen(port, host, cb)` 는 부를 때마다 cb 를 'listening' 에 하나씩 쌓는데,
- * 실패한 시도의 cb 는 발화하지 못한 채 남아 있다가 다음 시도가 성공하는 순간 함께
- * 터진다 — 자리를 옮겨 앉고도 예전 번호를 같이 찍는다. 걸어두는 자리를 밖으로 빼고
- * 실제로 묶인 번호를 서버에게 물어 답이 하나만 나오게 한다.
- */
-server.on('listening', () => {
-  const address = server.address()
-  const port = typeof address === 'object' && address !== null ? address.port : PORT_BASE
-  console.log('')
-  console.log('  X Deck 이미지 번역 브리지가 떴습니다.')
-  console.log(`  주소   http://127.0.0.1:${port}`)
-  if (port !== PORT_BASE) {
-    console.log(`         (${PORT_BASE} 이 비어 있지 않아 ${port} 로 잡았습니다)`)
-  }
-  console.log('')
-  console.log('  덱의 설정 › 번역 을 켜면 알아서 찾아옵니다. 붙여넣을 것은 없습니다.')
-  console.log('')
-})
-
-server.on('error', (error) => {
-  const code = error?.code
-  if ((code === 'EADDRINUSE' || code === 'EACCES') && attempt + 1 < PORT_TRIES) {
-    attempt += 1
-    bind()
-    return
-  }
-  if (code === 'EADDRINUSE' || code === 'EACCES') {
-    console.error(
-      `\n  ${PORT_BASE} 부터 ${PORT_BASE + PORT_TRIES - 1} 까지 빈 포트가 없습니다.\n` +
-        '  XDECK_BRIDGE_PORT 로 다른 시작 번호를 지정해 다시 띄우세요.\n',
-    )
-  } else {
-    console.error(`\n  브리지를 띄우지 못했습니다: ${error?.message ?? error}\n`)
-  }
-  process.exit(1)
-})
-
-// 127.0.0.1 에만 묶는다. 같은 망의 다른 기기가 들어올 자리를 만들지 않는다.
-function bind() {
-  server.listen(PORT_BASE + attempt, '127.0.0.1')
-}
-
-bind()
+// 브라우저가 연결을 끊으면 우리도 물러난다. 남아 도는 프로세스를 만들지 않는다.
+process.stdin.on('end', () => process.exit(0))

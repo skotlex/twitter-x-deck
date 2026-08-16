@@ -1,0 +1,4 @@
+# install-bridge.bat 이 만들어내는 것들. 이 PC 의 절대 경로가 박혀 있어 남의 기기에서
+# 쓸 수 없다 — 각자 등록할 때 새로 만들어진다.
+com.xdeck.bridge.json
+host.bat

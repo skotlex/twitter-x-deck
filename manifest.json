@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlpgQ/92uX+rxAoP2LHTaJ3HmYLXmAiPF5dZkUz3e4owrmZFClXLprYZZH33qBIFjCLDQbOiRyvarfwO+DO2kUp3l+EW7gzWasBG9L2JUXNAWhrJDiRJKHfJymYarqJeVx/PKjP9Nl0Ve3d0joqqQSpHzidks9ZawzRUY8hM0t7wRBjfq5aoA7OZ5pGa8hRT/j7pWwyEIGNx753i/I1FCs5tMS0g7qIBCpQO+PSV0X8F4khwi/9SUbClbviJOcm7iTzHfT3tVQwze8iGqEUYwNXoMdaiSAsbw0q2xDyhPSMtBpVpJZhdjb44nkjHO8WSMCl5bYy3EkGl3S99Lur58mwIDAQAB",
   "name": "X Deck",
   "version": "0.0.1",
   "description": "x.com 추천·팔로잉 타임라인을 덱 형태로 실시간 스트리밍한다.",
@@ -9,13 +10,10 @@
     "unlimitedStorage",
     "tabs",
     "declarativeNetRequest",
-    "declarativeNetRequestFeedback"
+    "declarativeNetRequestFeedback",
+    "nativeMessaging"
   ],
-  "host_permissions": [
-    "https://x.com/*",
-    "https://papago.naver.com/*",
-    "http://127.0.0.1/*"
-  ],
+  "host_permissions": ["https://x.com/*", "https://papago.naver.com/*"],
   "declarative_net_request": {
     "rule_resources": [
       {
