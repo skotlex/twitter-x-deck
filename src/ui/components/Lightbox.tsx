@@ -34,6 +34,14 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
    * 로그인돼 있어야 비로소 쓸 수 있다. 여기 값이 정해지는 것이 그 확인의 결과다.
    */
   const [engine, setEngine] = useState<TranslateEngineId | null>(null)
+  /**
+   * 아직 쓸 수 있는지 알아보는 중.
+   *
+   * 로그인 확인은 브리지를 켜서 묻는 일이라 처음 한 번은 몇 초 걸린다. 그동안 아무
+   * 것도 없으면 사용자는 '이 사진에는 번역이 안 되는구나' 로 읽고 지나가 버린다.
+   * 자리를 비워두지 말고 확인 중이라고 말해준다.
+   */
+  const [probing, setProbing] = useState(false)
   const [translation, setTranslation] = useState<ImageTranslation | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -53,15 +61,22 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
 
     const resolve = (imageTranslate: boolean, preferred: TranslateEngineId) => {
       if (!imageTranslate) {
-        if (alive) setEngine(null)
+        if (alive) {
+          setEngine(null)
+          setProbing(false)
+        }
         return
       }
+      if (alive) setProbing(true)
       void fetchBridgeStatus()
         .then((status) => {
           if (alive) setEngine(pickEngine(preferred, status.engines))
         })
         .catch(() => {
           if (alive) setEngine(null)
+        })
+        .finally(() => {
+          if (alive) setProbing(false)
         })
     }
 
@@ -159,6 +174,20 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         >
           원문 게시물
         </a>
+
+        {/*
+          단추가 나오기 전 자리를 지킨다. 비워두면 '이 사진은 번역이 안 되는 것' 으로
+          읽히는데, 실은 아직 알아보는 중일 뿐이다.
+        */}
+        {probing && !engine && !current.playbackUrl && (
+          <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[12.5px] text-white/60">
+            <span
+              aria-hidden="true"
+              className="h-3 w-3 animate-spin rounded-full border border-white/30 border-t-white/80"
+            />
+            번역 준비 확인 중…
+          </span>
+        )}
 
         {/* 동영상에는 달지 않는다. 프레임마다 글자가 달라 한 장을 번역해도 뜻이 없다. */}
         {engine && !current.playbackUrl && (

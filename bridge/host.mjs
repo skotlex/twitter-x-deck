@@ -60,15 +60,18 @@ const STATUS_CACHE_MS = 30_000
  * 윈도우에서 `codex` · `claude` 는 npm 이 깔아둔 셸 스크립트라 셸을 거쳐야 찾는다.
  * 인자에 사용자가 넣은 값은 없다 — 프롬프트는 상수이고 경로는 우리가 만든다.
  */
-function run(command, args, timeoutMs) {
+function run(command, args, timeoutMs, input) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       shell: process.platform === 'win32',
       windowsHide: true,
     })
 
-    // 줄 것이 없다는 뜻으로 곧바로 닫는다. 열어두면 codex 가 프롬프트가 더 올 줄 알고
-    // 기다리다가("Reading additional input from stdin...") 시간 제한에 걸린다.
+    // 긴 글월은 인자가 아니라 여기로 넘긴다. 윈도우에서는 셸을 거쳐야 명령을 찾는데,
+    // 줄바꿈과 따옴표가 든 글을 인자에 실으면 그 셸의 따옴표 규칙에 걸려 조각난다 —
+    // 그러면 codex 는 프롬프트를 못 찾고 stdin 을 보다가 비어 있다고 답한다.
+    // 줄 것이 없을 때도 닫아야 한다. 열어두면 더 올 줄 알고 기다린다.
+    if (typeof input === 'string') child.stdin?.write(input)
     child.stdin?.end()
 
     let stdout = ''
@@ -325,16 +328,9 @@ async function translateWithCodex(imagePath) {
   const before = snapshotGenerated()
   const result = await run(
     'codex',
-    [
-      'exec',
-      '--skip-git-repo-check',
-      '-s',
-      'read-only',
-      '-i',
-      JSON.stringify(imagePath),
-      JSON.stringify(CODEX_PROMPT),
-    ],
+    ['exec', '--skip-git-repo-check', '-s', 'read-only', '-i', `"${imagePath}"`],
     TRANSLATE_TIMEOUT_MS,
+    CODEX_PROMPT,
   )
 
   const complaint = configComplaint(result.stderr)
@@ -374,15 +370,9 @@ const CLAUDE_PROMPT = (imagePath) =>
 async function translateWithClaude(imagePath) {
   const result = await run(
     'claude',
-    [
-      '-p',
-      JSON.stringify(CLAUDE_PROMPT(imagePath)),
-      '--output-format',
-      'json',
-      '--allowed-tools',
-      'Read',
-    ],
+    ['-p', '--output-format', 'json', '--allowed-tools', 'Read'],
     TRANSLATE_TIMEOUT_MS,
+    CLAUDE_PROMPT(imagePath),
   )
 
   if (result.timedOut || result.code !== 0) throw new Error(explain('Claude', result))
