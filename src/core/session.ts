@@ -8,6 +8,8 @@
  * 어디까지나 **첫 화면을 고르는 힌트** 다. 수집기가 매초 다시 판단해 곧바로 덮어쓰므로,
  * 이 값이 틀려 있어도 1초면 바로잡힌다.
  */
+import type { ViewerInfo } from './types'
+
 const KEY = 'xdeck:logged-out'
 
 export function rememberLoggedOut(value: boolean): void {
@@ -24,5 +26,40 @@ export function wasLoggedOut(): boolean {
     return window.localStorage.getItem(KEY) === '1'
   } catch {
     return false
+  }
+}
+
+/**
+ * 지난번에 읽어둔 로그인 계정.
+ *
+ * 사이드바는 핸들부터 그리고 프로필 사진은 한 박자 뒤에 붙인다. 그 사이에 읽으면
+ * 사진이 빈 채로 잡혀 상단 바에 머리글자만 남는데, 지난번 사진이 있으면 그 틈을
+ * 메울 수 있다. 여기 값도 **힌트일 뿐** 이라 화면에서 새로 읽히는 대로 덮인다.
+ */
+const VIEWER_KEY = 'xdeck:viewer'
+
+export function rememberViewer(viewer: ViewerInfo): void {
+  // 사진 없는 값은 메울 것이 없다. 적어봐야 다음 판에서 쓸모가 없다.
+  if (!viewer.handle || !viewer.avatarUrl) return
+  try {
+    window.localStorage.setItem(VIEWER_KEY, JSON.stringify(viewer))
+  } catch {
+    // 저장소가 막힌 환경이면 매번 사진이 붙기를 기다린다. 잃는 건 첫 몇 초뿐이다.
+  }
+}
+
+export function rememberedViewer(): ViewerInfo | null {
+  try {
+    const raw = window.localStorage.getItem(VIEWER_KEY)
+    if (!raw) return null
+    const value = JSON.parse(raw) as Partial<ViewerInfo> | null
+    const handle = typeof value?.handle === 'string' ? value.handle : ''
+    const avatarUrl = typeof value?.avatarUrl === 'string' ? value.avatarUrl : ''
+    if (!handle || !avatarUrl) return null
+    const name = typeof value?.name === 'string' && value.name ? value.name : handle
+    return { handle, name, avatarUrl }
+  } catch {
+    // 형식이 깨졌으면 없는 셈 친다. 다음에 제대로 읽히면 그때 덮인다.
+    return null
   }
 }

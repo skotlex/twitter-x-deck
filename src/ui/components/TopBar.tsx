@@ -270,6 +270,10 @@ function ViewerMenu({
   onLogout: () => void
 }) {
   const [open, setOpen] = useState(false)
+  // 사진 주소가 더는 안 열리는 경우(프로필 사진을 바꿨을 때 등). 그 주소만 접고
+  // 머리글자로 돌아간다 — 깨진 그림 자리가 남는 것보다 낫다.
+  const [brokenUrl, setBrokenUrl] = useState('')
+  const photo = viewer.avatarUrl && viewer.avatarUrl !== brokenUrl ? viewer.avatarUrl : ''
 
   return (
     <div
@@ -295,10 +299,11 @@ function ViewerMenu({
         aria-label={`${viewer.name} 계정 메뉴`}
         title={`@${viewer.handle}`}
       >
-        {viewer.avatarUrl ? (
+        {photo ? (
           <img
-            src={viewer.avatarUrl}
+            src={photo}
             alt={viewer.name}
+            onError={() => setBrokenUrl(photo)}
             className="block h-8 w-8 rounded-full bg-surface-2 object-cover"
           />
         ) : (

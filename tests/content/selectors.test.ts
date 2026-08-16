@@ -308,6 +308,34 @@ describe('findViewer — 로그인한 계정 읽기', () => {
     expect(findViewer()).toBeNull()
   })
 
+  it('사진이 배경 그림으로만 그려졌어도 읽는다', () => {
+    document.body.innerHTML = `
+      <a data-testid="AppTabBar_Profile_Link" href="/alice"></a>
+      <div data-testid="SideNav_AccountSwitcher_Button">
+        <div style="background-image: url(&quot;https://pbs.twimg.com/alice.jpg&quot;)"></div>
+        <span>앨리스</span>
+      </div>`
+    expect(findViewer()?.avatarUrl).toBe('https://pbs.twimg.com/alice.jpg')
+  })
+
+  it('계정 전환 버튼이 아직 없으면 내 아바타 칸에서 사진을 읽는다', () => {
+    document.body.innerHTML = `
+      <a data-testid="AppTabBar_Profile_Link" href="/alice"></a>
+      <div data-testid="UserAvatar-Container-alice">
+        <img src="https://pbs.twimg.com/alice.jpg" />
+      </div>`
+    expect(findViewer()?.avatarUrl).toBe('https://pbs.twimg.com/alice.jpg')
+  })
+
+  it('남의 아바타는 집지 않는다 — 타임라인에도 같은 칸이 있다', () => {
+    document.body.innerHTML = `
+      <a data-testid="AppTabBar_Profile_Link" href="/alice"></a>
+      <div data-testid="UserAvatar-Container-bob">
+        <img src="https://pbs.twimg.com/bob.jpg" />
+      </div>`
+    expect(findViewer()?.avatarUrl).toBe('')
+  })
+
   it('계정 메뉴와 로그아웃 항목을 찾는다', () => {
     document.body.innerHTML = `
       <div data-testid="SideNav_AccountSwitcher_Button"></div>

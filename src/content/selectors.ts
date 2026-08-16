@@ -5,7 +5,7 @@
  * 수리할 때 다른 파일을 건드릴 일이 없도록 전부 이 모듈에만 둔다.
  * 각 함수는 선택자 여러 개를 순서대로 시도하고, 마지막에는 텍스트 기반으로 찾아낸다.
  */
-import { isNotificationKind, type TimelineKind } from '@core/types'
+import { isNotificationKind, type TimelineKind, type ViewerInfo } from '@core/types'
 
 /** 탭 라벨 후보. 언어 설정이 무엇이든 걸리도록 주요 로케일을 넣어둔다. */
 const TAB_LABELS: Record<TimelineKind, string[]> = {
@@ -302,17 +302,48 @@ export function hasComposerAttachment(doc: Document): boolean {
   return doc.querySelector('[data-testid="attachments"]') !== null
 }
 
-export interface ViewerInfo {
-  handle: string
-  name: string
-  avatarUrl: string
+/** `background-image: url(...)` 안의 주소. 따옴표는 있을 수도 없을 수도 있다. */
+const CSS_URL_RE = /url\(\s*["']?(.+?)["']?\s*\)/
+
+/**
+ * 아바타 사진 주소. 이 칸 안에서만 찾는다.
+ *
+ * x.com 은 같은 사진을 `<img>` 로도, 그 아래 칸의 배경 그림으로도 그린다. 어느 쪽이
+ * 먼저 붙는지는 그때그때 다르므로 둘 다 본다 — `<img>` 만 보면 배경만 붙어 있는
+ * 찰나에 빈손으로 돌아온다.
+ */
+function readAvatarUrl(root: Element | null | undefined): string {
+  if (!root) return ''
+  const src = root.querySelector<HTMLImageElement>('img[src]')?.src ?? ''
+  if (src && !src.startsWith('data:')) return src
+
+  for (const layer of root.querySelectorAll<HTMLElement>('[style*="background-image"]')) {
+    const url = CSS_URL_RE.exec(layer.style.backgroundImage)?.[1] ?? ''
+    if (url && !url.startsWith('data:')) return url
+  }
+  return ''
 }
+
+/**
+ * 핸들이 박힌 아바타 칸. 타임라인 카드에도 같은 칸이 있으니 **내 것만** 골라야 한다.
+ * 핸들에 쓸 수 있는 글자는 정해져 있으므로, 그 밖의 값이면 선택자를 만들지 않는다.
+ */
+function findAvatarContainer(handle: string): Element | null {
+  if (!/^[A-Za-z0-9_]{1,20}$/.test(handle)) return null
+  return document.querySelector(`[data-testid="UserAvatar-Container-${handle}"]`)
+}
+
+export type { ViewerInfo }
 
 /**
  * 지금 로그인한 계정. x.com 사이드바에서 읽어낸다.
  *
  * 핸들은 프로필 링크의 주소가 가장 확실하다 — 화면이 좁아 이름이 안 그려져도 링크는 남는다.
  * 아직 안 그려졌으면 null 을 준다. 부르는 쪽이 잠시 뒤 다시 물어보면 된다.
+ *
+ * **사진은 핸들보다 늦게 붙는다.** 계정 전환 버튼이 먼저지만 그것이 아직 없거나
+ * 사진만 비어 있는 순간이 있어, 같은 사람의 아바타 칸을 차례로 본다. 사진을 못 읽어도
+ * 핸들까지 읽었으면 그대로 돌려준다 — 부르는 쪽이 사진만 다시 물어본다.
  */
 export function findViewer(): ViewerInfo | null {
   const link = document.querySelector<HTMLAnchorElement>('[data-testid="AppTabBar_Profile_Link"]')
@@ -322,7 +353,8 @@ export function findViewer(): ViewerInfo | null {
   const switcher = document.querySelector<HTMLElement>(
     '[data-testid="SideNav_AccountSwitcher_Button"]',
   )
-  const avatarUrl = (switcher ?? link)?.querySelector<HTMLImageElement>('img')?.src ?? ''
+  const avatarUrl =
+    readAvatarUrl(switcher) || readAvatarUrl(findAvatarContainer(handle)) || readAvatarUrl(link)
   // 이름은 계정 전환 버튼 안에 있다. 좁은 화면에서는 아예 없으므로 핸들로 대신한다.
   const name = [...(switcher?.querySelectorAll('span') ?? [])]
     .map((span) => span.textContent?.trim() ?? '')

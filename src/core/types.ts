@@ -67,6 +67,18 @@ export interface TweetAuthor {
   verified: boolean
 }
 
+/**
+ * 지금 로그인한 계정.
+ *
+ * 화면에서 읽어내지만 저장소에도 잠깐 남겨 두므로 core 에 둔다 —
+ * 읽는 쪽(content)과 담아두는 쪽(core) 이 같은 모양을 봐야 한다.
+ */
+export interface ViewerInfo {
+  handle: string
+  name: string
+  avatarUrl: string
+}
+
 export interface TweetStats {
   replies: number
   reposts: number
