@@ -15,6 +15,7 @@ import {
   type TranslateEngine,
 } from '../../content/translate'
 import { useColumnActivity } from '../columnActivity'
+import { opensCardDetail } from '../lib/cardClick'
 import { formatCount, formatRelative, formatStamp } from '../lib/format'
 import { Lightbox } from './Lightbox'
 import { MEDIA_REGION_MARK, MediaSlot } from './MediaGrid'
@@ -106,17 +107,11 @@ function AuthorLine({ tweet }: { tweet: Tweet }) {
 }
 
 /**
- * 카드 안에서 상세를 열어도 되는 클릭인지.
- *
- * 카드에는 이미 제 할 일이 있는 것들이 잔뜩 있다. 링크·버튼·사진은 그 자리의
- * 동작이 우선하고, 열려 있는 대화상자 안의 클릭이 뒤로 새어 나와서도 안 된다.
- * 글을 긁는 중이었다면 그건 복사하려던 것이지 클릭이 아니다.
+ * 카드 안에서 상세를 열어도 되는 클릭인지. 판정은 [cardClick.ts](../lib/cardClick.ts) 에 있다.
+ * 기준이 되는 상자는 이벤트를 받은 그 요소다 — 원글은 카드가, 인용글은 인용 상자가 맡는다.
  */
-function opensDetail(event: React.MouseEvent<HTMLElement>): boolean {
-  const target = event.target as HTMLElement | null
-  if (target?.closest('a, button, video, [role="button"], [role="dialog"]')) return false
-  return !window.getSelection()?.toString()
-}
+const opensDetail = (event: React.MouseEvent<HTMLElement>): boolean =>
+  opensCardDetail(event.target, event.currentTarget)
 
 /**
  * 인용된 글. 배경과 테두리를 함께 줘서 원글 본문과 확실히 갈린다 —

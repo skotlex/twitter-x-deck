@@ -1,6 +1,7 @@
 import { memo, useState } from 'react'
 import type { Settings } from '@core/settings'
 import type { DeckNotification, NotificationIcon, TweetAuthor } from '@core/types'
+import { opensCardDetail } from '../lib/cardClick'
 import { formatRelative, formatStamp } from '../lib/format'
 import { LikeIcon, RepostIcon, ReplyIcon } from './icons'
 import { XPageModal } from './XPageModal'
@@ -93,8 +94,10 @@ function NotificationCardBase({ notification, settings, animate = false }: Notif
 
   return (
     <article
-      onClick={() => {
-        if (!target || window.getSelection()?.toString()) return
+      // 게시물 카드와 같은 판정을 쓴다. 특히 이 카드가 띄운 창 안의 클릭은 여기까지
+      // 올라오는데, 그것까지 '카드를 눌렀다' 로 세면 닫기 단추를 눌러도 곧바로 다시 열린다.
+      onClick={(event) => {
+        if (!target || !opensCardDetail(event.target, event.currentTarget)) return
         setDetail(true)
       }}
       className={`group/card relative transition-colors hover:bg-surface-2/60 ${
