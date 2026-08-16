@@ -288,10 +288,7 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
                           selected={output === value}
                           label={value === 'image' ? '이미지로 다시 그리기' : '글자만 옮기기'}
                           hint={value === 'image' ? '80초쯤' : '훨씬 빠름'}
-                          onClick={() => {
-                            setMenuOpen(false)
-                            void saveSettings({ codexOutput: value })
-                          }}
+                          onClick={() => void saveSettings({ codexOutput: value })}
                         />
                       ))}
 
@@ -306,10 +303,7 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
                               selected={fast === value}
                               label={value ? '빠르게' : '일반'}
                               hint={value ? '사용량 더 씀' : undefined}
-                              onClick={() => {
-                                setMenuOpen(false)
-                                void saveSettings({ codexTextFast: value })
-                              }}
+                              onClick={() => void saveSettings({ codexTextFast: value })}
                             />
                           ))}
                         </>
@@ -460,9 +454,10 @@ function TranslateIcon({ className }: { className?: string }) {
 /**
  * 차림표의 한 줄.
  *
- * 고른 것을 다시 눌러도 그대로 저장한다 — 같은 값을 쓰는 것이라 바뀌는 것이 없고,
- * 누르면 닫히는 것이 자연스럽다. 닫는 일은 설정 변경을 지켜보는 쪽이 아니라 여기서
- * 곧바로 한다.
+ * 골라도 닫히지 않는다. 이것은 명령을 고르는 자리가 아니라 설정을 만지는 자리라,
+ * 하나 누를 때마다 닫히면 '글자만 옮기기' 를 고른 뒤 속도를 바꾸려고 다시 열어야 한다 —
+ * 게다가 속도 항목은 그 선택 때문에 비로소 나타나는 것이라 더 어긋난다.
+ * 닫는 일은 톱니를 다시 누르거나, 바깥을 누르거나, Esc 를 치는 쪽에 맡긴다.
  */
 function MenuItem({
   selected,
