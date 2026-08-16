@@ -68,8 +68,25 @@ const TAB_BOUNCE_MS = 500
  * 한 칸이 헛돌았다는 것은 이미 확인된 사실이므로 곧바로 다음 수단을 시도한다.
  */
 const ESCALATE_RETRY_MS = 20_000
-/** 강제 갱신 사다리의 칸 수. 이 칸을 다 밟고도 조용하면 문서를 다시 띄운다. */
-const LADDER_RUNGS = 3
+/**
+ * 사람이 새로고침을 누른 뒤 다음 칸으로 넘어가기까지의 시간.
+ *
+ * 기다리는 사람이 있으므로 자동 갱신(20 초)보다 훨씬 짧다. 그래도 한 칸씩 밟는
+ * 것은 같다 — 통했는지 보고 넘어가야 헛일을 반복하지 않는다.
+ */
+const MANUAL_RETRY_MS = 2_500
+/**
+ * 그 빠른 구간을 유지하는 시간.
+ *
+ * 사다리를 끝까지 밟고도 남을 만큼만 둔다. 이 시간이 지나면 자동 갱신의 느긋한
+ * 간격으로 돌아간다.
+ */
+const MANUAL_WINDOW_MS = 12_000
+/**
+ * 강제 갱신 사다리의 칸 수. 이 칸을 다 밟고도 조용하면 문서를 다시 띄운다.
+ * `ladder()` 가 돌려주는 칸 수와 반드시 같아야 한다.
+ */
+const LADDER_RUNGS = 4
 
 /**
  * 목록 응답에만 들어 있는 표시.
@@ -164,6 +181,8 @@ export function startCollector(
   let primingUntil = 0
   /** 이번 대타 방문에서 추가로 찔러볼 시각. 한 번 쓰고 나면 0. */
   let primeNudgeAt = 0
+  /** 사람이 새로고침을 누른 뒤 사다리를 빠르게 올라가는 구간의 끝. */
+  let manualUntil = 0
 
   /** 담당 몫으로 선택돼 있어야 하는 타임라인. */
   const home = (): TimelineKind => kinds[activeIndex % kinds.length] ?? 'foryou'
@@ -314,7 +333,41 @@ export function startCollector(
       },
     }
     const shortcut = { label: '단축키', run: pressLoadNewPostsShortcut }
-    return wanted === 'following' ? [shortcut, tab, nav] : [nav, tab, shortcut]
+    const bounce = { label: '탭 튕기기', run: bounceTab }
+    // 탭 튕기기는 맨 끝이다. 확실히 듣는 수단이지만 옆 타임라인을 통째로 받아
+    // 그리게 만들어 가장 비싸다 — 싼 것들이 다 실패했을 때만 쓴다.
+    return wanted === 'following' ? [shortcut, tab, nav, bounce] : [nav, tab, shortcut, bounce]
+  }
+
+  /**
+   * 담당 탭을 잠깐 떠났다 돌아온다.
+   *
+   * 이미 열려 있는 탭을 다시 눌러봐야 x.com 은 아무 요청도 내지 않는다. 옆 탭에
+   * 들렀다 돌아와야 담당 타임라인을 새로 받아온다.
+   *
+   * 대가가 크다 — 들른 탭의 타임라인을 통째로 받아 그리고, 돌아오며 담당 타임라인도
+   * 다시 그린다. 한 번에 전체 렌더가 두세 번이다. 그래서 사다리의 마지막 칸에 둔다.
+   */
+  function bounceTab(): void {
+    const wanted = target()
+    // 같은 화면에 실제로 떠 있는 다른 탭을 고른다 — 홈과 알림은 탭 목록이 따로라
+    // 이름만 보고 고르면 이 문서에 없는 탭을 집는다.
+    const away = TIMELINE_KINDS.filter((kind) => kind !== wanted)
+      .map((kind) => findTab(kind))
+      .find((tab) => tab !== null)
+    // 들를 곳이 없으면(탭이 하나뿐인 화면) 선택자에 기대지 않는 단축키로 물러선다.
+    if (!away) {
+      pressLoadNewPostsShortcut()
+      return
+    }
+
+    // tick 이 그 사이에 끼어들어 탭을 되돌리지 않도록 확인 시계를 미뤄둔다.
+    lastTabAssertAt = Date.now()
+    simulateClick(away)
+    window.setTimeout(() => {
+      const back = findTab(wanted)
+      if (back) simulateClick(back)
+    }, TAB_BOUNCE_MS)
   }
 
   /**
@@ -349,41 +402,37 @@ export function startCollector(
   function manualRefresh(): void {
     const now = Date.now()
     lastForcedRefreshAt = now
+    // 기다리는 사람이 있다. 다음 칸으로 넘어가는 간격을 잠시 짧게 둔다.
+    manualUntil = now + MANUAL_WINDOW_MS
 
-    // 알약이 떠 있으면 그것부터 누른다. 다만 **여기서 끝내지 않는다** — 눌러도
-    // 아무 일이 없는 경우가 있고, 그러면 새로고침 버튼이 통째로 죽은 것처럼 보인다.
+    /*
+     * 수단은 **하나만** 쓴다.
+     *
+     * 예전에는 알약·내비 재클릭·탭 튕기기를 0.5 초 안에 전부 발사했다. 통했는지
+     * 보지 않으므로 첫 수단이 먹힌 흔한 경우에도 x.com 이 타임라인을 서너 번 다시
+     * 그렸고, 그때마다 사진을 다시 받아 CPU 가 100% 를 넘었다. 컬럼 하나만 켠
+     * 구성에서도 그랬다 — 숨은 프레임과 무관하게 이 자리가 원인이었다.
+     *
+     * 통했는지는 응답이 알려준다. 안 왔으면 tick 이 `MANUAL_RETRY_MS` 뒤에 다음
+     * 칸을 밟고, 왔으면 `escalation` 이 0 으로 되감기며 거기서 멈춘다.
+     */
     const pill = findRefreshPill()
     if (pill) {
+      // 알약은 정확히 이 일을 하라고 x.com 이 띄워둔 것이다. 이것보다 나은 수단이 없다.
       simulateClick(pill.element)
       lastPillClickAt = now
+      report(
+        pill.count === null
+          ? '새로고침: 새 게시물 알림 클릭'
+          : `새로고침: 새 게시물 알림 ${pill.count}건 클릭`,
+      )
+      return
     }
-    report(pill ? '새로고침: 알림 클릭 · 내비 · 탭 튕기기' : '새로고침: 내비 · 탭 튕기기')
 
-    // 한 번 눌러 안 되면 다음 수단으로 넘어가야 한다. 사다리를 한 칸 올려두면
-    // 이 시도가 헛돌았을 때 tick 이 곧바로 다음 칸을 밟는다.
-    escalation = Math.max(escalation, 1)
-
-    // 담당 화면의 내비 링크 재클릭이 실제 요청을 내는 것이 확인된 경로다. 탭을 다시
-    // 누르는 것만으로는 x.com 이 이미 받아둔 목록을 다시 그리기만 할 때가 있다.
-    clickOwnNav()
-
-    // 링크가 없거나(좁은 프레임) 그것만으로 부족할 때를 위해 탭도 튕긴다.
-    // 같은 화면에 실제로 떠 있는 다른 탭을 고른다 — 홈과 알림은 탭 목록이 따로라
-    // 이름만 보고 고르면 이 문서에 없는 탭을 집는다.
-    // 내비 클릭으로 담당 탭이 풀렸다면 돌아오는 클릭이 그것까지 함께 되돌린다.
-    const wanted = target()
-    const away = TIMELINE_KINDS.filter((kind) => kind !== wanted)
-      .map((kind) => findTab(kind))
-      .find((tab) => tab !== null)
-
-    // tick 이 그 사이에 끼어들어 탭을 되돌리지 않도록 확인 시계를 미뤄둔다.
-    lastTabAssertAt = now
-    if (away) simulateClick(away)
-    window.setTimeout(() => {
-      const back = findTab(wanted)
-      if (back) simulateClick(back)
-      pressLoadNewPostsShortcut()
-    }, TAB_BOUNCE_MS)
+    // 알약이 없으면 사다리를 처음부터 밟는다. 누른 사람은 첫 수단부터 다시 시도되길
+    // 기대하므로, 오르던 중이었더라도 되감는다.
+    escalation = 0
+    forceRefresh()
   }
 
   /** 대타 방문을 끝내고 담당 탭으로 돌아온다. */
@@ -472,6 +521,8 @@ export function startCollector(
     if (role === target()) {
       lastForcedRefreshAt = capturedAt
       escalation = 0
+      // 새로고침이 통했다. 빠른 재시도 구간을 여기서 닫는다.
+      manualUntil = 0
     }
 
     setState('streaming')
@@ -597,10 +648,20 @@ export function startCollector(
     // 사다리를 오르는 중이면 유휴 간격을 다시 채울 것 없이 곧바로 다음 칸으로 간다.
     // 문서를 다시 띄우는 마지막 칸만은 예외다 — 최상위 문서에서는 덱까지 함께 다시 뜬다.
     const climbing = escalation > 0 && escalation < LADDER_RUNGS
-    const wait = climbing
-      ? Math.min(settings.idleRefreshMs, ESCALATE_RETRY_MS)
-      : settings.idleRefreshMs
-    if (!priming && settings.idleRefreshMs > 0 && idleFor > wait) {
+    /*
+     * 사람이 방금 누른 뒤라면 훨씬 짧은 간격으로 다음 칸을 밟는다.
+     *
+     * 다만 **사다리 안에서만** 서두른다. 마지막 칸을 넘어서면 다음은 문서 재적재라,
+     * 그것까지 빠르게 밟으면 새로고침 한 번에 프레임이 통째로 다시 뜬다.
+     */
+    const hurrying = now < manualUntil && escalation < LADDER_RUNGS
+    const wait = hurrying
+      ? MANUAL_RETRY_MS
+      : climbing
+        ? Math.min(settings.idleRefreshMs, ESCALATE_RETRY_MS)
+        : settings.idleRefreshMs
+    // 유휴 갱신을 꺼두었어도 사람이 누른 것은 끝까지 처리한다.
+    if (!priming && (hurrying || settings.idleRefreshMs > 0) && idleFor > wait) {
       forceRefresh()
     }
   }
