@@ -267,6 +267,8 @@ export function App({ hostKind, onPassthrough }: AppProps) {
             onSelectColumn={setActiveColumn}
             onToggleTheme={toggleTheme}
             onOpenSettings={() => setSettingsOpen(true)}
+            powerSave={settings.powerSave}
+            onTogglePowerSave={() => update({ powerSave: !settings.powerSave })}
             onPeek={() => setPeeking(true)}
             canArrange={settings.columns.length > 1}
             layout={layout}

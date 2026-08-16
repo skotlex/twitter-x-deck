@@ -149,6 +149,13 @@ export const SunIcon = (props: IconProps) => (
   </Icon>
 )
 
+/** 절전. 번개는 '전력' 을 가리키는 가장 흔한 기호다. */
+export const BoltIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5Z" />
+  </Icon>
+)
+
 export const MoonIcon = (props: IconProps) => (
   <Icon {...props}>
     <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />

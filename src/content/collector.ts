@@ -83,6 +83,14 @@ const MANUAL_RETRY_MS = 2_500
  */
 const MANUAL_WINDOW_MS = 12_000
 /**
+ * 절전 중에 밀린 건수를 세어보는 주기.
+ *
+ * 알약을 **읽는** 것은 누르는 것과 값이 전혀 다르다 — 읽기만 하면 x.com 은 아무
+ * 것도 다시 그리지 않는다. 그래도 매 초 할 일은 아니다. 밀린 수는 급히 알아야 할
+ * 값이 아니고, 세는 김에 기하 질의가 한 번 나가 배치를 강제로 끝내게 한다.
+ */
+const POWER_SAVE_PEEK_MS = 10_000
+/**
  * 강제 갱신 사다리의 칸 수. 이 칸을 다 밟고도 조용하면 문서를 다시 띄운다.
  * `ladder()` 가 돌려주는 칸 수와 반드시 같아야 한다.
  */
@@ -183,6 +191,8 @@ export function startCollector(
   let primeNudgeAt = 0
   /** 사람이 새로고침을 누른 뒤 사다리를 빠르게 올라가는 구간의 끝. */
   let manualUntil = 0
+  /** 절전 중에 밀린 건수를 마지막으로 세어본 시각. */
+  let lastPowerSavePeekAt = 0
 
   /** 담당 몫으로 선택돼 있어야 하는 타임라인. */
   const home = (): TimelineKind => kinds[activeIndex % kinds.length] ?? 'foryou'
@@ -564,6 +574,32 @@ export function startCollector(
     }
 
     /*
+     * 절전 중에는 아무 것도 두드리지 않고 세어만 둔다.
+     *
+     * 새 글을 받아오는 값의 대부분은 우리 것이 아니다 — 알약을 누르면 x.com 이
+     * 응답을 주면서 **자기 타임라인도 함께 다시 그린다.** 덱에 가려 보이지도 않는
+     * 화면인데 React 재실행 · 스타일 재계산 · 레이아웃을 전부 치른다. 새 글 한 뭉치가
+     * 들어올 때마다 CPU 가 70% 까지 튀던 자리다.
+     *
+     * 그리지 말라고 할 방법이 없으므로 부르지 않는다. 대신 몇 건이 밀려 있는지는
+     * 계속 세어 머리글에 띄운다 — 알약을 읽는 것은 누르는 것과 값이 다르다.
+     * 다만 그것도 매 초 할 일은 아니라 이따금만 본다.
+     *
+     * 응답이 제 발로 들어오면 그때는 받는다. 사용자가 통과 모드에서 직접 넘긴
+     * 타임라인도 그대로 우리 것이 된다.
+     */
+    if (settings.powerSave) {
+      if (now - lastPowerSavePeekAt > POWER_SAVE_PEEK_MS) {
+        lastPowerSavePeekAt = now
+        const wanted = target()
+        const tab = findTab(wanted)
+        setPending(wanted, tab && isTabSelected(tab) ? (findRefreshPill()?.count ?? null) : null)
+      }
+      setState(receiving() ? 'streaming' : 'loading')
+      return
+    }
+
+    /*
      * 담당 화면이 아니면 그리로 돌아간다.
      *
      * 홈 컬럼은 홈에서, 알림 컬럼은 알림 화면에서만 나온다. 로그인을 마치고 알림
@@ -671,7 +707,11 @@ export function startCollector(
     settings = loaded
   })
   const unwatch = watchSettings((next) => {
+    const woke = settings.powerSave && !next.powerSave
     settings = next
+    // 절전을 끄는 순간 밀어둔 것을 받아온다. 다음 유휴 갱신까지 기다리면 껐는데도
+    // 한참 동안 아무 일이 없어, 밀린 건수만 머리글에 남은 채로 멎은 것처럼 보인다.
+    if (woke && !paused) manualRefresh()
   })
 
   setState('loading')

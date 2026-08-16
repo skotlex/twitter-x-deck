@@ -118,6 +118,20 @@ export interface Settings {
   /** x.com 홈에 들어가면 곧바로 덱을 얹는다. 끄면 확장 아이콘을 눌러야 뜬다. */
   autoMount: boolean
   /**
+   * 절전. 켜면 새 글을 **받아오지 않고 세어만 둔다.**
+   *
+   * 새 글을 받아오는 일의 값은 대부분 우리 것이 아니다 — 알약을 누르면 x.com 이
+   * 응답을 주면서 **자기 타임라인도 함께 다시 그린다.** 우리는 그 화면을 보여주지
+   * 않으므로 통째로 낭비인데, 그리지 말라고 할 방법이 없다. 그래서 아예 누르지 않는다.
+   *
+   * 누르지 않아도 알약은 계속 뜨므로 몇 건이 밀려 있는지는 그대로 보인다. 끄는 순간
+   * 밀린 것을 한 번에 받아온다 — 놓치는 것이 아니라 미뤄두는 것이다.
+   *
+   * 탭이 가려졌는지로 자동 판단하지 않는다. 모니터가 둘이면 게임을 하는 동안에도
+   * 덱은 '보이는' 탭이라 브라우저가 알려주는 값으로는 가려낼 수 없다.
+   */
+  powerSave: boolean
+  /**
    * 사진 속 글자 번역을 쓸지. 켜도 브리지에 로그인이 확인되기 전에는 단추가 뜨지 않는다 —
    * 켜는 것과 쓸 수 있는 것은 다르다.
    */
@@ -159,6 +173,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   fontFamily: '',
   autoMount: true,
+  powerSave: false,
   imageTranslate: false,
   imageTranslateEngine: 'codex',
   codexOutput: 'image',

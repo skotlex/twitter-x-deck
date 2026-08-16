@@ -92,6 +92,39 @@ describe('loadSettings', () => {
   })
 })
 
+describe('절전', () => {
+  /**
+   * 켜면 새 글을 받아오지 않고 세어만 둔다. 꺼져 있는 것이 기본이어야 한다 —
+   * 처음 깐 사람이 영문도 모르고 '글이 안 들어온다' 를 겪으면 안 된다.
+   */
+  it('기본은 꺼짐이다', () => {
+    expect(DEFAULT_SETTINGS.powerSave).toBe(false)
+  })
+
+  it('이 항목이 없던 예전 저장값도 꺼짐으로 채운다', async () => {
+    sync.data.set(STORAGE_KEY, { density: 'compact' })
+    expect((await loadSettings()).powerSave).toBe(false)
+  })
+
+  /** 게임하는 동안 켜두는 스위치라, 껐다 켰다 하는 값이 그대로 남아야 한다. */
+  it('켠 값이 저장되고 다시 읽힌다', async () => {
+    await saveSettings({ powerSave: true })
+    expect((await loadSettings()).powerSave).toBe(true)
+
+    await saveSettings({ powerSave: false })
+    expect((await loadSettings()).powerSave).toBe(false)
+  })
+
+  it('절전을 바꿔도 다른 설정은 건드리지 않는다', async () => {
+    await saveSettings({ density: 'compact', columns: ['mentions'] })
+    await saveSettings({ powerSave: true })
+
+    const settings = await loadSettings()
+    expect(settings.density).toBe('compact')
+    expect(settings.columns).toEqual(['mentions'])
+  })
+})
+
 describe('예전 저장값 옮기기', () => {
   /**
    * 미디어 표시가 켬/끔 두 갈래이던 시절의 값. 껐던 사람이 켜진 채로 뜨면 안 된다.

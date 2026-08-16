@@ -7,6 +7,7 @@ import { unreadLabel } from '../lib/unread'
 import {
   ArchiveIcon,
   BellIcon,
+  BoltIcon,
   ColumnsIcon,
   EyeIcon,
   MoonIcon,
@@ -28,6 +29,10 @@ export interface TopBarProps {
   onSelectColumn: (kind: TimelineKind) => void
   onToggleTheme: () => void
   onOpenSettings: () => void
+  /** 절전이 켜져 있는지. */
+  powerSave: boolean
+  /** 절전을 켜고 끈다. */
+  onTogglePowerSave: () => void
   /** x.com 로그아웃 화면으로 데려간다. */
   onLogout: () => void
   /** 덱을 비켜 아래 x.com 을 보여준다. */
@@ -67,6 +72,8 @@ export function TopBar({
   onSelectColumn,
   onToggleTheme,
   onOpenSettings,
+  powerSave,
+  onTogglePowerSave,
   onPeek,
   canArrange,
   layout,
@@ -225,6 +232,31 @@ export function TopBar({
             </div>
           )}
         </div>
+
+        {/*
+          절전. 새 글을 받아오는 값의 대부분은 x.com 이 자기 타임라인을 다시 그리는
+          데 든다 — 덱에 가려 보이지도 않는 화면이다. 켜면 그 일을 시키지 않고
+          밀린 건수만 세어 둔다. 게임처럼 다른 일을 하는 동안 쓰라고 둔 스위치라
+          설정 안이 아니라 여기 있다.
+        */}
+        <button
+          type="button"
+          onClick={onTogglePowerSave}
+          aria-pressed={powerSave}
+          className={`grid h-9 w-9 place-items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${
+            powerSave
+              ? 'bg-button text-button-text hover:bg-button-strong'
+              : 'text-muted hover:bg-surface-2 hover:text-text'
+          }`}
+          aria-label={powerSave ? '절전 끄기' : '절전 켜기'}
+          title={
+            powerSave
+              ? '절전 켜짐 — 새 글을 세어만 둡니다. 누르면 밀린 것을 받아옵니다'
+              : '절전 — 새 글을 받아오지 않고 세어만 둡니다 (게임 등 다른 일을 할 때)'
+          }
+        >
+          <BoltIcon className="h-4 w-4" />
+        </button>
 
         <button
           type="button"

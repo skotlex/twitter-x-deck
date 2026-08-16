@@ -440,6 +440,9 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
 
     const startedAt = Date.now()
     const timer = window.setInterval(() => {
+      // 절전 중에는 대신 훑지 않는다. 탭을 오가는 것이 곧 x.com 의 재렌더라,
+      // 절전이 막으려던 바로 그 값을 이쪽으로 다시 치르게 된다.
+      if (settingsRef.current.powerSave) return
       const now = Date.now()
       for (const kind of collectedKinds(settingsRef.current)) {
         if (hostOwns(kind)) continue
