@@ -128,14 +128,30 @@ async function request(port: number, path: string, body: unknown, timeoutMs: num
 /** 마지막으로 찾은 자리. 매번 훑지 않도록 기억해둔다. */
 let knownPort: number | null = null
 
+/**
+ * 훑는 동안 마주친 사정.
+ *
+ * 못 찾았다는 말만으로는 브리지가 꺼진 것인지, 떠 있는데 브라우저가 막은 것인지,
+ * 그 자리에 남의 서버가 앉은 것인지 구별되지 않는다. 앞으로 다른 이유로 실패할 때
+ * 짐작으로 안내하지 않도록, 마주친 것을 그대로 들고 나온다.
+ */
+let probeNote: string | null = null
+
 /** 그 포트에 우리 브리지가 있는지. 남의 서버가 앉아 있을 수도 있어 표시를 확인한다. */
 async function isBridge(port: number): Promise<boolean> {
   try {
     const response = await request(port, '/hello', undefined, 1_500)
-    if (!response.ok) return false
+    if (!response.ok) {
+      probeNote ??= `${port} 번에서 ${response.status} 이 돌아왔습니다.`
+      return false
+    }
     const payload = (await response.json()) as { service?: unknown }
-    return payload.service === BRIDGE_SERVICE
-  } catch {
+    if (payload.service === BRIDGE_SERVICE) return true
+    probeNote ??= `${port} 번에는 다른 서버가 있습니다.`
+    return false
+  } catch (cause) {
+    // 닫힌 포트도, 브라우저가 막은 것도 여기로 온다. 문구가 유일한 단서다.
+    probeNote ??= cause instanceof Error ? cause.message : String(cause)
     return false
   }
 }
@@ -147,6 +163,7 @@ async function isBridge(port: number): Promise<boolean> {
  * 켜면서 다른 번호로 옮겨 앉는 경우가 있어 기억은 힌트일 뿐 근거가 아니다.
  */
 async function findBridge(): Promise<number | null> {
+  probeNote = null
   if (knownPort !== null && (await isBridge(knownPort))) return knownPort
 
   for (let at = 0; at < BRIDGE_PORT_TRIES; at += 1) {
@@ -164,7 +181,11 @@ async function findBridge(): Promise<number | null> {
 async function callBridge(path: string, body: unknown, timeoutMs: number): Promise<unknown> {
   const port = await findBridge()
   if (port === null) {
-    return { reachable: false, error: '브리지를 찾지 못했습니다. npm run bridge 로 띄웠는지 확인하세요.' }
+    const note = probeNote === null ? '' : ` (${probeNote})`
+    return {
+      reachable: false,
+      error: `브리지를 찾지 못했습니다. 터미널에서 npm run bridge 를 실행해 두세요.${note}`,
+    }
   }
 
   try {
