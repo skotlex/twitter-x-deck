@@ -67,6 +67,10 @@ function run(command, args, timeoutMs) {
       windowsHide: true,
     })
 
+    // 줄 것이 없다는 뜻으로 곧바로 닫는다. 열어두면 codex 가 프롬프트가 더 올 줄 알고
+    // 기다리다가("Reading additional input from stdin...") 시간 제한에 걸린다.
+    child.stdin?.end()
+
     let stdout = ''
     let stderr = ''
     let done = false
@@ -123,12 +127,17 @@ function configComplaint(stderr) {
  * 짧은 명령을 한 번 시켜보고 답이 오면 로그인된 것이다 — 판이 바뀌어도 이 판정은
  * 그대로 맞는다.
  */
+/**
+ * `codex login status` 하나면 끝난다.
+ *
+ * 예전에는 에이전트를 통째로 한 번 돌려보고 그 출력에서 로그인 여부를 짐작했다.
+ * 두 가지가 나빴다 — 그 출력에는 모델 목록이 통째로 섞여 나와 정규식이 엉뚱한 데
+ * 걸렸고(로그인돼 있는데도 아니라고 답했다), 무엇보다 **설정 화면을 열 때마다 진짜
+ * 모델 호출이 나가 구독 사용량을 태웠다.** 묻기만 하는 명령으로 바꾼다.
+ */
 async function probeCodex() {
-  const result = await run(
-    'codex',
-    ['exec', '--skip-git-repo-check', '-s', 'read-only', '"reply with OK and nothing else"'],
-    PROBE_TIMEOUT_MS,
-  )
+  const result = await run('codex', ['login', 'status'], PROBE_TIMEOUT_MS)
+  const said = `${result.stdout}${result.stderr}`
 
   if (result.code === null && /ENOENT|not recognized|command not found/i.test(result.stderr)) {
     return { installed: false, loggedIn: false, note: 'codex 명령을 찾지 못했습니다.' }
@@ -140,13 +149,12 @@ async function probeCodex() {
   if (result.timedOut) {
     return { installed: true, loggedIn: false, note: 'codex 가 시간 안에 답하지 않았습니다.' }
   }
-  if (/not logged in|please (run )?(`)?codex login|unauthor/i.test(result.stderr + result.stdout)) {
-    return { installed: true, loggedIn: false, note: '로그인이 필요합니다.' }
+  if (result.code === 0 && /logged in/i.test(said)) return { installed: true, loggedIn: true }
+  return {
+    installed: true,
+    loggedIn: false,
+    note: firstLine(said) || '로그인이 필요합니다.',
   }
-  if (result.code !== 0) {
-    return { installed: true, loggedIn: false, note: firstLine(result.stderr) || '실행에 실패했습니다.' }
-  }
-  return { installed: true, loggedIn: true }
 }
 
 async function probeClaude() {
