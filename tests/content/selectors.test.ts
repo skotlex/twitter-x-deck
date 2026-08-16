@@ -18,6 +18,7 @@ import {
   findTab,
   findViewer,
   hasComposerAttachment,
+  isLoggedOut,
   isOnPageFor,
   isTabSelected,
   readComposerText,
@@ -391,6 +392,140 @@ describe('isLoggedOut', () => {
     setPath('/home')
     document.body.innerHTML = '<div role="button">로그인 상태를 유지하려면 여기를 누르세요</div>'
     expect(isLoggedOut()).toBe(false)
+  })
+})
+
+describe('매 tick 도는 순회가 타임라인 길이를 타지 않는지', () => {
+  /**
+   * 수집기는 `isLoggedOut()` 과 `findRefreshPill()` 을 **매 tick(1초)** 부르고,
+   * 같은 문서가 컬럼 수만큼 떠 있다. 이 둘이 문서 전체를 훑으면 타임라인이 쌓일수록
+   * 비용이 함께 자란다 — 실제로 x.com 탭 하나가 CPU 70% 대를 계속 붙들었고,
+   * 그동안 다른 프로그램에서 끊김이 나타났다.
+   *
+   * 여기서 재는 것은 결과가 아니라 **무엇을 만졌는가** 다. 결과만 보면 게시물 안을
+   * 수만 번 만진 뒤 전부 버리는 구현도 똑같이 통과한다.
+   */
+
+  /** 게시물 카드 하나. 문서의 버튼·링크는 절대다수가 이 안에 들어 있다. */
+  const CARD = `<article>
+    <a href="/someone">보낸 사람</a>
+    <a href="/someone/status/1"><time></time></a>
+    <div role="button">답글</div>
+    <div role="button">리포스트</div>
+    <div role="button">마음에 들어요</div>
+    <div role="button">공유하기</div>
+  </article>`
+
+  /** 게시물 밖 버튼. 사이드바·추천 칸에도 버튼이 잔뜩 있다. */
+  const ASIDE = '<div role="button" data-test-top="400">팔로우</div>'
+
+  /**
+   * 게시물 **안** 요소를 하나라도 만지면 센다.
+   *
+   * 옛 구현은 문서의 버튼·링크를 전부 받아 각각 `closest('article')` 로 걸러냈다.
+   * 결과는 맞았지만 걸러내려고 매번 전부 만졌다. 만지지 않는 것과 만진 뒤 버리는
+   * 것을 가르려면 접근 자체를 세는 수밖에 없다.
+   */
+  function watchInsideArticles(): { touches: () => number; restore: () => void } {
+    const text = Object.getOwnPropertyDescriptor(Element.prototype, 'textContent')!
+    const rect = Element.prototype.getBoundingClientRect
+    const nodes = [...document.querySelectorAll('article *')]
+    let touches = 0
+
+    for (const node of nodes) {
+      const bump = <T>(run: () => T): T => {
+        touches += 1
+        return run()
+      }
+      Object.defineProperty(node, 'textContent', {
+        configurable: true,
+        get: () => bump(() => text.get!.call(node) as string),
+      })
+      Object.defineProperty(node, 'closest', {
+        configurable: true,
+        value: (selector: string) => bump(() => Element.prototype.closest.call(node, selector)),
+      })
+      Object.defineProperty(node, 'matches', {
+        configurable: true,
+        value: (selector: string) => bump(() => Element.prototype.matches.call(node, selector)),
+      })
+      Object.defineProperty(node, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => bump(() => rect.call(node)),
+      })
+    }
+
+    return {
+      touches: () => touches,
+      restore: () => {
+        for (const node of nodes) {
+          for (const key of ['textContent', 'closest', 'matches', 'getBoundingClientRect']) {
+            Reflect.deleteProperty(node, key)
+          }
+        }
+      },
+    }
+  }
+
+  /** `getBoundingClientRect` 호출 수. 브라우저에서는 한 번마다 강제 레이아웃이 걸린다. */
+  function countRects(): { calls: () => number; restore: () => void } {
+    const original = Element.prototype.getBoundingClientRect
+    let calls = 0
+    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+      calls += 1
+      return original.call(this)
+    }
+    return {
+      calls: () => calls,
+      restore: () => {
+        Element.prototype.getBoundingClientRect = original
+      },
+    }
+  }
+
+  it('isLoggedOut 은 게시물 안을 만지지 않는다', () => {
+    render(CARD.repeat(200))
+    const probe = watchInsideArticles()
+    const answer = isLoggedOut()
+    probe.restore()
+
+    expect(answer).toBe(false)
+    expect(probe.touches()).toBe(0)
+  })
+
+  it('findRefreshPill 은 게시물 안을 만지지 않는다', () => {
+    render(CARD.repeat(200))
+    const probe = watchInsideArticles()
+    const hit = findRefreshPill()
+    probe.restore()
+
+    expect(hit).toBeNull()
+    expect(probe.touches()).toBe(0)
+  })
+
+  /**
+   * 게시물 밖에도 버튼은 많다. 그것들까지 위치를 재면 매 tick 마다 강제 레이아웃이
+   * 수백 번 걸린다 — 메인 스레드가 그 자리에서 멎는, 끊김을 만드는 종류의 작업이다.
+   * 알약인지는 문구로 먼저 가릴 수 있고, 그러면 위치를 잴 후보가 거의 남지 않는다.
+   */
+  it('findRefreshPill 은 문구로 거른 뒤에만 위치를 잰다', () => {
+    render(ASIDE.repeat(300))
+    const rects = countRects()
+    const hit = findRefreshPill()
+    rects.restore()
+
+    expect(hit).toBeNull()
+    expect(rects.calls()).toBeLessThanOrEqual(10)
+  })
+
+  it('타임라인이 길어도 상단 알약은 그대로 찾는다', () => {
+    render(`<div role="button" data-test-top="80">7개의 게시물 보기</div>${CARD.repeat(200)}`)
+    expect(findRefreshPill()?.count).toBe(7)
+  })
+
+  it('게시물이 쌓여 있어도 게시물 밖 로그인 버튼은 찾아낸다', () => {
+    render(`${CARD.repeat(200)}<div role="button">로그인</div>`)
+    expect(isLoggedOut()).toBe(true)
   })
 })
 

@@ -72,6 +72,43 @@ export function primaryColumn(): HTMLElement | null {
   return document.querySelector<HTMLElement>('[data-testid="primaryColumn"]')
 }
 
+/**
+ * 게시물 **밖** 의 버튼·링크만 문서 순서로 모은다.
+ *
+ * 로그인 UI 도 새 게시물 알약도 게시물 안에는 있을 수 없다. 그런데 x.com 문서의
+ * 버튼·링크는 절대다수가 게시물 안에 있다 — 카드 하나에 링크와 동작 버튼이 예닐곱
+ * 개씩 붙고, 타임라인은 수집이 도는 내내 자란다.
+ *
+ * 예전에는 `querySelectorAll` 로 문서 전체를 받아 하나씩 `closest('article')` 로
+ * 걸러냈다. 고른 결과는 같지만, 걸러내려고 매번 전부 만졌다. 이 순회는 매 tick(1초)
+ * 돌고 같은 문서가 컬럼 수만큼 떠 있어서, 타임라인이 쌓일수록 비용이 함께 자랐다 —
+ * x.com 탭 하나가 CPU 를 계속 붙들고 다른 프로그램에 끊김을 만들었다.
+ *
+ * TreeWalker 의 `FILTER_REJECT` 는 서브트리를 통째로 건너뛴다. 게시물에 들어서는
+ * 순간 그 안을 아예 방문하지 않으므로 타임라인이 아무리 길어져도 비용이 그대로다.
+ */
+function controlsOutsideArticles(scope: Element | null, links: boolean): HTMLElement[] {
+  const found: HTMLElement[] = []
+  if (!scope) return found
+
+  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT, {
+    acceptNode(node) {
+      const element = node as Element
+      if (element.localName === 'article') return NodeFilter.FILTER_REJECT
+      const control =
+        element.localName === 'button' ||
+        (links && element.localName === 'a') ||
+        element.getAttribute('role') === 'button'
+      return control ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
+    },
+  })
+
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    found.push(node as HTMLElement)
+  }
+  return found
+}
+
 /** 홈 타임라인의 탭 목록. 고정한 리스트가 섞여 있어도 그대로 돌려준다. */
 function homeTabs(): HTMLElement[] {
   const tablist =
@@ -192,13 +229,24 @@ export function findRefreshPill(): PillHit | null {
     )
   if (direct) return direct
 
-  const buttons = [...scope.querySelectorAll<HTMLElement>('[role="button"], button')]
-  for (const button of buttons) {
+  // 알약은 목록 **위에** 떠 있는 버튼이지 게시물의 일부가 아니다. 게시물 안을 빼면
+  // 후보가 몇 개로 줄고, 카드 안의 숫자 붙은 버튼을 알약으로 잘못 집을 일도 없어진다.
+  for (const button of controlsOutsideArticles(scope, false)) {
+    /*
+     * 위치는 문구로 거른 **뒤에만** 잰다.
+     *
+     * `getBoundingClientRect()` 는 부를 때마다 밀린 배치를 강제로 끝낸다. 버튼마다
+     * 부르면 매 tick 문서 전체가 다시 배치되고 그동안 메인 스레드가 멎는다. 알약이
+     * 안 떠 있는 대부분의 시간에는 이 루프가 끝까지 돌았으므로 늘 그랬다.
+     *
+     * 문구로 찾을 때는 숫자가 있는 것만 믿는다. 상단에는 '새 게시물' 이라는 말이
+     * 들어간 다른 버튼(작성 버튼 등)이 함께 있을 수 있다. 그 판정을 앞으로 당기면
+     * 위치를 잴 후보가 거의 남지 않는다.
+     */
+    if (readCount(button.textContent) === null) continue
     // 알림 알약은 항상 컬럼 최상단에 떠 있다. 아래쪽 버튼은 후보에서 뺀다.
     if (button.getBoundingClientRect().top > 220) continue
     const hit = asPill(button)
-    // 문구로 찾을 때는 숫자가 있는 것만 믿는다. 상단에는 '새 게시물' 이라는 말이
-    // 들어간 다른 버튼(작성 버튼 등)이 함께 있을 수 있다.
     if (hit?.count != null) return hit
   }
 
@@ -413,10 +461,8 @@ export function isLoggedOut(): boolean {
   // 그것마저 안 걸리면 문구로 찾는다 — 이 파일의 다른 선택자들과 같은 순서다.
   // 게시물 안은 보지 않는다. 글 내용에 '로그인' 이 들어 있을 뿐인 링크를 근거로
   // 삼으면 멀쩡히 로그인한 사람의 덱이 통째로 비켜서 버린다.
-  const buttons = document.querySelectorAll<HTMLElement>('[role="button"], button, a')
-  for (const button of buttons) {
-    if (button.closest('article')) continue
-    const text = norm(button.textContent)
+  for (const control of controlsOutsideArticles(document.body, true)) {
+    const text = norm(control.textContent)
     if (text.length === 0 || text.length > 20) continue
     if (LOGIN_LABELS.some((label) => text === label)) return true
   }
