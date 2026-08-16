@@ -127,6 +127,14 @@ export const ArchiveIcon = (props: IconProps) => (
   </Icon>
 )
 
+/** 컬럼 없이 지켜보는 타임라인. */
+export const BellIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M18 9a6 6 0 1 0-12 0c0 4.5-1.5 6-1.5 6h15S18 13.5 18 9Z" />
+    <path d="M10.3 19a2 2 0 0 0 3.4 0" />
+  </Icon>
+)
+
 export const EyeIcon = (props: IconProps) => (
   <Icon {...props}>
     <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />

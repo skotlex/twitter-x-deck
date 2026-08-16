@@ -3,8 +3,10 @@ import type { DeckLayout, Settings } from '@core/settings'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import type { ViewerInfo } from '../../content/selectors'
 import type { ColumnMap } from '../hooks/useCollector'
+import { unreadLabel } from '../lib/unread'
 import {
   ArchiveIcon,
+  BellIcon,
   ColumnsIcon,
   EyeIcon,
   MoonIcon,
@@ -39,6 +41,12 @@ export interface TopBarProps {
   onChangeLayout: (layout: DeckLayout) => void
   /** 새 게시물 작성창을 연다. */
   onCompose: () => void
+  /** 컬럼 없이 지켜보는 타임라인. 비어 있으면 종을 달지 않는다. */
+  watching: TimelineKind[]
+  /** 지켜보는 타임라인에 덱을 연 뒤로 쌓인, 아직 안 본 글 수. */
+  unread: number
+  /** 지켜보기 판을 펼친다. */
+  onOpenWatch: () => void
   /** 지금 로그인한 계정. 아직 못 읽었으면 null. */
   viewer: ViewerInfo | null
   /**
@@ -65,6 +73,9 @@ export function TopBar({
   layoutAvailable,
   onChangeLayout,
   onCompose,
+  watching,
+  unread,
+  onOpenWatch,
   viewer,
   onOpenProfile,
   onLogout,
@@ -146,6 +157,29 @@ export function TopBar({
       )}
 
       <div className="ml-auto flex items-center gap-1">
+
+        {/*
+          컬럼으로 띄우지 않고 지켜보는 타임라인이 있을 때만 단다. 안 본 수는 배지로
+          얹되 아이콘 자리를 밀지 않는다 — 수가 늘고 줄 때마다 옆 단추들이 흔들린다.
+        */}
+        {watching.length > 0 && (
+          <button
+            type="button"
+            onClick={onOpenWatch}
+            className="relative grid h-9 w-9 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            aria-label={`${watching.map((kind) => TIMELINE_LABEL[kind]).join(' · ')} 보기${
+              unread > 0 ? ` — 안 본 글 ${unread}개` : ''
+            }`}
+            title={`${watching.map((kind) => TIMELINE_LABEL[kind]).join(' · ')} 보기`}
+          >
+            <BellIcon className="h-4 w-4" />
+            {unread > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 min-w-[17px] rounded-full bg-accent px-1 text-center text-[10.5px] font-semibold leading-[17px] tabular-nums text-white">
+                {unreadLabel(unread)}
+              </span>
+            )}
+          </button>
+        )}
 
         {viewer && (
           <ViewerMenu viewer={viewer} onOpenProfile={onOpenProfile} onLogout={onLogout} />

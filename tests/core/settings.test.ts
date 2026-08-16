@@ -4,7 +4,14 @@
  * 경로가 조용히 끊기면 사용자는 재설치 뒤에야, 그것도 설정이 다 날아간 뒤에야 안다.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, watchSettings } from '@core/settings'
+import {
+  collectedKinds,
+  DEFAULT_SETTINGS,
+  loadSettings,
+  saveSettings,
+  watchedKinds,
+  watchSettings,
+} from '@core/settings'
 import type { Settings } from '@core/settings'
 
 const STORAGE_KEY = 'x-deck:settings'
@@ -151,6 +158,45 @@ describe('saveSettings', () => {
     await saveSettings({ autoMount: false })
     const mirror = JSON.parse(window.localStorage.getItem(MIRROR_KEY) ?? '{}') as Settings
     expect(mirror.autoMount).toBe(false)
+  })
+})
+
+/**
+ * 컬럼을 끄면 화면에서만 사라지는 게 아니라 그 타임라인을 아예 받지 않는다.
+ * 수집 프레임을 세우는 자리와 멈춘 컬럼을 되살리는 자리가 모두 이 두 함수를 보므로,
+ * 여기서 하나가 새면 그 타임라인은 한 건도 들어오지 않는다.
+ */
+describe('지켜보는 타임라인', () => {
+  it('지켜보기는 기본으로 비어 있다 — 켜야 프레임이 는다', () => {
+    expect(DEFAULT_SETTINGS.watch).toEqual([])
+  })
+
+  it('지켜보기에 없는 것을 컬럼과 합쳐 수집 대상으로 삼는다', () => {
+    expect(collectedKinds({ columns: ['foryou', 'following'], watch: ['mentions'] })).toEqual([
+      'foryou',
+      'following',
+      'mentions',
+    ])
+  })
+
+  it('컬럼으로도 띄우는 것은 종에서 뺀다 — 보이는 것을 또 세지 않는다', () => {
+    expect(watchedKinds({ columns: ['foryou', 'mentions'], watch: ['mentions'] })).toEqual([])
+    expect(watchedKinds({ columns: ['foryou'], watch: ['mentions', 'notifications'] })).toEqual([
+      'mentions',
+      'notifications',
+    ])
+  })
+
+  it('컬럼과 겹쳐도 수집 대상이 두 번 세어지지 않는다 — 프레임이 둘 뜬다', () => {
+    expect(collectedKinds({ columns: ['foryou', 'mentions'], watch: ['mentions'] })).toEqual([
+      'foryou',
+      'mentions',
+    ])
+  })
+
+  it('예전 저장값에 지켜보기가 없어도 빈 목록으로 채운다', async () => {
+    sync.data.set(STORAGE_KEY, { columns: ['foryou'] })
+    expect((await loadSettings()).watch).toEqual([])
   })
 })
 

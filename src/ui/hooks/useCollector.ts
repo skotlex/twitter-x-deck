@@ -17,7 +17,7 @@ import {
 } from '@core/messages'
 import { parseCreatedTweet, parseDeletedId, parseTimelinePayload } from '@core/parser'
 import { wasLoggedOut } from '@core/session'
-import type { Settings } from '@core/settings'
+import { collectedKinds, type Settings } from '@core/settings'
 import {
   isNotification,
   isNotificationKind,
@@ -286,7 +286,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
    */
   const ingestCreated = useCallback((body: string) => {
     const kind: TimelineKind = 'following'
-    if (!settingsRef.current.columns.includes(kind)) return
+    if (!collectedKinds(settingsRef.current).includes(kind)) return
     const created = parseCreatedTweet(body, kind)
     if (!created) return
 
@@ -390,7 +390,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     const timer = window.setTimeout(() => {
       // 교대 수집은 최상위 문서가 자기 화면의 탭을 오가는 것이다. 알림 컬럼은
       // 다른 주소에 있어 이 문서가 대신해줄 수 없으므로 셈에서 뺀다.
-      const canServe = settingsRef.current.columns.filter((kind) => !isNotificationKind(kind))
+      const canServe = collectedKinds(settingsRef.current).filter((kind) => !isNotificationKind(kind))
       const stalled = canServe.filter(
         (kind) => !hostOwns(kind) && columnsRef.current[kind].status.state === 'idle',
       )
@@ -428,7 +428,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     const startedAt = Date.now()
     const timer = window.setInterval(() => {
       const now = Date.now()
-      for (const kind of settingsRef.current.columns) {
+      for (const kind of collectedKinds(settingsRef.current)) {
         if (hostOwns(kind)) continue
         const seen = frameSeen.current[kind]
         const lastAny = columnsRef.current[kind].status.lastReceivedAt

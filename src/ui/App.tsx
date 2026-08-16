@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DeckLayout } from '@core/settings'
+import { collectedKinds, watchedKinds, type DeckLayout } from '@core/settings'
 import { TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import { openLogout } from '../content/actions'
 import { CollectorFrame } from './components/CollectorFrame'
@@ -7,10 +7,12 @@ import { DeckColumn, type ColumnReorder } from './components/DeckColumn'
 import { PostComposer } from './components/PostComposer'
 import { SettingsPanel } from './components/SettingsPanel'
 import { TopBar } from './components/TopBar'
+import { WatchPanel } from './components/WatchPanel'
 import { XPageModal } from './components/XPageModal'
 import { useCollector } from './hooks/useCollector'
 import { pauseHostCollector } from './hostCollector'
 import { fontStack } from './lib/fonts'
+import { countSince } from './lib/unread'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import { useSettings } from './hooks/useSettings'
 import { useViewer } from './hooks/useViewer'
@@ -87,6 +89,45 @@ export function App({ hostKind, onPassthrough }: AppProps) {
   const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>('dark')
   const [dragKind, setDragKind] = useState<TimelineKind | null>(null)
 
+  /** 컬럼 없이 종으로만 지켜보는 타임라인. */
+  const watching = watchedKinds(settings)
+  /** 겹쳐 펼친 지켜보기 판이 지금 보여주는 타임라인. 닫혀 있으면 null. */
+  const [watchKind, setWatchKind] = useState<TimelineKind | null>(null)
+
+  /**
+   * 지켜보는 타임라인을 마지막으로 본 시각.
+   *
+   * 세는 출발점은 덱을 연 때다. 보관해둔 과거 글까지 안 본 것으로 세면 덱을 띄우는
+   * 순간부터 종에 수백 건이 붙어 아무 것도 알려주지 못한다.
+   */
+  const openedAt = useRef(Date.now())
+  const [seenAt, setSeenAt] = useState<Partial<Record<TimelineKind, number>>>({})
+
+  const unreadFor = useCallback(
+    (kind: TimelineKind) => {
+      const since = seenAt[kind] ?? openedAt.current
+      const column = collector.columns[kind]
+      // 대기시켜 둔 것도 안 본 것이다 — 판을 내려 읽다 닫으면 그쪽에 쌓인다.
+      return countSince(column.tweets, since) + countSince(column.buffered, since)
+    },
+    [collector.columns, seenAt],
+  )
+  const unread = watching.reduce((sum, kind) => sum + unreadFor(kind), 0)
+
+  /** 판에 띄운 동안은 보고 있는 것이다. 열 때와 닫을 때 양쪽에서 본 시각을 찍는다. */
+  useEffect(() => {
+    if (watchKind === null) return
+    const kind = watchKind
+    const mark = () => setSeenAt((prev) => ({ ...prev, [kind]: Date.now() }))
+    mark()
+    return mark
+  }, [watchKind])
+
+  // 설정에서 지켜보기를 껐는데 판이 그 타임라인을 띄운 채로 남아 있으면 닫는다.
+  useEffect(() => {
+    if (watchKind !== null && !watching.includes(watchKind)) setWatchKind(null)
+  }, [watchKind, watching])
+
   // 로그인이 필요하면 덱을 비켜준다 — 아래에 x.com 공식 로그인 화면이 이미 떠 있다.
   const passthrough = peeking || collector.loginNeededFor !== null
 
@@ -120,7 +161,8 @@ export function App({ hostKind, onPassthrough }: AppProps) {
    * 방금 한 일이 바로 보이게 한다 — 돌아가는 표시도 결과 안내도 내지 않는다.
    */
   const { refresh } = collector
-  const showsFollowing = settings.columns.includes('following')
+  // 컬럼으로 띄우지 않고 지켜보기만 해도 받아둔다 — 그 목록을 펼쳤을 때 방금 한 일이 없으면 안 된다.
+  const showsFollowing = collectedKinds(settings).includes('following')
   const actedTimers = useRef<number[]>([])
   const handleActed = useCallback(() => {
     if (!showsFollowing) return
@@ -184,7 +226,11 @@ export function App({ hostKind, onPassthrough }: AppProps) {
         }
       : null
   // 교대 수집으로 넘어갔으면 프레임은 더 이상 쓸모가 없다.
-  const collectorKinds = collector.rotating ? [] : settings.columns.filter((kind) => kind !== hostKind)
+  // 띄우는 컬럼만이 아니라 지켜보는 타임라인까지 세운다 — 프레임이 없으면 그 타임라인은
+  // 화면에서만 사라지는 게 아니라 한 건도 들어오지 않는다.
+  const collectorKinds = collector.rotating
+    ? []
+    : collectedKinds(settings).filter((kind) => kind !== hostKind)
 
   return (
     <div
@@ -215,6 +261,12 @@ export function App({ hostKind, onPassthrough }: AppProps) {
             layoutAvailable={layoutAvailable}
             onChangeLayout={(next) => update({ layout: next })}
             onCompose={() => setComposing(true)}
+            watching={watching}
+            unread={unread}
+            onOpenWatch={() =>
+              // 안 본 것이 있는 쪽을 먼저 편다 — 종을 누른 이유가 대개 그것이다.
+              setWatchKind(watching.find((kind) => unreadFor(kind) > 0) ?? watching[0] ?? null)
+            }
             viewer={viewer}
             onOpenProfile={() => setProfileOpen(true)}
             onLogout={handleLogout}
@@ -242,6 +294,25 @@ export function App({ hostKind, onPassthrough }: AppProps) {
               />
             ))}
           </main>
+
+          {watchKind && (
+            <WatchPanel
+              kinds={watching}
+              active={watchKind}
+              column={collector.columns[watchKind]}
+              settings={settings}
+              unreadFor={unreadFor}
+              onSelect={setWatchKind}
+              onClose={() => setWatchKind(null)}
+              onFlush={collector.flush}
+              onHold={collector.setHold}
+              onBusy={collector.setBusy}
+              onRefresh={collector.refresh}
+              onLoadMore={handleLoadMore}
+              rotating={collector.rotating}
+              onActed={handleActed}
+            />
+          )}
 
           <SettingsPanel
             open={settingsOpen}

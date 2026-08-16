@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { clearAll } from '@core/db'
 import type { BridgeStatus, TranslateEngineId } from '@core/messages'
-import { loadBridgeToken, saveBridgeToken, type Settings } from '@core/settings'
+import type { Settings } from '@core/settings'
 import { TIMELINE_KINDS, TIMELINE_LABEL, type TimelineKind } from '@core/types'
 import {
   ENGINE_LABEL,
@@ -112,49 +112,105 @@ function Select<T extends string | number>({
   )
 }
 
+/** 타임라인 하나를 어떻게 다룰지. 셋 중 하나뿐이라 라디오처럼 고르게 한다. */
+type TimelineMode = 'off' | 'column' | 'watch'
+
+const MODE_LABEL: Record<TimelineMode, string> = {
+  off: '끔',
+  column: '컬럼',
+  watch: '종',
+}
+
+const MODE_HINT: Record<TimelineMode, string> = {
+  off: '받지 않습니다',
+  column: '컬럼으로 띄웁니다',
+  watch: '컬럼 없이 수집만 하고 상단 바의 종으로 알립니다',
+}
+
+function modeOf(columns: TimelineKind[], watch: TimelineKind[], kind: TimelineKind): TimelineMode {
+  if (columns.includes(kind)) return 'column'
+  if (watch.includes(kind)) return 'watch'
+  return 'off'
+}
+
 /**
- * 띄울 컬럼 고르기.
+ * 타임라인마다 컬럼·종·끔을 고른다.
  *
- * 순서는 건드리지 않는다 — 켤 때 뒤에 붙이고, 끌 때 그 자리만 뺀다.
+ * 셋을 한 줄에 모아둔 이유가 있다. '컬럼에서 빼기' 와 '종에 넣기' 를 따로 두면, 폭이
+ * 모자라 컬럼을 줄이려는 사람이 두 자리를 오가야 하고 — 무엇보다 넷을 다 컬럼으로
+ * 켜 둔 사람에게는 종 자리가 텅 빈 채로 보인다. 정작 그 사람이 이 기능을 가장 필요로 한다.
+ *
+ * 컬럼 순서는 건드리지 않는다. 켤 때 뒤에 붙이고 끌 때 그 자리만 뺀다 —
  * 좌우 순서는 컬럼 머리글을 끌어 옮기는 쪽이 훨씬 직관적이라 거기에 맡긴다.
- * 마지막 하나는 끄지 못하게 막는다. 컬럼이 하나도 없는 덱은 빈 화면이다.
+ * 마지막 컬럼은 빼지 못하게 막는다. 컬럼이 하나도 없는 덱은 빈 화면이다.
  */
-function ColumnPicker({
+function TimelinePicker({
   columns,
+  watch,
   onChange,
 }: {
   columns: TimelineKind[]
-  onChange: (next: TimelineKind[]) => void
+  watch: TimelineKind[]
+  onChange: (next: { columns: TimelineKind[]; watch: TimelineKind[] }) => void
 }) {
+  const apply = (kind: TimelineKind, mode: TimelineMode) => {
+    const rest = {
+      columns: columns.filter((item) => item !== kind),
+      watch: watch.filter((item) => item !== kind),
+    }
+    if (mode === 'column') rest.columns = [...rest.columns, kind]
+    if (mode === 'watch') rest.watch = [...rest.watch, kind]
+    onChange(rest)
+  }
+
   return (
     <div className="py-3.5">
-      <p className="text-[14px] font-medium text-text">띄울 컬럼</p>
+      <p className="text-[14px] font-medium text-text">타임라인</p>
       <p className="mt-0.5 text-[12.5px] leading-relaxed text-faint">
-        켠 컬럼마다 x.com 화면을 하나씩 열어 수집합니다. 많이 켤수록 느려집니다.
+        <b className="font-medium text-muted">컬럼</b>은 화면에 자리를 차지하고,{' '}
+        <b className="font-medium text-muted">종</b>은 자리를 쓰지 않고 상단 바의 종에 안 본 수만
+        띄웁니다. 창이 좁아 컬럼을 늘릴 수 없을 때 종으로 돌리면 배치를 지킨 채 확인할 수
+        있습니다. 수집하는 값은 둘 다 같으므로 많이 켤수록 느려집니다.
       </p>
 
-      <div className="mt-2.5 flex flex-wrap gap-1.5">
+      <div className="mt-2.5 flex flex-col gap-1.5">
         {TIMELINE_KINDS.map((kind) => {
-          const on = columns.includes(kind)
-          const last = on && columns.length === 1
+          const mode = modeOf(columns, watch, kind)
+          const last = mode === 'column' && columns.length === 1
           return (
-            <button
-              key={kind}
-              type="button"
-              disabled={last}
-              aria-pressed={on}
-              title={last ? '컬럼은 최소 하나 남겨야 합니다' : TIMELINE_LABEL[kind]}
-              onClick={() =>
-                onChange(on ? columns.filter((item) => item !== kind) : [...columns, kind])
-              }
-              className={`rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors disabled:cursor-not-allowed ${
-                on
-                  ? 'border-transparent bg-button text-button-text'
-                  : 'border-line text-muted hover:text-text'
-              }`}
-            >
-              {TIMELINE_LABEL[kind]}
-            </button>
+            <div key={kind} className="flex items-center gap-3">
+              <span className="min-w-0 flex-1 text-[13.5px] text-text">{TIMELINE_LABEL[kind]}</span>
+              <div
+                className="flex shrink-0 rounded-lg bg-surface-2 p-0.5"
+                role="group"
+                aria-label={`${TIMELINE_LABEL[kind]} 다루기`}
+              >
+                {(['off', 'column', 'watch'] as TimelineMode[]).map((value) => {
+                  const selected = value === mode
+                  // 마지막 남은 컬럼은 다른 곳으로 옮기지 못하게 막는다.
+                  const blocked = last && value !== 'column'
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      disabled={blocked}
+                      aria-pressed={selected}
+                      title={blocked ? '컬럼은 최소 하나 남겨야 합니다' : MODE_HINT[value]}
+                      onClick={() => apply(kind, value)}
+                      className={`rounded-md px-2.5 py-1 text-[12.5px] font-medium transition-colors disabled:cursor-not-allowed ${
+                        selected
+                          ? 'bg-surface text-text shadow-sm'
+                          : blocked
+                            ? 'text-faint/40'
+                            : 'text-faint hover:text-text'
+                      }`}
+                    >
+                      {MODE_LABEL[value]}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           )
         })}
       </div>
@@ -257,13 +313,8 @@ function TranslateSettings({
   settings: Settings
   onUpdate: (patch: Partial<Settings>) => void
 }) {
-  const [token, setToken] = useState<string | null>(null)
   const [status, setStatus] = useState<BridgeStatus | null>(null)
   const [checking, setChecking] = useState(false)
-
-  useEffect(() => {
-    void loadBridgeToken().then(setToken)
-  }, [])
 
   const check = (force: boolean) => {
     setChecking(true)
@@ -275,9 +326,9 @@ function TranslateSettings({
 
   // 켜져 있을 때만 물어본다. 꺼둔 사람에게 CLI 를 띄울 이유가 없다.
   useEffect(() => {
-    if (settings.imageTranslate && token !== null) check(false)
+    if (settings.imageTranslate) check(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.imageTranslate, token])
+  }, [settings.imageTranslate])
 
   const engines = status?.engines
   const active = pickEngine(settings.imageTranslateEngine, engines)
@@ -300,34 +351,13 @@ function TranslateSettings({
       {settings.imageTranslate && (
         <>
           <div className="py-3.5">
-            <p className="text-[14px] font-medium text-text">브리지 연결</p>
+            <p className="text-[14px] font-medium text-text">브리지</p>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-faint">
-              터미널에서 <code className="text-muted">npm run bridge</code> 를 실행하면 열쇠가 한 줄
-              찍힙니다. 그 값을 아래에 붙여넣으세요.
+              터미널에서 <code className="text-muted">npm run bridge</code> 를 실행해 두면 알아서
+              찾아옵니다. 포트는 비어 있는 자리를 골라 쓰므로 지정할 것이 없습니다.
             </p>
 
             <div className="mt-2.5 flex items-center gap-2">
-              <input
-                type="password"
-                aria-label="브리지 열쇠"
-                placeholder="브리지 열쇠"
-                value={token ?? ''}
-                onChange={(event) => setToken(event.target.value)}
-                onBlur={() => void saveBridgeToken(token ?? '').then(() => check(false))}
-                className={`min-w-0 flex-1 ${FIELD}`}
-              />
-              <input
-                type="number"
-                aria-label="브리지 포트"
-                value={settings.bridgePort}
-                onChange={(event) =>
-                  onUpdate({ bridgePort: Number(event.target.value) || 8765 })
-                }
-                className={`w-20 ${FIELD}`}
-              />
-            </div>
-
-            <div className="mt-2 flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => check(true)}
@@ -532,9 +562,10 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
 
           {tab === 'display' && (
             <div className="divide-y divide-line-soft">
-              <ColumnPicker
+              <TimelinePicker
                 columns={settings.columns}
-                onChange={(next) => onUpdate({ columns: next })}
+                watch={settings.watch}
+                onChange={(next) => onUpdate(next)}
               />
               <Row
                 label="x.com 열면 덱으로"

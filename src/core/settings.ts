@@ -96,6 +96,15 @@ export type MediaMode = 'show' | 'label' | 'hide'
 export interface Settings {
   /** 덱에 표시할 컬럼과 순서. */
   columns: TimelineKind[]
+  /**
+   * 컬럼으로 띄우지는 않고 수집만 하는 타임라인.
+   *
+   * 좁은 창에서는 컬럼을 늘릴 자리가 없지만, 멘션이 왔는지는 알아야 한다. 여기 넣은
+   * 것은 컬럼과 똑같이 수집해 두고 상단 바의 종에 안 본 수만 띄운다 — 폭은 먹지 않고
+   * 눌렀을 때만 덱 위에 겹쳐 펼친다. 수집 프레임은 컬럼과 같은 값을 치르므로
+   * 켤수록 느려지는 것은 매한가지다.
+   */
+  watch: TimelineKind[]
   /** 컬럼을 좌우로 늘어놓을지, 위아래로 쌓을지. */
   layout: DeckLayout
   /** '새 게시물 보기' 알림을 감지하면 자동으로 눌러 새 타임라인을 받아온다. */
@@ -139,6 +148,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   columns: ['foryou', 'following'],
+  watch: [],
   layout: 'columns',
   autoAdvance: true,
   idleRefreshMs: 120_000,
