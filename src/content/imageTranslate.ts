@@ -16,8 +16,6 @@ import {
   type ImageTranslation,
   type TranslateEngineId,
 } from '@core/messages'
-import { loadBridgeToken, loadSettings } from '@core/settings'
-
 export const ENGINE_LABEL: Record<TranslateEngineId, string> = {
   codex: 'Codex',
   claude: 'Claude',
@@ -31,34 +29,21 @@ export const ENGINE_OUTPUT: Record<TranslateEngineId, '이미지' | '텍스트'>
 
 export class ImageTranslateError extends Error {}
 
-async function connection(): Promise<{ port: number; token: string }> {
-  const [settings, token] = await Promise.all([loadSettings(), loadBridgeToken()])
-  return { port: settings.bridgePort, token }
-}
+/**
+ * 브리지를 찾는 일은 배경 워커가 한다.
+ *
+ * 덱은 x.com 문서 위에서 돌아 로컬 서버로 연결하지 못한다. 어느 포트에 앉아 있는지도
+ * 워커가 훑어 알아내므로, 이쪽에서 넘길 것은 무엇을 해달라는 말뿐이다.
+ */
 
 /** 브리지와 두 명령의 형편을 물어본다. `force` 면 브리지가 쟁여둔 답을 버리고 다시 잰다. */
 export async function fetchBridgeStatus(force = false): Promise<BridgeStatus> {
-  const { port, token } = await connection()
-  if (token.length === 0) {
-    return { reachable: false, error: '브리지 열쇠를 아직 넣지 않았습니다.' }
-  }
-  return (await chrome.runtime.sendMessage({
-    type: BRIDGE_STATUS,
-    port,
-    token,
-    force,
-  })) as BridgeStatus
+  return (await chrome.runtime.sendMessage({ type: BRIDGE_STATUS, force })) as BridgeStatus
 }
 
 /** 로그인 절차를 띄운다. 브라우저를 열어 사람이 마쳐야 하는 일이라 여기서 끝나지 않는다. */
 export async function requestLogin(engine: TranslateEngineId): Promise<BridgeStatus> {
-  const { port, token } = await connection()
-  return (await chrome.runtime.sendMessage({
-    type: BRIDGE_LOGIN,
-    port,
-    token,
-    engine,
-  })) as BridgeStatus
+  return (await chrome.runtime.sendMessage({ type: BRIDGE_LOGIN, engine })) as BridgeStatus
 }
 
 /**
@@ -82,11 +67,8 @@ export async function translateImage(
   imageUrl: string,
   engine: TranslateEngineId,
 ): Promise<ImageTranslation> {
-  const { port, token } = await connection()
   const answer = (await chrome.runtime.sendMessage({
     type: IMAGE_TRANSLATE,
-    port,
-    token,
     engine,
     imageUrl,
   })) as BridgeStatus & Partial<ImageTranslation>

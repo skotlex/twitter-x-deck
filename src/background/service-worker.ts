@@ -93,45 +93,101 @@ async function ruleReport(tabId?: number): Promise<string> {
  * 포트와 열쇠는 덱이 실어 보낸다. 여기서 설정을 읽지 않는 이유는, 설정 모듈이
  * 페이지 저장소에 사본을 남기느라 `window` 를 만지는데 워커에는 그것이 없기 때문이다.
  */
-interface BridgeCall {
-  port?: number
-  token?: string
-  path: string
-  body?: unknown
-  timeoutMs: number
-}
+/**
+ * 브리지가 앉을 수 있는 자리. `bridge/server.mjs` 의 같은 값과 맞춰야 한다.
+ * 브리지는 8765 가 막혀 있으면 다음 번호로 옮겨 앉으므로 이쪽도 같은 범위를 훑는다.
+ */
+const BRIDGE_PORT_BASE = 8765
+const BRIDGE_PORT_TRIES = 16
+const BRIDGE_SERVICE = 'x-deck-bridge'
 
-async function callBridge({ port, token, path, body, timeoutMs }: BridgeCall): Promise<unknown> {
-  if (typeof port !== 'number' || typeof token !== 'string' || token.length === 0) {
-    return { reachable: false, error: '브리지 주소나 열쇠가 설정되지 않았습니다.' }
-  }
+/**
+ * 우리 확장이라는 표시.
+ *
+ * 비밀이 아니다. 웹페이지가 이 헤더를 붙이려 하면 브라우저가 먼저 예비 요청을 보내는데
+ * 브리지는 그것을 허락하지 않는다. 확장은 호스트 권한이 있어 그 검사를 거치지 않으므로,
+ * 사용자가 아무것도 붙여넣지 않아도 우리만 통과한다.
+ */
+const BRIDGE_HEADERS = { 'content-type': 'application/json', 'x-deck-bridge': '1' }
 
+async function request(port: number, path: string, body: unknown, timeoutMs: number) {
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), timeoutMs)
   try {
-    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+    return await fetch(`http://127.0.0.1:${port}${path}`, {
       method: body === undefined ? 'GET' : 'POST',
-      headers: { 'content-type': 'application/json', 'x-deck-token': token },
+      headers: BRIDGE_HEADERS,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: abort.signal,
     })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** 마지막으로 찾은 자리. 매번 훑지 않도록 기억해둔다. */
+let knownPort: number | null = null
+
+/** 그 포트에 우리 브리지가 있는지. 남의 서버가 앉아 있을 수도 있어 표시를 확인한다. */
+async function isBridge(port: number): Promise<boolean> {
+  try {
+    const response = await request(port, '/hello', undefined, 1_500)
+    if (!response.ok) return false
+    const payload = (await response.json()) as { service?: unknown }
+    return payload.service === BRIDGE_SERVICE
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 브리지를 찾는다.
+ *
+ * 기억해둔 자리를 먼저 보고, 없거나 비었으면 범위를 처음부터 훑는다. 브리지를 껐다
+ * 켜면서 다른 번호로 옮겨 앉는 경우가 있어 기억은 힌트일 뿐 근거가 아니다.
+ */
+async function findBridge(): Promise<number | null> {
+  if (knownPort !== null && (await isBridge(knownPort))) return knownPort
+
+  for (let at = 0; at < BRIDGE_PORT_TRIES; at += 1) {
+    const port = BRIDGE_PORT_BASE + at
+    if (port === knownPort) continue
+    if (await isBridge(port)) {
+      knownPort = port
+      return port
+    }
+  }
+  knownPort = null
+  return null
+}
+
+async function callBridge(path: string, body: unknown, timeoutMs: number): Promise<unknown> {
+  const port = await findBridge()
+  if (port === null) {
+    return { reachable: false, error: '브리지를 찾지 못했습니다. npm run bridge 로 띄웠는지 확인하세요.' }
+  }
+
+  try {
+    const response = await request(port, path, body, timeoutMs)
     const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>
     if (!response.ok) {
       return {
         reachable: false,
-        error: typeof payload.error === 'string' ? payload.error : `브리지가 ${response.status} 로 답했습니다.`,
+        error:
+          typeof payload.error === 'string'
+            ? payload.error
+            : `브리지가 ${response.status} 로 답했습니다.`,
       }
     }
     return { reachable: true, ...payload }
   } catch (cause) {
-    // 꺼져 있는 것과 열쇠가 다른 것은 여기서 구별되지 않는다. 둘 다 '닿지 않음' 이다.
+    // 도중에 브리지가 꺼졌을 수 있다. 기억을 버려 다음 번에는 처음부터 훑게 한다.
+    knownPort = null
     const aborted = cause instanceof DOMException && cause.name === 'AbortError'
     return {
       reachable: false,
-      error: aborted ? '브리지가 시간 안에 답하지 않았습니다.' : '브리지에 닿지 못했습니다. 켜져 있는지 확인하세요.',
+      error: aborted ? '브리지가 시간 안에 답하지 않았습니다.' : '브리지와의 연결이 끊겼습니다.',
     }
-  } finally {
-    clearTimeout(timer)
   }
 }
 
@@ -146,35 +202,23 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   }
 
   if (type === BRIDGE_STATUS) {
-    void callBridge({
-      port: payload.port as number,
-      token: payload.token as string,
-      path: payload.force === true ? '/status?force=1' : '/status',
-      timeoutMs: 90_000,
-    }).then(sendResponse)
+    const path = payload.force === true ? '/status?force=1' : '/status'
+    void callBridge(path, undefined, 90_000).then(sendResponse)
     return true
   }
 
   if (type === BRIDGE_LOGIN) {
-    void callBridge({
-      port: payload.port as number,
-      token: payload.token as string,
-      path: '/login',
-      body: { engine: payload.engine },
-      timeoutMs: 15_000,
-    }).then(sendResponse)
+    void callBridge('/login', { engine: payload.engine }, 15_000).then(sendResponse)
     return true
   }
 
   if (type === IMAGE_TRANSLATE) {
-    void callBridge({
-      port: payload.port as number,
-      token: payload.token as string,
-      path: '/translate',
-      body: { engine: payload.engine, imageUrl: payload.imageUrl },
-      // 그림을 다시 그리는 데 1분을 넘기기도 한다. 브리지 쪽 한계보다 넉넉히 잡는다.
-      timeoutMs: 320_000,
-    }).then(sendResponse)
+    // 그림을 다시 그리는 데 1분을 넘기기도 한다. 브리지 쪽 한계보다 넉넉히 잡는다.
+    void callBridge(
+      '/translate',
+      { engine: payload.engine, imageUrl: payload.imageUrl },
+      320_000,
+    ).then(sendResponse)
     return true
   }
 

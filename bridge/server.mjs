@@ -13,17 +13,23 @@
  * 의존성은 없다. Node 18 이상이면 그대로 돈다.
  */
 import { spawn } from 'node:child_process'
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:http'
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-const PORT = Number(process.env.XDECK_BRIDGE_PORT ?? 8765)
+/**
+ * 처음 시도할 포트와, 막혔을 때 훑어볼 개수.
+ *
+ * 확장은 이 범위를 차례로 두드려 우리를 찾는다. 그래서 여기 값이 바뀌면
+ * `src/background/service-worker.ts` 의 같은 값도 함께 바뀌어야 한다.
+ */
+const PORT_BASE = Number(process.env.XDECK_BRIDGE_PORT ?? 8765)
+const PORT_TRIES = 16
 
-/** 덱이 도는 곳. 이 출처에서 온 요청만 받는다. */
-const ALLOWED_ORIGIN = 'https://x.com'
+/** 우리라는 표시. 확장이 이 값을 보고 같은 포트에 있는 남의 서버와 가려낸다. */
+const SERVICE = 'x-deck-bridge'
 
 /** 한 번의 번역에 허용하는 시간. 이미지 재생성은 1분을 넘기기도 한다. */
 const TRANSLATE_TIMEOUT_MS = 300_000
@@ -34,33 +40,23 @@ const PROBE_TIMEOUT_MS = 60_000
 /** 상태를 매번 다시 재지 않는다. 확장이 설정 화면을 여닫을 때마다 CLI 를 띄우면 느리다. */
 const STATUS_CACHE_MS = 30_000
 
-const here = fileURLToPath(new URL('.', import.meta.url))
-const TOKEN_FILE = join(here, '.bridge-token')
-
 /**
- * 공유 열쇠.
+ * 부르는 쪽이 우리 확장이 맞는지 가린다.
  *
- * localhost 서버는 이 PC 의 어떤 프로그램이든, x.com 안에서 도는 남의 스크립트조차
- * 두드릴 수 있다. 출처 검사만으로는 부족하다 — 덱도 x.com 에서 도니 출처가 같다.
- * 그래서 확장 설정에 붙여넣은 열쇠를 함께 받는다.
+ * 열쇠를 주고받지 않는다. 웹페이지는 이 헤더를 붙이려는 순간 브라우저가 먼저
+ * 예비 요청(preflight)을 보내는데, 우리는 그것을 허락하지 않으므로 본 요청 자체가
+ * 나가지 못한다. 확장은 호스트 권한이 있어 그 검사를 거치지 않는다.
+ *
+ * 그래서 막아야 할 것(다른 웹사이트)은 막히고, 사용자는 아무것도 붙여넣지 않아도 된다.
+ * 이 PC 에서 도는 프로그램은 무엇이든 흉내 낼 수 있지만, 그건 열쇠를 파일에 두던
+ * 예전 방식도 마찬가지였다 — 그 파일을 읽으면 그만이었다.
  */
-function loadToken() {
-  try {
-    const saved = readFileSync(TOKEN_FILE, 'utf8').trim()
-    if (saved.length >= 32) return saved
-  } catch {
-    // 아직 없다. 새로 만든다.
-  }
-  const created = randomBytes(24).toString('base64url')
-  writeFileSync(TOKEN_FILE, created, { encoding: 'utf8', mode: 0o600 })
-  return created
-}
-
-const TOKEN = loadToken()
-
-function tokenMatches(given) {
-  if (typeof given !== 'string' || given.length !== TOKEN.length) return false
-  return timingSafeEqual(Buffer.from(given), Buffer.from(TOKEN))
+function fromOurExtension(req) {
+  if (req.headers['x-deck-bridge'] !== '1') return false
+  // 웹페이지가 보낸 것은 받지 않는다. 확장 워커의 요청에는 사이트 출처가 붙지 않는다.
+  const origin = req.headers.origin
+  if (typeof origin === 'string' && /^https?:\/\//i.test(origin)) return false
+  return true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -444,16 +440,18 @@ async function translate(engine, imageUrl) {
 // HTTP
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 응답에 CORS 허가를 붙이지 않는다.
+ *
+ * 허가를 내주지 않으면 브라우저는 웹페이지가 받은 답을 읽지 못하게 막는다.
+ * 우리를 부르는 확장 워커는 호스트 권한으로 오므로 그 허가가 필요 없다.
+ */
 function send(res, status, body) {
-  const payload = JSON.stringify(body)
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
-    'access-control-allow-origin': ALLOWED_ORIGIN,
-    'access-control-allow-headers': 'content-type, x-deck-token',
-    'access-control-allow-methods': 'GET, POST, OPTIONS',
     'cache-control': 'no-store',
   })
-  res.end(payload)
+  res.end(JSON.stringify(body))
 }
 
 function readBody(req) {
@@ -477,19 +475,26 @@ function readBody(req) {
 
 const server = createServer((req, res) => {
   void (async () => {
-    if (req.method === 'OPTIONS') return send(res, 204, {})
+    // 예비 요청에 아무 허가도 내주지 않는다. 웹페이지의 본 요청은 여기서 끝난다.
+    if (req.method === 'OPTIONS') return send(res, 403, { error: '허용하지 않습니다.' })
 
-    const url = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
-
-    // 열쇠 없이 답하는 자리는 없다. 브리지가 살아 있는지도 열쇠를 맞춰야 알려준다.
-    if (!tokenMatches(req.headers['x-deck-token'])) {
-      return send(res, 401, { error: '열쇠가 맞지 않습니다.' })
+    if (!fromOurExtension(req)) {
+      return send(res, 403, { error: '이 브리지는 X Deck 확장만 부를 수 있습니다.' })
     }
 
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+
     try {
+      // 포트를 훑는 확장이 가장 먼저 두드리는 자리. 아무 일도 하지 않고 곧바로 답한다 —
+      // `/status` 는 CLI 를 실제로 돌려보므로 찾기용으로 쓰면 한참 걸린다.
+      if (url.pathname === '/hello') {
+        return send(res, 200, { service: SERVICE })
+      }
+
       if (url.pathname === '/status') {
         const engines = await readStatus(url.searchParams.get('force') === '1')
-        return send(res, 200, { ok: true, engines })
+        // `service` 는 우리라는 표시다. 확장이 포트를 훑을 때 이 값으로 가려낸다.
+        return send(res, 200, { ok: true, service: SERVICE, engines })
       }
 
       if (url.pathname === '/login' && req.method === 'POST') {
@@ -517,14 +522,59 @@ const server = createServer((req, res) => {
   })()
 })
 
-// 127.0.0.1 에만 묶는다. 같은 망의 다른 기기가 들어올 자리를 만들지 않는다.
-server.listen(PORT, '127.0.0.1', () => {
+/**
+ * 빈 포트를 찾아 자리를 잡는다.
+ *
+ * 8765 가 늘 비어 있으리라는 보장이 없다. 다른 프로그램이 쓰고 있을 수도 있고,
+ * 윈도우에서는 시스템이 미리 잡아둔 구간(Hyper-V 등)이라 아예 묶을 수 없기도 하다.
+ * 이유를 가리지 않고 실패하면 다음 번호로 넘어간다 — 확장도 같은 범위를 훑으므로
+ * 어느 자리에 앉든 찾아온다.
+ */
+let attempt = 0
+
+/**
+ * 알림은 여기 한 곳에만 건다.
+ *
+ * `server.listen(port, host, cb)` 는 부를 때마다 cb 를 'listening' 에 하나씩 쌓는데,
+ * 실패한 시도의 cb 는 발화하지 못한 채 남아 있다가 다음 시도가 성공하는 순간 함께
+ * 터진다 — 자리를 옮겨 앉고도 예전 번호를 같이 찍는다. 걸어두는 자리를 밖으로 빼고
+ * 실제로 묶인 번호를 서버에게 물어 답이 하나만 나오게 한다.
+ */
+server.on('listening', () => {
+  const address = server.address()
+  const port = typeof address === 'object' && address !== null ? address.port : PORT_BASE
   console.log('')
   console.log('  X Deck 이미지 번역 브리지가 떴습니다.')
-  console.log(`  주소   http://127.0.0.1:${PORT}`)
-  console.log(`  열쇠   ${TOKEN}`)
+  console.log(`  주소   http://127.0.0.1:${port}`)
+  if (port !== PORT_BASE) {
+    console.log(`         (${PORT_BASE} 이 비어 있지 않아 ${port} 로 잡았습니다)`)
+  }
   console.log('')
-  console.log('  덱의 설정 › 번역 에 위 열쇠를 붙여넣으세요.')
-  console.log('  (열쇠는 bridge/.bridge-token 에도 남아 있습니다.)')
+  console.log('  덱의 설정 › 번역 을 켜면 알아서 찾아옵니다. 붙여넣을 것은 없습니다.')
   console.log('')
 })
+
+server.on('error', (error) => {
+  const code = error?.code
+  if ((code === 'EADDRINUSE' || code === 'EACCES') && attempt + 1 < PORT_TRIES) {
+    attempt += 1
+    bind()
+    return
+  }
+  if (code === 'EADDRINUSE' || code === 'EACCES') {
+    console.error(
+      `\n  ${PORT_BASE} 부터 ${PORT_BASE + PORT_TRIES - 1} 까지 빈 포트가 없습니다.\n` +
+        '  XDECK_BRIDGE_PORT 로 다른 시작 번호를 지정해 다시 띄우세요.\n',
+    )
+  } else {
+    console.error(`\n  브리지를 띄우지 못했습니다: ${error?.message ?? error}\n`)
+  }
+  process.exit(1)
+})
+
+// 127.0.0.1 에만 묶는다. 같은 망의 다른 기기가 들어올 자리를 만들지 않는다.
+function bind() {
+  server.listen(PORT_BASE + attempt, '127.0.0.1')
+}
+
+bind()

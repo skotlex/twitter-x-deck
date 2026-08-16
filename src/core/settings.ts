@@ -10,24 +10,6 @@ import type { TranslateEngineId } from './messages'
 
 const STORAGE_KEY = 'x-deck:settings'
 
-/**
- * 브리지 열쇠를 두는 자리. **설정과 같은 자리에 두지 않는다.**
- *
- * 설정은 아래 `writeMirror` 가 x.com 페이지의 localStorage 에 그대로 한 벌 더 남긴다 —
- * 확장을 지워도 살아남게 하려는 장치다. 그 자리는 x.com 에서 도는 어떤 스크립트든
- * 읽을 수 있어서, 열쇠를 섞으면 그대로 새어 나간다. 이 값만은 확장 저장소에만 둔다.
- */
-const TOKEN_KEY = 'x-deck:bridge-token'
-
-export async function loadBridgeToken(): Promise<string> {
-  const stored = (await chrome.storage.local.get(TOKEN_KEY))[TOKEN_KEY]
-  return typeof stored === 'string' ? stored : ''
-}
-
-export async function saveBridgeToken(token: string): Promise<void> {
-  await chrome.storage.local.set({ [TOKEN_KEY]: token.trim() })
-}
-
 /** 설정을 둘 자리. sync 를 못 쓰는 환경에서는 local 로 물러선다. */
 function area(): chrome.storage.StorageArea {
   return chrome.storage.sync ?? chrome.storage.local
@@ -142,8 +124,6 @@ export interface Settings {
   imageTranslate: boolean
   /** 어느 명령을 주로 쓸지. 하나만 로그인돼 있으면 그쪽으로 자동으로 간다. */
   imageTranslateEngine: TranslateEngineId
-  /** 브리지가 듣고 있는 포트. */
-  bridgePort: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -166,7 +146,6 @@ export const DEFAULT_SETTINGS: Settings = {
   autoMount: true,
   imageTranslate: false,
   imageTranslateEngine: 'codex',
-  bridgePort: 8765,
 }
 
 /** 컬럼과 지켜보기를 가르는 데 필요한 만큼만 받는다 — 테스트에서 설정 전체를 짓지 않아도 된다. */
