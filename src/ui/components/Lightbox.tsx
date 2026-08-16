@@ -140,6 +140,8 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
     const url = originalMediaUrl(previewUrl)
     setBusy(true)
     setError(null)
+    // 열어둔 채로 잠기면 눌리지 않는 항목만 남는다. 시작할 때 접는다.
+    setMenuOpen(false)
     void translateImage(url, engine, mode, fast)
       .then((result) => {
         setTranslation(result)
@@ -253,10 +255,13 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
                 <button
                   type="button"
                   onClick={() => setMenuOpen((prev) => !prev)}
+                  // 도는 동안에는 잠근다. 지금 바꿔봐야 이미 나간 요청에는 닿지 않고,
+                  // 결과를 쟁여둘 열쇠만 어긋나 방금 받은 번역이 화면에서 지워진다.
+                  disabled={busy}
                   aria-expanded={menuOpen}
                   aria-label="번역 방식"
-                  title="번역 방식"
-                  className={`grid h-7 w-7 place-items-center rounded-full transition-colors ${
+                  title={busy ? '번역이 끝난 뒤에 바꿀 수 있습니다' : '번역 방식'}
+                  className={`grid h-7 w-7 place-items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:bg-white/5 disabled:text-white/25 ${
                     menuOpen ? 'bg-white/25 text-white' : 'bg-white/10 text-white/75 hover:bg-white/20 hover:text-white'
                   }`}
                 >
@@ -288,7 +293,11 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
                           selected={output === value}
                           label={value === 'image' ? '이미지로 다시 그리기' : '글자만 옮기기'}
                           hint={value === 'image' ? '80초쯤' : '훨씬 빠름'}
-                          onClick={() => void saveSettings({ codexOutput: value })}
+                          onClick={() => {
+                            // 그림은 여기서 끝이라 닫는다. 글자는 아래에 속도가 뒤따르므로 열어둔다.
+                            if (value === 'image') setMenuOpen(false)
+                            void saveSettings({ codexOutput: value })
+                          }}
                         />
                       ))}
 
@@ -303,7 +312,11 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
                               selected={fast === value}
                               label={value ? '빠르게' : '일반'}
                               hint={value ? '사용량 더 씀' : undefined}
-                              onClick={() => void saveSettings({ codexTextFast: value })}
+                              onClick={() => {
+                                // 속도가 마지막 갈래다. 여기까지 골랐으면 더 물을 것이 없다.
+                                setMenuOpen(false)
+                                void saveSettings({ codexTextFast: value })
+                              }}
                             />
                           ))}
                         </>
@@ -454,10 +467,11 @@ function TranslateIcon({ className }: { className?: string }) {
 /**
  * 차림표의 한 줄.
  *
- * 골라도 닫히지 않는다. 이것은 명령을 고르는 자리가 아니라 설정을 만지는 자리라,
- * 하나 누를 때마다 닫히면 '글자만 옮기기' 를 고른 뒤 속도를 바꾸려고 다시 열어야 한다 —
- * 게다가 속도 항목은 그 선택 때문에 비로소 나타나는 것이라 더 어긋난다.
- * 닫는 일은 톱니를 다시 누르거나, 바깥을 누르거나, Esc 를 치는 쪽에 맡긴다.
+ * 닫는 때는 '더 물을 것이 없을 때' 다.
+ *
+ * 그림으로 다시 그리기는 그 자체로 끝이라 고르는 즉시 닫는다. 글자만 옮기기는 아래에
+ * 속도가 뒤따르므로 열어둔다 — 그 항목은 이 선택 때문에 비로소 나타나는 것이라,
+ * 여기서 닫으면 방금 생긴 것을 쓰려고 다시 열어야 한다. 속도까지 고르면 닫는다.
  */
 function MenuItem({
   selected,
