@@ -321,7 +321,16 @@ const CODEX_PROMPT = [
   'Constraints: change ONLY the text. Keep the artwork, character, layout, colours, framing and the ORIGINAL ASPECT RATIO exactly as they are. Vertical Japanese writing must stay vertical Korean text, read right column first and top to bottom. Match the original typography, weight, colour and glow/outline effects. Leave logos, brand marks and Latin proper nouns untouched unless they have an official Korean form.',
   'Avoid: re-cropping, re-framing, changing the aspect ratio, adding or removing any element, watermarks.',
   '',
-  'Do not ask any follow-up question. Produce exactly one image.',
+  // 아래 세 줄이 '한 번에 끝내라' 는 뜻을 세 방향에서 못박는다.
+  //
+  // 그림 스킬은 만든 뒤 결과를 살펴보고 고쳐 그리도록 되어 있다. 우리에게는 그 되풀이가
+  // 그대로 시간이고 구독 사용량이다 — 재보니 그냥 두면 두 장을 그렸고, 시간도 두 배였다.
+  // 살펴보지 말라고만 하면 '그럼 잘 그려야지' 하며 변형을 여러 장 뽑을 수 있어 그것도
+  // 함께 막는다. 미리보기라고 밝히는 것은 결과물을 작업 폴더로 옮기려 드는 것을 막는다.
+  'Generate the image exactly ONCE. Do not review, critique, compare, or regenerate it afterwards.',
+  'Do not produce variants or alternatives. One call, one image, then stop.',
+  'This is preview-only: do not copy or move the result anywhere, and do not edit any files.',
+  'Do not ask any follow-up question.',
 ].join('\n')
 
 async function translateWithCodex(imagePath) {
