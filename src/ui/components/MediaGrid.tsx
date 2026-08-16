@@ -3,6 +3,7 @@ import { MEDIA_MAX_HEIGHT, type MediaMode, type MediaSize } from '@core/settings
 import type { TweetMedia } from '@core/types'
 import { useColumnActivity } from '../columnActivity'
 import { aspectRatio } from '../lib/format'
+import { isUserVolume, mediaClick } from '../lib/mediaPlayback'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { ImageIcon, PlayIcon } from './icons'
 
@@ -143,12 +144,14 @@ function MediaItem({
   /**
    * 소리는 요소를 바꾸지 않고 켠다. 눌렀다고 새 영상을 갈아 끼우면 보던 위치가
    * 처음으로 돌아간다 — 재생바를 잡아 옮기던 중이었다면 더 그렇다.
+   *
+   * 미리보기도 크기까지는 맞춰 둔다. 소리를 내지 않을 뿐 요소는 이미 떠 있고,
+   * 재생바의 소리 단추로 켜는 순간 그 크기 그대로 나온다.
    */
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
-    if (engaged && !silent) applyVolume(video)
-    else video.muted = true
+    applyVolume(video, !engaged || silent)
   }, [engaged, silent, showVideo])
 
   if (failed) {
@@ -170,15 +173,19 @@ function MediaItem({
       type="button"
       onClick={(event) => {
         event.stopPropagation()
-        if (!playable) {
-          event.preventDefault()
+        const action = mediaClick({ playable, engaged })
+        // 소리를 켠 뒤로는 기본 동작을 막지 않는다. 눌러서 재생·정지하는 것은
+        // 브라우저가 해주는 일인데, 여기서 막으면 재생 버튼 위에서만 세우게 된다.
+        if (action === 'toggle') return
+        event.preventDefault()
+        if (action === 'open') {
           onOpen()
           return
         }
-        // 영상이 이미 떠 있으면 기본 동작을 막지 않는다. 눌러서 재생·정지하는 것은
-        // 브라우저가 해주는 일인데, 여기서 막으면 재생 버튼 위에서만 듣게 된다.
-        if (!showVideo) event.preventDefault()
         setEngaged(true)
+        // 미리보기로 이미 돌고 있던 영상이면 브라우저가 이 클릭을 '세워라' 로 받는다.
+        // 막아도 재생바 쪽으로 새는 자리가 있어, 보기로 한 영상은 다시 틀어 둔다.
+        videoRef.current?.play().catch(() => {})
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -211,8 +218,13 @@ function MediaItem({
           onSeeking={(event) => {
             if (event.currentTarget.currentTime > 0.05) setEngaged(true)
           }}
+          // 재생바의 소리 단추로 켠 것도 눌러서 켠 것과 똑같이 다룬다. 그 단추는
+          // 클릭으로 알려 오지 않으므로, 소리가 바뀐 것으로 알아챈다.
           onVolumeChange={(event) => {
-            if (engaged && !silent) rememberVolume(event.currentTarget)
+            const video = event.currentTarget
+            if (!isUserVolume({ silent, engaged, muted: video.muted })) return
+            setEngaged(true)
+            rememberVolume(video)
           }}
           onError={() => setFailed(true)}
           className={`h-full w-full bg-black ${fit === 'cover' ? 'object-cover' : 'object-contain'}`}

@@ -28,11 +28,16 @@ function read(): Level {
 
 let level = read()
 
-/** 새로 트는 영상에 지금까지 맞춰둔 크기를 입힌다. ref 로 그대로 넘길 수 있다. */
-export function applyVolume(video: HTMLVideoElement | null): void {
+/**
+ * 새로 트는 영상에 지금까지 맞춰둔 크기를 입힌다. ref 로 그대로 넘길 수 있다.
+ *
+ * `mute` 를 주면 크기만 가져오고 소리는 내지 않는다 — 미리보기가 그렇다. 크기를
+ * 놓아두면 요소 기본값인 최대로 남아, 재생바의 소리 단추로 켜는 순간 그대로 터진다.
+ */
+export function applyVolume(video: HTMLVideoElement | null, mute = false): void {
   if (!video) return
   video.volume = level.volume
-  video.muted = level.muted
+  video.muted = mute || level.muted
 }
 
 /** 사용자가 소리를 만졌다. 다음 영상부터 이 크기로 나온다. */
