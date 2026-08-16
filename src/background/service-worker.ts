@@ -173,6 +173,31 @@ function callBridge(type: string, payload: object, timeoutMs: number): Promise<u
   })
 }
 
+/**
+ * 로그인 상태를 여기서 기억한다.
+ *
+ * 브리지도 답을 쟁여두지만 소용이 없다 — 우리가 연결을 놓으면 그 프로세스가 함께
+ * 내려가면서 기억도 사라진다. 그래서 라이트박스를 열 때마다 브리지를 다시 켜고
+ * 검사를 처음부터 돌렸고, 사진 번역 단추가 몇 초 뒤에야 나타났다.
+ *
+ * 로그인은 자주 바뀌는 것이 아니므로 이쪽에서 들고 있는다. 사용자가 '상태 다시 확인'
+ * 을 누르면 그때는 기억을 버리고 실제로 다시 잰다.
+ */
+const STATUS_MEMO_MS = 5 * 60 * 1000
+let statusMemo: { at: number; value: unknown } | null = null
+
+async function readBridgeStatus(force: boolean): Promise<unknown> {
+  if (!force && statusMemo !== null && Date.now() - statusMemo.at < STATUS_MEMO_MS) {
+    return statusMemo.value
+  }
+  const value = await callBridge('status', { force }, 90_000)
+  // 닿지 못한 답은 쟁여두지 않는다. 브리지를 이제 막 등록한 참일 수 있다.
+  if ((value as { reachable?: unknown })?.reachable === true) {
+    statusMemo = { at: Date.now(), value }
+  }
+  return value
+}
+
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   const type = (message as { type?: string } | null)?.type
   const payload = (message ?? {}) as Record<string, unknown>
@@ -184,11 +209,13 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   }
 
   if (type === BRIDGE_STATUS) {
-    void callBridge('status', { force: payload.force === true }, 90_000).then(sendResponse)
+    void readBridgeStatus(payload.force === true).then(sendResponse)
     return true
   }
 
   if (type === BRIDGE_LOGIN) {
+    // 로그인을 시작했으면 기억해둔 상태는 곧 낡는다.
+    statusMemo = null
     void callBridge('login', { engine: payload.engine }, 15_000).then(sendResponse)
     return true
   }
