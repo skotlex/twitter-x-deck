@@ -181,9 +181,23 @@ describe('지켜보는 타임라인', () => {
 
   it('컬럼으로도 띄우는 것은 종에서 뺀다 — 보이는 것을 또 세지 않는다', () => {
     expect(watchedKinds({ columns: ['foryou', 'mentions'], watch: ['mentions'] })).toEqual([])
+    expect(
+      watchedKinds({ columns: ['foryou', 'notifications'], watch: ['mentions', 'notifications'] }),
+    ).toEqual(['mentions'])
+  })
+
+  /**
+   * 판의 탭 차례가 여기서 정해진다. 저장된 순서를 그대로 쓰면 멘션을 먼저 켰다는
+   * 이유만으로 사람마다 다른 차례로 뜬다.
+   */
+  it('켠 차례가 아니라 정해진 차례로 늘어놓는다', () => {
     expect(watchedKinds({ columns: ['foryou'], watch: ['mentions', 'notifications'] })).toEqual([
-      'mentions',
       'notifications',
+      'mentions',
+    ])
+    expect(watchedKinds({ columns: ['foryou'], watch: ['notifications', 'mentions'] })).toEqual([
+      'notifications',
+      'mentions',
     ])
   })
 

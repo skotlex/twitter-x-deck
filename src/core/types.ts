@@ -1,11 +1,15 @@
 /** 덱의 한 컬럼이 담당하는 타임라인 종류. x.com 의 홈 두 탭과 알림 두 탭에 대응한다. */
 export type TimelineKind = 'foryou' | 'following' | 'mentions' | 'notifications'
 
+/**
+ * 고르는 자리에 늘어놓는 차례. 알림이 멘션보다 앞이다 — 알림은 멘션까지 담은 전체
+ * 목록이고 멘션은 그중 한 갈래라, 넓은 것에서 좁은 것으로 내려가는 편이 읽기 쉽다.
+ */
 export const TIMELINE_KINDS: readonly TimelineKind[] = [
   'foryou',
   'following',
-  'mentions',
   'notifications',
+  'mentions',
 ]
 
 export const TIMELINE_LABEL: Record<TimelineKind, string> = {

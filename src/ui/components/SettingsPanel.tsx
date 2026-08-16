@@ -127,6 +127,19 @@ const MODE_HINT: Record<TimelineMode, string> = {
   watch: '컬럼 없이 수집만 하고 상단 바의 종으로 알립니다',
 }
 
+/**
+ * 고르는 자리에서만 쓰는 이름.
+ *
+ * 덱에서는 컬럼 머리글 아래에 내용이 깔려 있어 '알림' 만으로 충분하지만, 여기서는
+ * 멘션과 나란히 놓여 무엇이 담기는지가 이름만으로 갈려야 한다 — 알림은 멘션까지
+ * 포함한 전체 목록이다.
+ */
+const PICKER_LABEL: Partial<Record<TimelineKind, string>> = {
+  notifications: '알림(전체)',
+}
+
+const pickerLabel = (kind: TimelineKind): string => PICKER_LABEL[kind] ?? TIMELINE_LABEL[kind]
+
 function modeOf(columns: TimelineKind[], watch: TimelineKind[], kind: TimelineKind): TimelineMode {
   if (columns.includes(kind)) return 'column'
   if (watch.includes(kind)) return 'watch'
@@ -179,11 +192,11 @@ function TimelinePicker({
           const last = mode === 'column' && columns.length === 1
           return (
             <div key={kind} className="flex items-center gap-3">
-              <span className="min-w-0 flex-1 text-[13.5px] text-text">{TIMELINE_LABEL[kind]}</span>
+              <span className="min-w-0 flex-1 text-[13.5px] text-text">{pickerLabel(kind)}</span>
               <div
                 className="flex shrink-0 rounded-lg bg-surface-2 p-0.5"
                 role="group"
-                aria-label={`${TIMELINE_LABEL[kind]} 다루기`}
+                aria-label={`${pickerLabel(kind)} 다루기`}
               >
                 {(['off', 'column', 'watch'] as TimelineMode[]).map((value) => {
                   const selected = value === mode

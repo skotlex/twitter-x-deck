@@ -5,7 +5,7 @@
  * 지정해둔 것이 전부 초기값으로 돌아간다. `sync` 는 브라우저 계정에 남으므로
  * 재설치를 건너 살아남고 다른 기기에서도 같은 설정으로 뜬다.
  */
-import type { TimelineKind } from './types'
+import { TIMELINE_KINDS, type TimelineKind } from './types'
 import type { TranslateEngineId } from './messages'
 
 const STORAGE_KEY = 'x-deck:settings'
@@ -158,7 +158,11 @@ type Watchable = Pick<Settings, 'columns' | 'watch'>
  * 영영 줄지 않는다.
  */
 export function watchedKinds(settings: Watchable): TimelineKind[] {
-  return settings.watch.filter((kind) => !settings.columns.includes(kind))
+  // 켠 차례가 아니라 정해진 차례로 늘어놓는다. 저장된 순서를 그대로 쓰면 멘션을
+  // 먼저 켰다는 이유만으로 판의 탭이 사람마다 다른 순서로 뜬다.
+  return TIMELINE_KINDS.filter(
+    (kind) => settings.watch.includes(kind) && !settings.columns.includes(kind),
+  )
 }
 
 /**
