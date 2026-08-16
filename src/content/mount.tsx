@@ -22,27 +22,48 @@ import { watchFrameBlocks } from './frameBlock'
 const OVERLAY_ID = 'x-deck-overlay'
 
 /**
- * 덱이 화면을 덮는 동안 아래 x.com 의 스크롤을 잠근다.
+ * 덱이 화면을 덮는 동안 아래 x.com 을 잠재운다 — 스크롤을 잠그고, 그리지 않게 한다.
+ *
+ * **왜 그리지 않게 하는가.**
+ * 우리는 x.com 의 DOM 을 살려둔 채 덮는다. 그 아래에서 계속 폴링해야 알약이 뜨기
+ * 때문이다. 그런데 수집기가 탭을 오갈 때마다(대타 방문은 15 초 간격이다) x.com 은
+ * 타임라인을 통째로 다시 그린다 — 스타일 재계산부터 레이아웃 · 페인트 · 래스터 ·
+ * 사진 디코딩까지, **아무도 볼 수 없는 화면**에 대해 전부.
+ *
+ * 래스터와 디코딩은 워커 스레드로 흩어져서 이 탭 하나가 CPU 100% 를 넘겼다. 같은
+ * 탭을 백그라운드로 두면 0% 로 떨어지는 것이 그 증거였다 — 브라우저가 안 그리기
+ * 시작하면 비용이 통째로 사라진다. 그 일을 앞당겨 하는 것이 여기다.
+ *
+ * **왜 `visibility` 인가.**
+ * `display:none` 과 `content-visibility:hidden` 은 레이아웃까지 건너뛴다. 그러면
+ * `getBoundingClientRect()` 가 전부 0 이 되어 [selectors](./selectors.ts) 가 탭도
+ * 알약도 못 찾는다 — 수집이 통째로 멎는다. `visibility:hidden` 은 자리는 그대로
+ * 잡아둔 채 그리기만 건너뛰므로 선택자가 다치지 않는다. `document.hidden` 과도
+ * 무관해서 x.com 의 폴링도 그대로 돈다.
+ *
+ * 덱은 `<body>` 가 아니라 `<html>` 바로 아래에 붙는다. 그래서 `body` 만 감추면
+ * x.com 은 안 그려지고 덱은 멀쩡하다.
  *
  * 인라인 style 로 걸면 x.com 이 자기 모달을 여닫으며 같은 속성을 다시 써서 풀어버린다.
  * 구성된 스타일시트에 `!important` 로 넣으면 페이지의 인라인 선언보다 우선하고,
  * style 요소가 아니라서 페이지 CSP 의 style-src 에도 걸리지 않는다.
  */
-function createScrollLock(): (locked: boolean) => void {
+function createUnderlayMask(): (masked: boolean) => void {
   const sheet = new CSSStyleSheet()
-  sheet.replaceSync('html,body{overflow:hidden!important}')
+  sheet.replaceSync('html,body{overflow:hidden!important}body{visibility:hidden!important}')
 
-  return (locked) => {
+  return (masked) => {
     const current = document.adoptedStyleSheets
     const applied = current.includes(sheet)
-    if (locked !== applied) {
-      document.adoptedStyleSheets = locked
+    if (masked !== applied) {
+      document.adoptedStyleSheets = masked
         ? [...current, sheet]
         : current.filter((item) => item !== sheet)
     }
     // 구성된 스타일시트가 막힌 환경을 대비한 보조 장치. 이쪽만으로는 x.com 이
     // 덮어쓸 수 있어 믿지 않지만, 있으면 최초 화면에서 한 번은 확실히 듣는다.
-    document.documentElement.style.overflow = locked ? 'hidden' : ''
+    document.documentElement.style.overflow = masked ? 'hidden' : ''
+    if (document.body) document.body.style.visibility = masked ? 'hidden' : ''
   }
 }
 
@@ -111,9 +132,9 @@ function mount(): void {
 
   const hostKind: TimelineKind = readFrameRole() ?? 'foryou'
   const { host, mountPoint } = createOverlay()
-  const setScrollLock = createScrollLock()
-  // 첫 화면부터 잠근다. React 가 붙기 전에도 아래 타임라인의 스크롤바가 보이면 안 된다.
-  setScrollLock(true)
+  const setUnderlayMask = createUnderlayMask()
+  // 첫 화면부터 덮는다. React 가 붙기 전에도 아래 타임라인이 비쳐 보이면 안 된다.
+  setUnderlayMask(true)
 
   // 최상위 문서가 담당하는 컬럼은 이 자리에서 직접 수집한다.
   // 결과를 window 로 되던져 자식 프레임과 똑같은 경로로 덱에 도달하게 한다.
@@ -128,8 +149,8 @@ function mount(): void {
       onPassthrough={(enabled) => {
         // 덱을 통과 모드로 두면 아래 x.com 을 그대로 쓸 수 있다 (로그인·원본 확인용).
         host.style.pointerEvents = enabled ? 'none' : 'auto'
-        // 통과 모드에서는 아래 x.com 을 실제로 굴려야 하므로 잠금을 푼다.
-        setScrollLock(!enabled)
+        // 통과 모드에서는 아래 x.com 을 실제로 보고 굴려야 하므로 덮개를 걷는다.
+        setUnderlayMask(!enabled)
       }}
     />,
   )
