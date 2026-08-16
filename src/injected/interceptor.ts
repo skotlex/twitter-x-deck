@@ -6,7 +6,7 @@
  * 페이지 컨텍스트라 chrome API 를 못 쓰므로 결과는 postMessage 로 브리지에 넘긴다.
  */
 import { CHANNEL, type CapturedPayload } from '@core/messages'
-import { isDeckHostDocument, isDeckPanelFrame, readFrameRole, whenTrue } from '@core/role'
+import { isDeckHostDocument, isDeckPanelFrame, isMasked, readFrameRole, whenTrue } from '@core/role'
 import {
   CREATE_TWEET_OPERATION,
   DELETE_TWEET_OPERATION,
@@ -172,6 +172,43 @@ function spoofVisibility(): void {
   }
 }
 
+/**
+ * 아무도 보지 않는 영상을 돌기 시작하는 즉시 세운다.
+ *
+ * `visibility:hidden` 은 그리기를 건너뛰게 하지만 **영상 디코딩은 못 막는다.** 화면에
+ * 안 보여도 재생은 계속된다 (백그라운드 탭에서 소리가 계속 나는 것과 같다). 게다가
+ * `spoofVisibility` 때문에 x.com 은 자기가 보이는 줄 알고 자동재생에 더 적극적이다.
+ * 추천 타임라인은 영상이 많아, 실제로 재던 값의 절반쯤이 여기였다 — x.com 설정에서
+ * 자동재생을 끄자 새로고침 CPU 가 80~90% 에서 40~50% 로 떨어졌다.
+ *
+ * `play` 이벤트를 잡는다. 자동재생이든 코드가 부른 것이든 재생이 시작되면 반드시
+ * 발생하므로 경로를 가리지 않는다. `autoplay` 도 함께 꺼서 브라우저가 다시 틀지
+ * 않게 한다.
+ *
+ * **덱 자신의 영상은 걸리지 않는다.** 미디어 이벤트는 `composed: false` 라 그림자 DOM
+ * 경계를 넘지 못한다. 덱의 영상은 그림자 DOM 안에 있어 이 리스너에 닿지 않고,
+ * x.com 의 영상은 light DOM 이라 닿는다 — 따로 가려낼 코드가 필요 없다.
+ */
+function stopUnseenPlayback(role: TimelineKind | null): void {
+  document.addEventListener(
+    'play',
+    (event) => {
+      const media = event.target
+      if (!(media instanceof HTMLMediaElement)) return
+      /*
+       * 수집 프레임의 영상은 어떤 경우에도 사람이 보지 않는다.
+       *
+       * 덱이 얹힌 문서는 다르다 — 통과 모드로 비켜서면 그 아래 x.com 을 실제로
+       * 보고 쓰는 중이다. 그때 영상을 세우면 원본에서 영상을 못 보게 된다.
+       */
+      if (role === null && !isMasked()) return
+      media.autoplay = false
+      media.pause()
+    },
+    true,
+  )
+}
+
 function main(): void {
   const role = readFrameRole()
   const panel = isDeckPanelFrame()
@@ -205,7 +242,11 @@ function install(role: TimelineKind | null, panel: boolean): void {
   // 작성창은 물론 상세 창에서도 글이 올라간다 (거기서 답글을 단다).
   if (panel) WATCHED.add(CREATE_TWEET_OPERATION)
   // 사람이 보고 있는 작성창은 숨길 이유가 없으므로 가시성도 손대지 않는다.
-  if (collecting) spoofVisibility()
+  // 영상을 세우는 것도 같은 기준이다 — 창으로 띄운 원본은 보라고 띄운 것이다.
+  if (collecting) {
+    spoofVisibility()
+    stopUnseenPlayback(role)
+  }
 
   installFetchHook()
   installXhrHook()

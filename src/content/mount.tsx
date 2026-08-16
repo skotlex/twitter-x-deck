@@ -11,7 +11,7 @@
  */
 import { createRoot } from 'react-dom/client'
 import css from '../ui/index.css?inline'
-import { isDeckScreen, isDeckTab, readFrameRole, whenTrue } from '@core/role'
+import { isDeckScreen, isDeckTab, MASK_ATTR, readFrameRole, whenTrue } from '@core/role'
 import { loadSettings } from '@core/settings'
 import type { TimelineKind } from '@core/types'
 import { App } from '../ui/App'
@@ -64,6 +64,8 @@ function createUnderlayMask(): (masked: boolean) => void {
     // 덮어쓸 수 있어 믿지 않지만, 있으면 최초 화면에서 한 번은 확실히 듣는다.
     document.documentElement.style.overflow = masked ? 'hidden' : ''
     if (document.body) document.body.style.visibility = masked ? 'hidden' : ''
+    // MAIN world 의 인터셉터도 이 상태를 봐야 한다 (영상을 세울지 말지).
+    document.documentElement.toggleAttribute(MASK_ATTR, masked)
   }
 }
 

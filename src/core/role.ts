@@ -37,6 +37,21 @@ export function isDeckPanelFrame(): boolean {
   return isComposeFrame() || isPageFrame()
 }
 
+/**
+ * 덱이 지금 이 문서를 덮고 있다는 표시. `<html>` 에 붙인다.
+ *
+ * 세계(world)가 다르면 변수를 나눠 가질 수 없다. 덱은 ISOLATED 에서 돌고 인터셉터는
+ * MAIN 에서 도는데, 아래 x.com 이 사람 눈에 보이는 중인지는 양쪽 다 알아야 한다 —
+ * 통과 모드로 비켜선 동안에는 x.com 을 실제로 쓰는 중이므로 건드리면 안 된다.
+ * DOM 은 두 세계가 함께 보므로 속성 하나가 가장 단순한 통로다.
+ */
+export const MASK_ATTR = 'data-xdeck-masked'
+
+/** 덱이 이 문서를 덮고 있는지. 통과 모드로 비켜서면 거짓이 된다. */
+export function isMasked(): boolean {
+  return document.documentElement.hasAttribute(MASK_ATTR)
+}
+
 const SESSION_KEY = 'xdeck:role'
 
 /** 컬럼 종류 목록에서 직접 확인한다. 종류가 늘 때 여기를 빠뜨리면 그 프레임은 조용히 죽는다. */
