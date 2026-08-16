@@ -231,6 +231,19 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
       return
     }
 
+    /*
+     * 안 켠 타임라인은 파싱하지도 저장하지도 않는다.
+     *
+     * 수집기는 담당 탭을 새로 받아오려고 옆 탭에 잠깐 들렀다 온다. 그 김에 우리가
+     * 켜지도 않은 타임라인이 통째로 딸려 오는데, 예전에는 그것까지 전부 파싱해서
+     * (응답 하나가 수 MB 다) IndexedDB 에 넣었다. 화면에 그릴 일도 없는 자료다 —
+     * 새로고침을 누를 때마다 CPU 가 튀던 몫의 하나가 여기였다.
+     *
+     * 상태·알림 수는 위에서 이미 처리했다. 그쪽은 우리가 세운 수집기가 자기 담당
+     * 컬럼에 대해서만 보내므로 걸러낼 것이 없다.
+     */
+    if (!collectedKinds(settingsRef.current).includes(kind)) return
+
     // timeline: 파싱 → 저장 → 새로 들어온 것만 화면에 반영
     const capturedAt = Date.now()
     const parsed = parseTimelinePayload(message.body, kind, capturedAt)
