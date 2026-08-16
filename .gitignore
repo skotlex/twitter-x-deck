@@ -4,6 +4,11 @@
 node_modules/
 dist/
 
+# 실제 x.com 화면을 떠 온 테스트 픽스처.
+# 계정 핸들과 타임라인 글이 그대로 들어 있어 저장소에 올리지 않는다.
+# 뜨는 방법은 tests/fixtures/README.md 참고.
+tests/fixtures/*.html
+
 .vscode/
 .idea/
 .DS_Store

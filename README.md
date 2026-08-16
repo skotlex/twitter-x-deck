@@ -93,9 +93,30 @@ npm run build      # dist/ 에 확장 번들을 생성합니다
 | `npm run build` | 확장 번들을 `dist/` 에 생성합니다 |
 | `npm run dev` | 감시(watch) 모드로 빌드합니다. 코드를 고치면 다시 굽고, 확장 페이지에서 새로고침하면 반영됩니다 |
 | `npm run typecheck` | 타입 검사만 수행합니다 (`tsc --noEmit`) |
+| `npm test` | 테스트를 한 번 실행합니다 |
+| `npm run test:watch` | 감시 모드로 테스트를 실행합니다 |
+| `npm run check` | 타입 검사와 테스트를 차례로 실행합니다 |
 | `npm run icons` | `icons/` 의 아이콘 세트를 다시 생성합니다 |
 
 빌드는 [scripts/build.mjs](scripts/build.mjs) 가 지휘합니다. 덱 UI 는 Vite 가 단일 IIFE 로 굽고(그림자 DOM 에 넣어야 하므로 CSS 까지 인라인), 인터셉터 · 브리지 · 백그라운드는 esbuild 가 맡습니다. `manifest.json` 의 버전은 `package.json` 의 값을 빌드 시점에 주입합니다.
+
+### 테스트
+
+브라우저를 띄우지 않고 [Vitest](https://vitest.dev) + happy-dom 위에서 돕니다. x.com 로그인이 필요 없으므로 아무 때나 반복해서 돌릴 수 있습니다.
+
+```bash
+npm run check      # 타입 검사 + 테스트
+```
+
+재는 대상은 세 갈래입니다.
+
+- **응답 파싱** — [src/core/parser.ts](src/core/parser.ts) 가 GraphQL 응답을 제대로 옮기는지. 리포스트 · 인용 · 알림 · 폴백 판정처럼 조용히 깨지는 자리를 봅니다
+- **DOM 판단 규칙** — [src/content/selectors.ts](src/content/selectors.ts) 의 탭 찾기, 알약 판별, 주인공 게시물 고르기 등을 손으로 만든 최소 DOM 으로 확인합니다
+- **설정 저장** — 확장을 다시 설치했을 때 지정해둔 값이 살아남는지, 예전 저장값이 지금 형태로 옮겨지는지
+
+셀렉터가 **실제 x.com 에 지금도 걸리는지** 는 손으로 만든 DOM 으로는 알 수 없습니다. 그건 진짜 화면을 떠 넣는 [tests/fixtures/](tests/fixtures/README.md) 쪽이 맡습니다. 픽스처에는 계정 정보가 들어 있어 저장소에 올리지 않으며, 없으면 해당 테스트만 건너뛰고 나머지는 그대로 돕니다. 뜨는 방법은 [tests/fixtures/README.md](tests/fixtures/README.md) 에 있습니다.
+
+happy-dom 에는 레이아웃 엔진이 없어 화면상의 위치와 크기를 알 수 없습니다. [tests/setup/dom.ts](tests/setup/dom.ts) 가 그 값을 테스트가 정할 수 있게 바꿔 끼웁니다.
 
 ---
 
@@ -222,6 +243,7 @@ x.com 의 내부 뮤테이션을 직접 호출하려면 요청 서명까지 위�
 | UI | React 19, Tailwind CSS 4 |
 | 저장소 | IndexedDB (`idb`), `chrome.storage.sync` |
 | 번들러 | Vite 7 (덱 UI · IIFE + CSS 인라인), esbuild (인터셉터 · 브리지 · 백그라운드) |
+| 테스트 | Vitest 4, happy-dom |
 | 격리 | Shadow DOM + Constructable Stylesheets |
 
 외부 UI 라이브러리나 상태 관리 라이브러리는 쓰지 않습니다. 아이콘도 [src/ui/components/icons.tsx](src/ui/components/icons.tsx) 에 인라인 SVG 로 두었습니다.
@@ -237,6 +259,13 @@ src/
 ├─ injected/      MAIN world 인터셉터
 ├─ core/          양쪽이 함께 쓰는 순수 로직 (타입 · 파서 · DB · 설정)
 └─ ui/            덱 UI (React)
+
+tests/
+├─ core/          파서 · 설정 테스트
+├─ content/       선택자 판단 규칙 테스트 (손으로 만든 DOM)
+├─ ui/            표시 형식 테스트
+├─ fixtures/      실제 x.com 화면을 떠 온 파일 (커밋하지 않습니다)
+└─ setup/         happy-dom 보정
 ```
 
 | 경로 | 역할 |
@@ -314,6 +343,7 @@ src/
 
 - 버전의 단일 출처는 [package.json](package.json) 의 `version` 입니다. 빌드 시 `dist/manifest.json` 으로 주입되므로 저장소의 `manifest.json` 값은 직접 고치지 않습니다
 - 사용자가 체감하는 변경은 [CHANGELOG.md](CHANGELOG.md) 에 기록합니다
+- 소스를 고쳤으면 커밋 전에 `npm run check` 로 타입 검사와 테스트를 통과시킵니다
 - 커밋 메시지는 한글로 작성합니다
 - 저장소에서 작업할 때의 상세 규약은 [CLAUDE.md](CLAUDE.md) 에 정리되어 있습니다
 
