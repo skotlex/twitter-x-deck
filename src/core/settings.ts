@@ -6,8 +6,27 @@
  * 재설치를 건너 살아남고 다른 기기에서도 같은 설정으로 뜬다.
  */
 import type { TimelineKind } from './types'
+import type { TranslateEngineId } from './messages'
 
 const STORAGE_KEY = 'x-deck:settings'
+
+/**
+ * 브리지 열쇠를 두는 자리. **설정과 같은 자리에 두지 않는다.**
+ *
+ * 설정은 아래 `writeMirror` 가 x.com 페이지의 localStorage 에 그대로 한 벌 더 남긴다 —
+ * 확장을 지워도 살아남게 하려는 장치다. 그 자리는 x.com 에서 도는 어떤 스크립트든
+ * 읽을 수 있어서, 열쇠를 섞으면 그대로 새어 나간다. 이 값만은 확장 저장소에만 둔다.
+ */
+const TOKEN_KEY = 'x-deck:bridge-token'
+
+export async function loadBridgeToken(): Promise<string> {
+  const stored = (await chrome.storage.local.get(TOKEN_KEY))[TOKEN_KEY]
+  return typeof stored === 'string' ? stored : ''
+}
+
+export async function saveBridgeToken(token: string): Promise<void> {
+  await chrome.storage.local.set({ [TOKEN_KEY]: token.trim() })
+}
 
 /** 설정을 둘 자리. sync 를 못 쓰는 환경에서는 local 로 물러선다. */
 function area(): chrome.storage.StorageArea {
@@ -107,6 +126,15 @@ export interface Settings {
   fontFamily: string
   /** x.com 홈에 들어가면 곧바로 덱을 얹는다. 끄면 확장 아이콘을 눌러야 뜬다. */
   autoMount: boolean
+  /**
+   * 사진 속 글자 번역을 쓸지. 켜도 브리지에 로그인이 확인되기 전에는 단추가 뜨지 않는다 —
+   * 켜는 것과 쓸 수 있는 것은 다르다.
+   */
+  imageTranslate: boolean
+  /** 어느 명령을 주로 쓸지. 하나만 로그인돼 있으면 그쪽으로 자동으로 간다. */
+  imageTranslateEngine: TranslateEngineId
+  /** 브리지가 듣고 있는 포트. */
+  bridgePort: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -126,6 +154,32 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   fontFamily: '',
   autoMount: true,
+  imageTranslate: false,
+  imageTranslateEngine: 'codex',
+  bridgePort: 8765,
+}
+
+/** 컬럼과 지켜보기를 가르는 데 필요한 만큼만 받는다 — 테스트에서 설정 전체를 짓지 않아도 된다. */
+type Watchable = Pick<Settings, 'columns' | 'watch'>
+
+/**
+ * 컬럼 없이 종으로만 지켜보는 타임라인.
+ *
+ * 컬럼으로도 띄우고 있으면 뺀다 — 화면에 이미 보이는 것을 종에 또 세면 안 본 수가
+ * 영영 줄지 않는다.
+ */
+export function watchedKinds(settings: Watchable): TimelineKind[] {
+  return settings.watch.filter((kind) => !settings.columns.includes(kind))
+}
+
+/**
+ * 실제로 수집해야 하는 타임라인.
+ *
+ * 컬럼을 끄면 화면에서만 사라지는 게 아니라 그 타임라인을 아예 받지 않게 되므로,
+ * 수집 프레임을 세우는 자리와 멈춘 컬럼을 되살리는 자리는 모두 이 목록을 봐야 한다.
+ */
+export function collectedKinds(settings: Watchable): TimelineKind[] {
+  return [...settings.columns, ...watchedKinds(settings)]
 }
 
 /** 예전 저장값을 지금 모양으로 옮긴다. 뜻이 담긴 값은 기본값으로 덮어버리면 안 된다. */

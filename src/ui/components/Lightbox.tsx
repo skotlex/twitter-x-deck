@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
+import { loadTranslation, saveTranslation } from '@core/db'
+import type { ImageTranslation, TranslateEngineId } from '@core/messages'
+import { loadSettings, watchSettings } from '@core/settings'
 import type { TweetMedia } from '@core/types'
+import {
+  ENGINE_LABEL,
+  fetchBridgeStatus,
+  pickEngine,
+  translateImage,
+} from '../../content/imageTranslate'
 import { originalMediaUrl } from '../lib/format'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { CloseIcon } from './icons'
@@ -18,12 +27,88 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
   const total = media.length
   const current = media[Math.min(index, total - 1)]
 
+  /**
+   * 번역에 쓸 명령. null 이면 단추를 달지 않는다.
+   *
+   * 설정에서 켜는 것과 실제로 쓸 수 있는 것은 다르다 — 브리지가 떠 있고 그 명령이
+   * 로그인돼 있어야 비로소 쓸 수 있다. 여기 값이 정해지는 것이 그 확인의 결과다.
+   */
+  const [engine, setEngine] = useState<TranslateEngineId | null>(null)
+  const [translation, setTranslation] = useState<ImageTranslation | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  /** 다시 그린 그림은 원본이 아니다. 언제든 되돌아갈 수 있어야 한다. */
+  const [showTranslated, setShowTranslated] = useState(true)
+
   const move = useCallback(
     (delta: number) => {
       setIndex((prev) => (prev + delta + total) % total)
     },
     [total],
   )
+
+  // 쓸 수 있는 명령이 있는지 알아둔다. 설정을 바꾸면 다시 본다.
+  useEffect(() => {
+    let alive = true
+
+    const resolve = (imageTranslate: boolean, preferred: TranslateEngineId) => {
+      if (!imageTranslate) {
+        if (alive) setEngine(null)
+        return
+      }
+      void fetchBridgeStatus()
+        .then((status) => {
+          if (alive) setEngine(pickEngine(preferred, status.engines))
+        })
+        .catch(() => {
+          if (alive) setEngine(null)
+        })
+    }
+
+    void loadSettings().then((settings) => {
+      if (alive) resolve(settings.imageTranslate, settings.imageTranslateEngine)
+    })
+    return watchSettings((settings) => {
+      resolve(settings.imageTranslate, settings.imageTranslateEngine)
+    })
+  }, [])
+
+  // 사진을 넘기면 앞 사진의 번역은 남아 있으면 안 된다.
+  const previewUrl = current?.previewUrl
+  useEffect(() => {
+    setTranslation(null)
+    setError(null)
+    setShowTranslated(true)
+    if (!previewUrl || !engine) return
+
+    // 쟁여둔 것이 있으면 부르지 않는다. 한 번이 30초 넘게 걸리고 구독 한도도 함께 닳는다.
+    let alive = true
+    void loadTranslation(originalMediaUrl(previewUrl), engine)
+      .then((found) => {
+        if (alive && found) setTranslation(found)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [previewUrl, engine])
+
+  const runTranslate = useCallback(() => {
+    if (!previewUrl || !engine || busy) return
+    const url = originalMediaUrl(previewUrl)
+    setBusy(true)
+    setError(null)
+    void translateImage(url, engine)
+      .then((result) => {
+        setTranslation(result)
+        setShowTranslated(true)
+        return saveTranslation(url, engine, result)
+      })
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : '번역하지 못했습니다.')
+      })
+      .finally(() => setBusy(false))
+  }, [previewUrl, engine, busy])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -74,6 +159,35 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         >
           원문 게시물
         </a>
+
+        {/* 동영상에는 달지 않는다. 프레임마다 글자가 달라 한 장을 번역해도 뜻이 없다. */}
+        {engine && !current.playbackUrl && (
+          <>
+            <button
+              type="button"
+              onClick={runTranslate}
+              disabled={busy}
+              className="rounded-full bg-white/10 px-3 py-1 text-[12.5px] text-white/85 transition-colors hover:bg-white/20 hover:text-white disabled:cursor-progress disabled:text-white/50"
+            >
+              {busy
+                ? `${ENGINE_LABEL[engine]} 번역 중…`
+                : translation
+                  ? '다시 번역'
+                  : '사진 번역'}
+            </button>
+            {translation?.kind === 'image' && (
+              <button
+                type="button"
+                onClick={() => setShowTranslated((prev) => !prev)}
+                className="rounded-full bg-white/10 px-3 py-1 text-[12.5px] text-white/85 transition-colors hover:bg-white/20 hover:text-white"
+              >
+                {showTranslated ? '원본 보기' : '번역본 보기'}
+              </button>
+            )}
+          </>
+        )}
+        {error && <span className="truncate text-[12.5px] text-red-300">{error}</span>}
+
         <button
           type="button"
           onClick={onClose}
@@ -114,13 +228,41 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
           />
         ) : (
           <img
-            src={originalMediaUrl(current.previewUrl)}
+            src={
+              translation?.kind === 'image' && showTranslated
+                ? translation.dataUrl
+                : originalMediaUrl(current.previewUrl)
+            }
             alt={current.altText ?? ''}
             onClick={(event) => event.stopPropagation()}
             className="max-h-full max-w-full cursor-default object-contain"
           />
         )}
       </div>
+
+      {/*
+        글자로 온 번역. 사진은 그대로 두고 읽은 것과 옮긴 것을 아래에 나란히 깐다 —
+        원문 글자를 지우고 다시 조판하는 일은 이쪽 명령이 할 수 있는 몫이 아니다.
+      */}
+      {translation?.kind === 'text' && (
+        <div
+          onClick={(event) => event.stopPropagation()}
+          className="scroll-thin max-h-[38vh] shrink-0 overflow-y-auto border-t border-white/15 bg-black/70 px-6 py-4"
+        >
+          {translation.items.length === 0 ? (
+            <p className="text-[13px] text-white/60">읽을 글자가 없습니다.</p>
+          ) : (
+            <ul className="mx-auto flex max-w-3xl flex-col gap-3">
+              {translation.items.map((item, at) => (
+                <li key={at}>
+                  <p className="text-[12.5px] leading-relaxed text-white/45">{item.source}</p>
+                  <p className="text-[14px] leading-relaxed text-white">{item.korean}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {total > 1 && (
         <>

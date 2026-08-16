@@ -11,7 +11,11 @@
     "declarativeNetRequest",
     "declarativeNetRequestFeedback"
   ],
-  "host_permissions": ["https://x.com/*", "https://papago.naver.com/*"],
+  "host_permissions": [
+    "https://x.com/*",
+    "https://papago.naver.com/*",
+    "http://127.0.0.1/*"
+  ],
   "declarative_net_request": {
     "rule_resources": [
       {

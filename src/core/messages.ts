@@ -22,6 +22,52 @@ export const NOCACHE_PARAM = 'xdeck_t'
 /** 덱 → 배경 워커. 헤더 제거 규칙이 살아 있는지 물어본다 (진단용). */
 export const RULE_REPORT = 'xdeck:rule-report'
 
+/**
+ * 덱 → 배경 워커 → 이미지 번역 브리지.
+ *
+ * 덱은 x.com 문서 위에서 돌아 로컬 서버를 직접 부를 수 없다 (그 페이지의 연결 정책이
+ * 막는다). 호스트 권한을 가진 배경 워커만 그 길을 낼 수 있어 중계를 맡는다.
+ */
+export const BRIDGE_STATUS = 'xdeck:bridge-status'
+export const BRIDGE_LOGIN = 'xdeck:bridge-login'
+export const IMAGE_TRANSLATE = 'xdeck:image-translate'
+
+/** 브리지가 빌려 쓰는 명령. 둘 다 구독 계정으로 로그인된 것을 그대로 쓴다. */
+export type TranslateEngineId = 'codex' | 'claude'
+
+/** 명령 하나의 형편. 브리지가 실제로 한 번 돌려보고 판정한 결과다. */
+export interface EngineStatus {
+  /** 이 PC 에 명령이 깔려 있는지. */
+  installed: boolean
+  /** 로그인이 끝나 바로 쓸 수 있는지. */
+  loggedIn: boolean
+  /** 못 쓰는 이유. 사용자가 고칠 수 있게 그대로 보여준다. */
+  note?: string
+}
+
+export interface BridgeStatus {
+  /** 브리지 자체와 이야기가 통했는지. 꺼져 있거나 열쇠가 다르면 false. */
+  reachable: boolean
+  /** 브리지와 이야기하지 못한 이유. */
+  error?: string
+  engines?: Record<TranslateEngineId, EngineStatus>
+}
+
+/**
+ * 번역 결과.
+ *
+ * `codex` 는 글자를 바꿔 다시 그린 **이미지** 를, `claude` 는 원문과 번역 **텍스트** 를
+ * 준다. claude 는 이미지를 만들지 못하므로 이 차이는 고를 수 있는 것이 아니라
+ * 두 명령이 할 수 있는 일의 차이다.
+ */
+export type ImageTranslation =
+  | { kind: 'image'; engine: TranslateEngineId; dataUrl: string }
+  | {
+      kind: 'text'
+      engine: TranslateEngineId
+      items: { source: string; korean: string }[]
+    }
+
 /** MAIN world 인터셉터 → ISOLATED world 브리지 (같은 프레임 안). */
 export interface CapturedPayload {
   channel: typeof CHANNEL

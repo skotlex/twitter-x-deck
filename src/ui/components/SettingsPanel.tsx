@@ -1,9 +1,29 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { clearAll } from '@core/db'
-import type { Settings } from '@core/settings'
+import type { BridgeStatus, TranslateEngineId } from '@core/messages'
+import { loadBridgeToken, saveBridgeToken, type Settings } from '@core/settings'
 import { TIMELINE_KINDS, TIMELINE_LABEL, type TimelineKind } from '@core/types'
+import {
+  ENGINE_LABEL,
+  ENGINE_OUTPUT,
+  fetchBridgeStatus,
+  pickEngine,
+  requestLogin,
+} from '../../content/imageTranslate'
 import { COMMON_FONTS, fontStack, loadLocalFontFamilies } from '../lib/fonts'
 import { ArchiveIcon, CloseIcon, EyeIcon, RefreshIcon, SettingsIcon } from './icons'
+
+function TranslateIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path
+        d="M4 5h10M9 3v2m0 0c0 4-2 7-5 9m3-4c0 2 3 4 6 4m1 6 4-10 4 10m-7-3h6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
 
 const FIELD =
   'rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 text-[13px] text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent'
@@ -222,9 +242,184 @@ function FontPicker({ value, onChange }: { value: string; onChange: (next: strin
   )
 }
 
+/**
+ * 사진 번역 설정.
+ *
+ * 여기서 켜는 것은 '쓰겠다는 뜻' 이지 '쓸 수 있다' 가 아니다. 번역은 이 PC 에 깔린
+ * `codex` · `claude` 가 하고, 그 둘은 각자의 구독 계정으로 로그인돼 있어야 한다.
+ * 그 로그인은 브라우저를 열어 사람이 마치는 절차라 확장 안에서 시작할 수 없어서,
+ * 브리지가 콘솔 창을 띄워주고 여기서는 끝났는지를 다시 확인하는 것까지만 한다.
+ */
+function TranslateSettings({
+  settings,
+  onUpdate,
+}: {
+  settings: Settings
+  onUpdate: (patch: Partial<Settings>) => void
+}) {
+  const [token, setToken] = useState<string | null>(null)
+  const [status, setStatus] = useState<BridgeStatus | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  useEffect(() => {
+    void loadBridgeToken().then(setToken)
+  }, [])
+
+  const check = (force: boolean) => {
+    setChecking(true)
+    void fetchBridgeStatus(force)
+      .then(setStatus)
+      .catch(() => setStatus({ reachable: false, error: '브리지에 닿지 못했습니다.' }))
+      .finally(() => setChecking(false))
+  }
+
+  // 켜져 있을 때만 물어본다. 꺼둔 사람에게 CLI 를 띄울 이유가 없다.
+  useEffect(() => {
+    if (settings.imageTranslate && token !== null) check(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.imageTranslate, token])
+
+  const engines = status?.engines
+  const active = pickEngine(settings.imageTranslateEngine, engines)
+  const bothReady = Boolean(engines?.codex.loggedIn && engines?.claude.loggedIn)
+
+  return (
+    <div className="divide-y divide-line-soft">
+      <Row
+        label="사진 번역 사용"
+        hint="사진 속 일본어·영어를 한국어로 옮깁니다. 이 PC 의 codex · claude 명령과 그 구독 계정을 그대로 빌려 쓰며, 별도 API 키는 필요하지 않습니다."
+        control={
+          <Toggle
+            checked={settings.imageTranslate}
+            onChange={(next) => onUpdate({ imageTranslate: next })}
+            label="사진 번역 사용"
+          />
+        }
+      />
+
+      {settings.imageTranslate && (
+        <>
+          <div className="py-3.5">
+            <p className="text-[14px] font-medium text-text">브리지 연결</p>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-faint">
+              터미널에서 <code className="text-muted">npm run bridge</code> 를 실행하면 열쇠가 한 줄
+              찍힙니다. 그 값을 아래에 붙여넣으세요.
+            </p>
+
+            <div className="mt-2.5 flex items-center gap-2">
+              <input
+                type="password"
+                aria-label="브리지 열쇠"
+                placeholder="브리지 열쇠"
+                value={token ?? ''}
+                onChange={(event) => setToken(event.target.value)}
+                onBlur={() => void saveBridgeToken(token ?? '').then(() => check(false))}
+                className={`min-w-0 flex-1 ${FIELD}`}
+              />
+              <input
+                type="number"
+                aria-label="브리지 포트"
+                value={settings.bridgePort}
+                onChange={(event) =>
+                  onUpdate({ bridgePort: Number(event.target.value) || 8765 })
+                }
+                className={`w-20 ${FIELD}`}
+              />
+            </div>
+
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => check(true)}
+                disabled={checking}
+                className="rounded-lg border border-line px-3 py-1.5 text-[13px] font-medium text-text transition-colors hover:bg-surface-2 disabled:cursor-progress disabled:text-faint"
+              >
+                {checking ? '확인 중' : '상태 다시 확인'}
+              </button>
+              {status && !status.reachable && (
+                <span className="min-w-0 flex-1 text-[12px] leading-relaxed text-danger">
+                  {status.error}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {engines && (
+            <div className="py-3.5">
+              <p className="text-[14px] font-medium text-text">로그인</p>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-faint">
+                로그인 단추를 누르면 콘솔 창이 하나 뜹니다. 거기서 절차를 마친 뒤 위의 상태 다시
+                확인을 누르세요.
+              </p>
+
+              <div className="mt-2.5 flex flex-col gap-2">
+                {(['codex', 'claude'] as TranslateEngineId[]).map((id) => {
+                  const engine = engines[id]
+                  return (
+                    <div key={id} className="flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className={`h-2 w-2 shrink-0 rounded-full ${
+                          engine.loggedIn ? 'bg-accent' : 'bg-surface-3'
+                        }`}
+                      />
+                      <span className="text-[13px] font-medium text-text">{ENGINE_LABEL[id]}</span>
+                      <span className="min-w-0 flex-1 truncate text-[12px] text-faint">
+                        {engine.loggedIn ? `${ENGINE_OUTPUT[id]}로 번역합니다` : engine.note}
+                      </span>
+                      {!engine.loggedIn && engine.installed && (
+                        <button
+                          type="button"
+                          onClick={() => void requestLogin(id)}
+                          className="shrink-0 rounded-lg border border-line px-2.5 py-1 text-[12.5px] font-medium text-text transition-colors hover:bg-surface-2"
+                        >
+                          로그인
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/*
+            둘 다 준비된 사람에게만 고르라고 한다. 하나만 구독 중이면 고를 것이 없고,
+            그때는 로그인된 쪽으로 알아서 간다.
+          */}
+          {bothReady && (
+            <Row
+              label="주로 쓸 명령"
+              hint="Codex 는 글자를 바꿔 그림을 다시 그리고, Claude 는 읽은 글과 번역을 글자로 줍니다. 고른 쪽이 로그인돼 있지 않으면 나머지로 갑니다."
+              control={
+                <Select
+                  label="주로 쓸 명령"
+                  value={settings.imageTranslateEngine}
+                  onChange={(next) => onUpdate({ imageTranslateEngine: next })}
+                  options={[
+                    { value: 'codex' as TranslateEngineId, label: 'Codex — 이미지' },
+                    { value: 'claude' as TranslateEngineId, label: 'Claude — 텍스트' },
+                  ]}
+                />
+              }
+            />
+          )}
+
+          {status?.reachable && !active && (
+            <p className="py-3.5 text-[12.5px] leading-relaxed text-danger">
+              쓸 수 있는 명령이 없습니다. 위에서 하나 이상 로그인해야 사진 번역 단추가 뜹니다.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 const TABS = [
   { id: 'collect', label: '수집', Icon: RefreshIcon },
   { id: 'display', label: '표시', Icon: EyeIcon },
+  { id: 'translate', label: '번역', Icon: TranslateIcon },
   { id: 'storage', label: '보관', Icon: ArchiveIcon },
 ] as const
 
@@ -453,6 +648,10 @@ export function SettingsPanel({ open, settings, onUpdate, onClose }: SettingsPan
                 }
               />
             </div>
+          )}
+
+          {tab === 'translate' && (
+            <TranslateSettings settings={settings} onUpdate={onUpdate} />
           )}
 
           {tab === 'storage' && (

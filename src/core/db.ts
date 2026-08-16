@@ -5,11 +5,29 @@
  * 컬럼별로 독립된 읽음 위치·정렬을 유지하기 위해서다.
  */
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
+import type { ImageTranslation } from './messages'
 import { isNotification, TIMELINE_KINDS, type DeckItem, type TimelineKind } from './types'
 
 const DB_NAME = 'x-deck'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const STORE = 'tweets'
+
+/**
+ * 사진 번역 결과를 쟁여두는 자리.
+ *
+ * 한 번 번역하는 데 30초 넘게 걸리고 구독 한도도 함께 닳는다. 같은 사진을 두 번
+ * 청하지 않는 것이 여기서는 성능이 아니라 비용 문제다.
+ */
+const TRANSLATION_STORE = 'imageTranslations'
+
+export interface StoredTranslation {
+  /** 원본 이미지 주소. 그대로 열쇠로 쓴다. */
+  url: string
+  /** 어느 명령이 한 것인지. 엔진을 바꾸면 다시 번역해야 하므로 함께 본다. */
+  engine: string
+  translation: ImageTranslation
+  at: number
+}
 
 /**
  * 저장된 항목. 게시물과 알림이 한 창고를 쓴다.
@@ -32,19 +50,50 @@ interface DeckSchema extends DBSchema {
       'by-captured': number
     }
   }
+  [TRANSLATION_STORE]: {
+    key: string
+    value: StoredTranslation
+  }
 }
 
 let dbPromise: Promise<IDBPDatabase<DeckSchema>> | null = null
 
 export function getDb(): Promise<IDBPDatabase<DeckSchema>> {
   dbPromise ??= openDB<DeckSchema>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      const store = db.createObjectStore(STORE, { keyPath: 'key' })
-      store.createIndex('by-source-captured', ['source', 'capturedAt'])
-      store.createIndex('by-captured', 'capturedAt')
+    // 이미 쓰던 데이터베이스가 있을 수 있다. 어느 판에서 올라오는지를 보고 없는 것만 만든다 —
+    // 조건 없이 만들면 기존 사용자의 첫 실행에서 곧바로 터진다.
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
+        const store = db.createObjectStore(STORE, { keyPath: 'key' })
+        store.createIndex('by-source-captured', ['source', 'capturedAt'])
+        store.createIndex('by-captured', 'capturedAt')
+      }
+      if (oldVersion < 2) {
+        db.createObjectStore(TRANSLATION_STORE, { keyPath: 'url' })
+      }
     },
   })
   return dbPromise
+}
+
+/** 쟁여둔 번역. 엔진이 다르면 없는 것으로 친다 — 결과의 종류부터 다르기 때문이다. */
+export async function loadTranslation(
+  url: string,
+  engine: string,
+): Promise<ImageTranslation | null> {
+  const db = await getDb()
+  const found = await db.get(TRANSLATION_STORE, url)
+  if (!found || found.engine !== engine) return null
+  return found.translation
+}
+
+export async function saveTranslation(
+  url: string,
+  engine: string,
+  translation: ImageTranslation,
+): Promise<void> {
+  const db = await getDb()
+  await db.put(TRANSLATION_STORE, { url, engine, translation, at: Date.now() })
 }
 
 export const storageKey = (source: TimelineKind, id: string): string => `${source}:${id}`
@@ -169,4 +218,6 @@ export async function clearSource(source: TimelineKind): Promise<void> {
 export async function clearAll(): Promise<void> {
   const db = await getDb()
   await db.clear(STORE)
+  // 번역본은 원본 게시물에 딸린 것이라 함께 비운다.
+  await db.clear(TRANSLATION_STORE)
 }
