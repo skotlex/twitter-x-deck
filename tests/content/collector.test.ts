@@ -12,11 +12,15 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CHANNEL, type CapturedPayload, type DeletedMessage, type FrameMessage } from '../../src/core/messages'
+import type { Settings } from '../../src/core/settings'
 import { startCollector, timelineSignature, type CollectorHandle } from '../../src/content/collector'
 
-/** 수집기는 뜨자마자 설정을 읽고 변경을 구독한다. chrome 이 없으면 그 자리에서 터진다. */
-function stubChrome(): void {
-  const area = { get: async () => ({}), set: async () => {} }
+/**
+ * 수집기는 뜨자마자 설정을 읽고 변경을 구독한다. chrome 이 없으면 그 자리에서 터진다.
+ * `stored` 로 넘긴 값이 그대로 저장돼 있던 설정이 된다.
+ */
+function stubChrome(stored: Partial<Settings> = {}): void {
+  const area = { get: async () => ({ 'x-deck:settings': stored }), set: async () => {} }
   ;(globalThis as unknown as { chrome: unknown }).chrome = {
     storage: {
       sync: area,
@@ -24,6 +28,11 @@ function stubChrome(): void {
       onChanged: { addListener: () => {}, removeListener: () => {} },
     },
   }
+}
+
+/** 수집기가 설정을 다 읽을 때까지 마이크로태스크를 흘려보낸다. */
+async function settle(): Promise<void> {
+  for (let step = 0; step < 5; step += 1) await Promise.resolve()
 }
 
 /** 홈 화면 최소 DOM. 탭 목록과 사이드바 홈 링크만 있으면 사다리가 다 돈다. */
@@ -80,16 +89,17 @@ describe('timelineSignature — 같은 목록인지 가리는 지문', () => {
   })
 })
 
-describe('강제 갱신 사다리', () => {
-  let messages: (FrameMessage | DeletedMessage)[]
-  let collector: CollectorHandle
+let messages: (FrameMessage | DeletedMessage)[]
 
-  /** 지금까지 알린 '강제 갱신 n/4: 수단' 문구만 차례대로 뽑는다. */
-  const rungs = (): string[] =>
-    messages
-      .filter((m) => m.type === 'status' && typeof m.message === 'string')
-      .map((m) => (m as { message: string }).message)
-      .filter((text) => text.startsWith('강제 갱신'))
+/** 지금까지 알린 '강제 갱신 n/4: 수단' 문구만 차례대로 뽑는다. */
+const rungs = (): string[] =>
+  messages
+    .filter((m) => m.type === 'status' && typeof m.message === 'string')
+    .map((m) => (m as { message: string }).message)
+    .filter((text) => text.startsWith('강제 갱신'))
+
+describe('강제 갱신 사다리', () => {
+  let collector: CollectorHandle
 
   beforeEach(() => {
     stubChrome()
@@ -147,5 +157,68 @@ describe('강제 갱신 사다리', () => {
       .filter((m) => m.type === 'status' && typeof m.message === 'string')
       .map((m) => (m as { message: string }).message)
     expect(notes).not.toContain('되살리지 못함 — 탭 새로고침이 필요합니다')
+  })
+})
+
+/**
+ * 컬럼별 절전은 **그 컬럼을 맡은 수집기가** 지켜야 한다.
+ *
+ * 전체 절전은 모든 수집기가 함께 잠들어서 어디서도 두드리지 않는다. 컬럼별은
+ * 다르다 — 옆 컬럼은 깨어 있으므로, 잠든 컬럼의 수집기 하나가 스스로 멈추지 않으면
+ * 아무 것도 달라지지 않는다.
+ */
+describe('컬럼별 절전', () => {
+  let collector: CollectorHandle | null = null
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    window.history.pushState({}, '', '/home')
+    renderHome()
+    messages = []
+  })
+
+  afterEach(() => {
+    collector?.dispose()
+    collector = null
+    vi.useRealTimers()
+  })
+
+  /** 유휴 갱신 간격(기본 2 분)을 훌쩍 넘겨 사다리가 돌 시간을 준다. */
+  const idleFor = async (ms: number): Promise<void> => {
+    await vi.advanceTimersByTimeAsync(ms)
+  }
+
+  it('멈춰둔 컬럼은 저절로 두드리지 않는다', async () => {
+    stubChrome({ powerSaveColumns: ['foryou'] })
+    collector = startCollector(['foryou'], (message) => messages.push(message))
+    await settle()
+    capture(timelineBody(['1', '2', '3']))
+
+    await idleFor(300_000)
+
+    expect(rungs()).toEqual([])
+  })
+
+  it('멈추지 않은 컬럼은 그대로 두드린다', async () => {
+    stubChrome({ powerSaveColumns: ['following'] })
+    collector = startCollector(['foryou'], (message) => messages.push(message))
+    await settle()
+    capture(timelineBody(['1', '2', '3']))
+
+    await idleFor(300_000)
+
+    expect(rungs().length).toBeGreaterThan(0)
+  })
+
+  /** 절전이 막는 것은 저절로 도는 일이지 사람이 누른 것이 아니다. */
+  it('멈춰뒀어도 사람이 누른 새로고침은 처리한다', async () => {
+    stubChrome({ powerSaveColumns: ['foryou'] })
+    collector = startCollector(['foryou'], (message) => messages.push(message))
+    await settle()
+    capture(timelineBody(['1', '2', '3']))
+
+    collector.command('foryou', 'refresh')
+
+    expect(rungs()).toEqual(['강제 갱신 1/4: 홈 링크 재클릭'])
   })
 })

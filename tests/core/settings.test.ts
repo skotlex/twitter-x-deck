@@ -5,6 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  acceptsNewItems,
   collectedKinds,
   DEFAULT_SETTINGS,
   isPowerSaving,
@@ -165,6 +166,30 @@ describe('컬럼별 절전', () => {
 
     it('전체 절전은 지정하지 않은 컬럼까지 멈춘다', () => {
       expect(isPowerSaving({ powerSave: true, powerSaveColumns: [] }, 'mentions')).toBe(true)
+    })
+  })
+
+  /**
+   * 멈추는 것만으로는 멈춰 있지 않다.
+   *
+   * 팔로잉 수집기가 자기 목록을 되찾으려고 홈 링크를 다시 누르거나 탭을 튕기면
+   * **추천 타임라인이 딸려 온다** — 홈의 기본 탭이 추천이기 때문이다. 청하지 않은
+   * 응답인데 귀속은 정확해서 그대로 추천 컬럼에 쌓였다. 컬럼별 절전을 켜도 추천이
+   * 계속 갱신되던 것이 이 자리다 (전체 절전에서는 옆 컬럼도 함께 잠들어 드러나지 않았다).
+   */
+  describe('acceptsNewItems — 그 컬럼에 새 글을 들일지', () => {
+    const asleep = { powerSave: false, powerSaveColumns: ['foryou' as const] }
+
+    it('멈춰둔 컬럼에는 옆 컬럼이 끌고 온 목록도 들이지 않는다', () => {
+      expect(acceptsNewItems(asleep, 'foryou', false)).toBe(false)
+    })
+
+    it('깨어 있는 컬럼은 그대로 들인다', () => {
+      expect(acceptsNewItems(asleep, 'following', false)).toBe(true)
+    })
+
+    it('사람이 새로고침을 누른 동안은 멈춰뒀어도 들인다', () => {
+      expect(acceptsNewItems(asleep, 'foryou', true)).toBe(true)
     })
   })
 })

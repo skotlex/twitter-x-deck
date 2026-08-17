@@ -215,6 +215,22 @@ export function isPowerSaving(settings: Savable, kind: TimelineKind): boolean {
 }
 
 /**
+ * 그 컬럼에 새 글을 들일지.
+ *
+ * **멈추는 것만으로는 멈춰 있지 않는다.** 담당 수집기가 두드리지 않아도, 옆 컬럼의
+ * 수집기가 자기 목록을 되찾으려고 홈 링크를 다시 누르거나 탭을 튕기면 **추천
+ * 타임라인이 딸려 온다** — 홈의 기본 탭이 추천이기 때문이다. 청하지 않은 응답인데
+ * 귀속은 정확해서 그대로 추천 컬럼에 쌓인다. 컬럼별 절전을 켜도 추천이 계속
+ * 갱신되던 것이 이 자리다. 전체 절전에서는 옆 컬럼도 함께 잠들어 있어 드러나지 않았다.
+ *
+ * 사람이 새로고침을 누른 동안은 들인다 — 절전이 막는 것은 저절로 도는 일이지
+ * 사용자의 조작이 아니다.
+ */
+export function acceptsNewItems(settings: Savable, kind: TimelineKind, refreshing: boolean): boolean {
+  return refreshing || !isPowerSaving(settings, kind)
+}
+
+/**
  * 컬럼 없이 종으로만 지켜보는 타임라인.
  *
  * 컬럼으로도 띄우고 있으면 뺀다 — 화면에 이미 보이는 것을 종에 또 세면 안 본 수가

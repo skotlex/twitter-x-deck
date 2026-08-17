@@ -17,7 +17,7 @@ import {
 } from '@core/messages'
 import { parseCreatedTweet, parseDeletedId, parseTimelinePayload } from '@core/parser'
 import { wasLoggedOut } from '@core/session'
-import { collectedKinds, isPowerSaving, type Settings } from '@core/settings'
+import { acceptsNewItems, collectedKinds, isPowerSaving, type Settings } from '@core/settings'
 import {
   isNotification,
   isNotificationKind,
@@ -250,6 +250,15 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
      * 컬럼에 대해서만 보내므로 걸러낼 것이 없다.
      */
     if (!collectedKinds(settingsRef.current).includes(kind)) return
+
+    /*
+     * 멈춰둔 컬럼에도 넣지 않는다. 같은 이유로 파싱 앞에 둔다.
+     *
+     * 담당 수집기를 세우는 것만으로는 컬럼이 멈추지 않는다 — 옆 컬럼의 수집기가
+     * 홈 링크를 다시 누르거나 탭을 튕기면 추천 타임라인이 딸려 오고, 귀속이 정확한
+     * 만큼 그대로 추천 컬럼에 쌓인다. 컬럼별 절전을 켜도 추천이 계속 갱신되던 자리다.
+     */
+    if (!acceptsNewItems(settingsRef.current, kind, columnsRef.current[kind].refreshing)) return
 
     // timeline: 파싱 → 저장 → 새로 들어온 것만 화면에 반영
     const capturedAt = Date.now()
@@ -496,6 +505,8 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     (kind: TimelineKind, options?: { quiet?: boolean }) => {
       // 자동 새로고침은 화면에 흔적을 남기지 않는다. 새 글이 있으면 그게 곧 응답이다.
       if (options?.quiet) {
+        // 멈춰둔 컬럼은 조용히도 두드리지 않는다 — 어차피 들이지 않을 응답이다.
+        if (isPowerSaving(settingsRef.current, kind)) return
         sendCommand(kind, 'refresh')
         return
       }
