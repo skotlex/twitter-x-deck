@@ -170,6 +170,11 @@ function QuotedTweet({
       <div className="mt-1.5 text-muted">
         <RichText text={tweet.text} className={`${textClass} line-clamp-6`} />
       </div>
+      {/*
+        인용된 글도 스스로 번역한다. 원문은 여섯 줄에서 잘리지만 번역은 글 전체를
+        옮겨 통째로 편다 — 잘린 뒤를 읽으려고 원문으로 나가게 두지 않는다.
+      */}
+      {translatable(tweet) && <TranslateBlock tweet={tweet} textClass={textClass} />}
       <MediaSlot
         media={tweet.media}
         mode={mediaMode}
