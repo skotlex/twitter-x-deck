@@ -169,6 +169,24 @@ export function App({ hostKind, onPassthrough }: AppProps) {
   }, [resolvedTheme, update])
 
   /**
+   * 컬럼 하나만 재우거나 깨운다.
+   *
+   * 전체 절전과 따로 논다 — 이쪽은 '이 컬럼은 원래 급하지 않다' 는 상시 지정이라,
+   * 상단 바의 번개를 껐다 켜도 그대로 남아 있어야 한다.
+   */
+  const columnPowerSave = settings.powerSaveColumns
+  const togglePowerSaveColumn = useCallback(
+    (kind: TimelineKind) => {
+      update({
+        powerSaveColumns: columnPowerSave.includes(kind)
+          ? columnPowerSave.filter((item) => item !== kind)
+          : [...columnPowerSave, kind],
+      })
+    },
+    [columnPowerSave, update],
+  )
+
+  /**
    * 내가 쓰거나 반응한 결과는 팔로잉 타임라인에 실린다. 그 컬럼만 조용히 다시 받아
    * 방금 한 일이 바로 보이게 한다 — 돌아가는 표시도 결과 안내도 내지 않는다.
    */
@@ -301,6 +319,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
                 onHold={collector.setHold}
                 onBusy={collector.setBusy}
                 onRefresh={collector.refresh}
+                onTogglePowerSave={togglePowerSaveColumn}
                 onLoadMore={handleLoadMore}
                 rotating={collector.rotating}
                 reorder={reorder}
@@ -322,6 +341,7 @@ export function App({ hostKind, onPassthrough }: AppProps) {
               onHold={collector.setHold}
               onBusy={collector.setBusy}
               onRefresh={collector.refresh}
+              onTogglePowerSave={togglePowerSaveColumn}
               onLoadMore={handleLoadMore}
               rotating={collector.rotating}
               onActed={handleActed}

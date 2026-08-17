@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Settings } from '@core/settings'
+import { isPowerSaving, type Settings } from '@core/settings'
 import { isNotification, TIMELINE_LABEL, type CollectorState, type TimelineKind } from '@core/types'
 import { ColumnActivityContext, type ColumnActivity } from '../columnActivity'
 import { ColumnPixelsContext, useMeasuredColumnPixels } from '../columnWidth'
@@ -7,7 +7,7 @@ import type { ColumnState } from '../hooks/useCollector'
 import { formatClock } from '../lib/format'
 import { NotificationCard } from './NotificationCard'
 import { TweetCard } from './TweetCard'
-import { ArrowUpIcon, RefreshIcon } from './icons'
+import { ArrowUpIcon, BoltIcon, RefreshIcon } from './icons'
 
 /** 상단으로 완전히 올라온 것으로 볼 여유 픽셀. */
 const TOP_THRESHOLD = 24
@@ -53,6 +53,8 @@ export interface DeckColumnProps {
   /** 이 컬럼에서 영상 재생·번역처럼 방해하면 안 되는 일이 도는지 알린다. */
   onBusy: (kind: TimelineKind, busy: boolean) => void
   onRefresh: (kind: TimelineKind) => void
+  /** 이 컬럼만 멈추거나 다시 돌린다. 전체 절전과는 따로 논다. */
+  onTogglePowerSave: (kind: TimelineKind) => void
   onLoadMore: (kind: TimelineKind) => void
   /** 최상위 문서가 탭을 교대로 방문하며 수집하는 중인지. */
   rotating: boolean
@@ -69,6 +71,7 @@ export function DeckColumn({
   onHold,
   onBusy,
   onRefresh,
+  onTogglePowerSave,
   onLoadMore,
   rotating,
   reorder,
@@ -138,6 +141,9 @@ export function DeckColumn({
   // 상태만으로는 멈춘 것을 알 수 없다 — 마지막으로 실제 글이 들어온 시각을 함께 짚는다.
   const seen = lastReceivedAt === null ? '아직 받은 글 없음' : `마지막 수신 ${formatClock(lastReceivedAt)}`
   const buffered = column.buffered.length
+  // 이 컬럼만 지정해 멈춘 것인지, 전체 스위치에 걸려 멈춘 것인지. 단추의 뜻이 갈린다.
+  const savingHere = settings.powerSaveColumns.includes(kind)
+  const saving = isPowerSaving(settings, kind)
   const dragging = reorder?.dragging ?? null
   // 자기 자신 위로는 놓을 수 없다 — 표시도 하지 않는다.
   const dropTarget = dragging !== null && dragging !== kind
@@ -227,10 +233,14 @@ export function DeckColumn({
           절전 중에는 새 글이 들어오지 않는다. 그 사실을 화면에 적어두지 않으면
           수집이 고장난 것과 구별되지 않는다 — 조용한 컬럼은 둘 다 똑같이 보인다.
         */}
-        {settings.powerSave && (
+        {saving && (
           <span
             className="rounded-full bg-button px-2 py-0.5 text-[11px] font-medium text-button-text"
-            title="절전 중입니다. 새 글을 받아오지 않습니다 — 상단 바의 번개를 끄거나 새로고침을 누르면 최신 글을 받아옵니다."
+            title={
+              settings.powerSave
+                ? '전체 절전 중입니다. 새 글을 받아오지 않습니다 — 상단 바의 번개를 끄거나 새로고침을 누르면 최신 글을 받아옵니다.'
+                : '이 컬럼만 절전 중입니다. 새 글을 받아오지 않습니다 — 옆의 번개를 끄거나 새로고침을 누르면 최신 글을 받아옵니다.'
+            }
           >
             절전
           </span>
@@ -251,16 +261,47 @@ export function DeckColumn({
           </span>
         )}
 
-        <button
-          type="button"
-          onClick={() => onRefresh(kind)}
-          disabled={column.refreshing}
-          className="ml-auto grid h-8 w-8 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-progress disabled:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-          aria-label={`${TIMELINE_LABEL[kind]} 새로 받기`}
-          title={column.refreshing ? '새 글을 받아오는 중' : `${TIMELINE_LABEL[kind]} 새로 받기`}
-        >
-          <RefreshIcon className={`h-4 w-4 ${column.refreshing ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="ml-auto flex items-center">
+          {/*
+            컬럼별 절전. 상단 바의 번개가 덱 전체를 한 번에 멈추는 스위치라면 이쪽은
+            컬럼 하나만 멈춘다 — 값이 가장 비싼 추천만 재워두고 멘션은 살려두는 식이다.
+            전체 절전이 켜져 있는 동안에는 이 지정이 결과를 바꾸지 못하므로 눌리지 않게 둔다.
+          */}
+          <button
+            type="button"
+            onClick={() => onTogglePowerSave(kind)}
+            disabled={settings.powerSave}
+            aria-pressed={saving}
+            className={`grid h-8 w-8 place-items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${
+              settings.powerSave
+                ? 'cursor-not-allowed bg-surface-3 text-muted'
+                : savingHere
+                  ? 'bg-button text-button-text hover:bg-button-strong'
+                  : 'text-muted hover:bg-surface-2 hover:text-text'
+            }`}
+            aria-label={savingHere ? `${TIMELINE_LABEL[kind]} 절전 끄기` : `${TIMELINE_LABEL[kind]} 절전 켜기`}
+            title={
+              settings.powerSave
+                ? '전체 절전이 켜져 있습니다 — 상단 바의 번개를 끄면 컬럼별로 지정할 수 있습니다'
+                : savingHere
+                  ? `${TIMELINE_LABEL[kind]} 절전 켜짐 — 이 컬럼만 새 글이 들어오지 않습니다. 누르면 최신 글을 받아옵니다`
+                  : `${TIMELINE_LABEL[kind]} 절전 — 이 컬럼만 새 글 받아오기를 멈춥니다`
+            }
+          >
+            <BoltIcon className="h-4 w-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onRefresh(kind)}
+            disabled={column.refreshing}
+            className="grid h-8 w-8 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-progress disabled:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            aria-label={`${TIMELINE_LABEL[kind]} 새로 받기`}
+            title={column.refreshing ? '새 글을 받아오는 중' : `${TIMELINE_LABEL[kind]} 새로 받기`}
+          >
+            <RefreshIcon className={`h-4 w-4 ${column.refreshing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </header>
 
       {state === 'blocked' && (

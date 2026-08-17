@@ -17,7 +17,7 @@ import {
 } from '@core/messages'
 import { parseCreatedTweet, parseDeletedId, parseTimelinePayload } from '@core/parser'
 import { wasLoggedOut } from '@core/session'
-import { collectedKinds, type Settings } from '@core/settings'
+import { collectedKinds, isPowerSaving, type Settings } from '@core/settings'
 import {
   isNotification,
   isNotificationKind,
@@ -447,11 +447,11 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
 
     const startedAt = Date.now()
     const timer = window.setInterval(() => {
-      // 절전 중에는 대신 훑지 않는다. 탭을 오가는 것이 곧 x.com 의 재렌더라,
-      // 절전이 막으려던 바로 그 값을 이쪽으로 다시 치르게 된다.
-      if (settingsRef.current.powerSave) return
       const now = Date.now()
       for (const kind of collectedKinds(settingsRef.current)) {
+        // 멈춰둔 컬럼은 대신 훑지 않는다. 탭을 오가는 것이 곧 x.com 의 재렌더라,
+        // 절전이 막으려던 바로 그 값을 이쪽으로 다시 치르게 된다.
+        if (isPowerSaving(settingsRef.current, kind)) continue
         if (hostOwns(kind)) continue
         const seen = frameSeen.current[kind]
         const lastAny = columnsRef.current[kind].status.lastReceivedAt

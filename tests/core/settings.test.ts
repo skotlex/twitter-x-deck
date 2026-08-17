@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   collectedKinds,
   DEFAULT_SETTINGS,
+  isPowerSaving,
   loadSettings,
   saveSettings,
   watchedKinds,
@@ -122,6 +123,49 @@ describe('절전', () => {
     const settings = await loadSettings()
     expect(settings.density).toBe('compact')
     expect(settings.columns).toEqual(['mentions'])
+  })
+})
+
+describe('컬럼별 절전', () => {
+  it('기본은 아무 컬럼도 지정돼 있지 않다', () => {
+    expect(DEFAULT_SETTINGS.powerSaveColumns).toEqual([])
+  })
+
+  it('이 항목이 없던 예전 저장값도 빈 목록으로 채운다', async () => {
+    sync.data.set(STORAGE_KEY, { powerSave: true })
+    expect((await loadSettings()).powerSaveColumns).toEqual([])
+  })
+
+  it('지정한 컬럼이 저장되고 다시 읽힌다', async () => {
+    await saveSettings({ powerSaveColumns: ['foryou'] })
+    expect((await loadSettings()).powerSaveColumns).toEqual(['foryou'])
+  })
+
+  /**
+   * 두 스위치는 따로 논다. 전체 절전을 껐다 켜는 동안 컬럼별 지정이 함께 지워지면
+   * '추천만 재워두기' 같은 상시 지정이 게임 한 번 할 때마다 풀린다.
+   */
+  it('전체 절전을 껐다 켜도 컬럼별 지정은 남는다', async () => {
+    await saveSettings({ powerSaveColumns: ['foryou'] })
+    await saveSettings({ powerSave: true })
+    await saveSettings({ powerSave: false })
+    expect((await loadSettings()).powerSaveColumns).toEqual(['foryou'])
+  })
+
+  describe('isPowerSaving — 그 컬럼이 멈춰 있는지', () => {
+    it('둘 다 꺼져 있으면 멈추지 않는다', () => {
+      expect(isPowerSaving({ powerSave: false, powerSaveColumns: [] }, 'foryou')).toBe(false)
+    })
+
+    it('컬럼별로 지정한 것만 멈춘다', () => {
+      const settings = { powerSave: false, powerSaveColumns: ['foryou' as const] }
+      expect(isPowerSaving(settings, 'foryou')).toBe(true)
+      expect(isPowerSaving(settings, 'mentions')).toBe(false)
+    })
+
+    it('전체 절전은 지정하지 않은 컬럼까지 멈춘다', () => {
+      expect(isPowerSaving({ powerSave: true, powerSaveColumns: [] }, 'mentions')).toBe(true)
+    })
   })
 })
 

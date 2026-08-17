@@ -21,7 +21,13 @@ import {
   type FrameMessage,
 } from '@core/messages'
 import { rememberLoggedOut } from '@core/session'
-import { DEFAULT_SETTINGS, loadSettings, watchSettings, type Settings } from '@core/settings'
+import {
+  DEFAULT_SETTINGS,
+  isPowerSaving,
+  loadSettings,
+  watchSettings,
+  type Settings,
+} from '@core/settings'
 import {
   DELETE_TWEET_OPERATION,
   isNotificationKind,
@@ -230,6 +236,25 @@ export function startCollector(
   /** 지금 선택돼 있어야 하는 타임라인. 대타 방문 중이면 그쪽이 우선한다. */
   const target = (): TimelineKind => priming ?? home()
 
+  /** 그 컬럼이 멈춰 있는지. 전체 스위치와 컬럼별 지정을 함께 본다. */
+  const saving = (kind: TimelineKind): boolean => isPowerSaving(settings, kind)
+
+  /**
+   * 교대 수집에서 다음으로 옮겨갈 자리. 갈 곳이 없으면 null.
+   *
+   * 멈춰둔 컬럼은 건너뛴다 — 탭을 옮기는 것이 곧 x.com 의 재렌더라, 보러 가는 것
+   * 자체가 절전이 막으려던 그 값이다. 지금 자리는 후보에서 뺀다. 자기 탭을 다시
+   * 눌러봐야 요청도 안 나가면서 확인 시계만 되감긴다.
+   */
+  function nextAwakeIndex(): number | null {
+    for (let step = 1; step < kinds.length; step += 1) {
+      const index = (activeIndex + step) % kinds.length
+      const kind = kinds[index]
+      if (kind && !saving(kind)) return index
+    }
+    return null
+  }
+
   function setState(next: CollectorState, message?: string): void {
     /*
      * 바뀐 것이 없어도 이따금 다시 알린다.
@@ -432,7 +457,8 @@ export function startCollector(
    * 담당 컬럼의 상태는 건드리지 않는다 — 어디까지나 대타다.
    */
   function prime(kind: TimelineKind): void {
-    if (paused || priming || kinds.includes(kind)) return
+    // 멈춰둔 컬럼은 대신 훑어주지도 않는다. 대타 방문도 결국 탭을 옮기는 일이다.
+    if (paused || priming || kinds.includes(kind) || saving(kind)) return
     const tab = findTab(kind)
     if (!tab) return
     const now = Date.now()
@@ -660,14 +686,17 @@ export function startCollector(
     }
 
     // 담당이 둘 이상이면 주기적으로 다음 탭으로 넘어간다.
-    // 절전 중에는 넘어가지 않는다 — 탭을 옮기는 것이 곧 x.com 의 재렌더다.
-    if (!priming && !settings.powerSave && kinds.length > 1 && now - lastRotateAt > ROTATE_MS) {
-      activeIndex = (activeIndex + 1) % kinds.length
-      lastRotateAt = now
-      lastForcedRefreshAt = now
-      const nextTab = findTab(target())
-      if (nextTab) simulateClick(nextTab)
-      return
+    // 멈춰둔 컬럼은 건너뛴다 — 탭을 옮기는 것이 곧 x.com 의 재렌더다.
+    if (!priming && kinds.length > 1 && now - lastRotateAt > ROTATE_MS) {
+      const next = nextAwakeIndex()
+      if (next !== null) {
+        activeIndex = next
+        lastRotateAt = now
+        lastForcedRefreshAt = now
+        const nextTab = findTab(target())
+        if (nextTab) simulateClick(nextTab)
+        return
+      }
     }
 
     /*
@@ -704,7 +733,7 @@ export function startCollector(
      */
     const pill = selected ? findRefreshPill() : null
     setPending(wanted, pill?.count ?? null)
-    if (pill && settings.autoAdvance && !settings.powerSave && now - lastPillClickAt > PILL_COOLDOWN_MS) {
+    if (pill && settings.autoAdvance && !saving(wanted) && now - lastPillClickAt > PILL_COOLDOWN_MS) {
       simulateClick(pill.element)
       lastPillClickAt = now
       report(pill.count === null ? '새 게시물 알림 클릭' : `새 게시물 알림 ${pill.count}건 클릭`)
@@ -738,7 +767,7 @@ export function startCollector(
      * 다시 만들라고 시키는 일이다. 다만 **사람이 방금 누른 것은 끝까지 처리한다.**
      * 절전이 막으려는 것은 저절로 도는 일이지 사용자의 조작이 아니다.
      */
-    const mayForce = hurrying || !settings.powerSave
+    const mayForce = hurrying || !saving(wanted)
     // 유휴 갱신을 꺼두었어도 사람이 누른 것은 끝까지 처리한다.
     if (!priming && mayForce && (hurrying || settings.idleRefreshMs > 0) && idleFor > wait) {
       forceRefresh()
@@ -750,11 +779,19 @@ export function startCollector(
     settings = loaded
   })
   const unwatch = watchSettings((next) => {
-    const woke = settings.powerSave && !next.powerSave
+    const before = settings
     settings = next
-    // 절전을 끄는 순간 밀어둔 것을 받아온다. 다음 유휴 갱신까지 기다리면 껐는데도
-    // 한참 동안 아무 일이 없어, 밀린 건수만 머리글에 남은 채로 멎은 것처럼 보인다.
-    if (woke && !paused) manualRefresh()
+    if (paused) return
+    /*
+     * 절전을 끄는 순간 밀어둔 것을 받아온다. 다음 유휴 갱신까지 기다리면 껐는데도
+     * 한참 동안 아무 일이 없어, 멈춘 것과 구별되지 않는다.
+     *
+     * 어느 컬럼이 깨어났는지까지 봐야 한다 — 전체 스위치와 컬럼별 지정이 따로
+     * 놀므로, 깬 것이 지금 보고 있는 탭이 아닐 수 있다. `command` 에 맡기면 그
+     * 탭으로 옮기는 것까지 함께 처리된다.
+     */
+    const woke = kinds.find((kind) => isPowerSaving(before, kind) && !saving(kind))
+    if (woke !== undefined) command(woke, 'refresh')
   })
 
   setState('loading')

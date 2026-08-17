@@ -137,6 +137,17 @@ export interface Settings {
    */
   powerSave: boolean
   /**
+   * 컬럼별 절전. 여기 든 타임라인만 새 글을 받아오지 않는다.
+   *
+   * 전체 절전(`powerSave`)이 '지금은 아무 것도 받지 마라' 는 순간 스위치라면 이쪽은
+   * '이 컬럼은 원래 급하지 않다' 는 상시 지정이다. 추천은 값이 가장 비싼데(영상이
+   * 많아 x.com 이 다시 그리는 값이 크다) 늘 새로 볼 필요는 없고, 멘션은 값이 싼데
+   * 놓치면 안 된다 — 그 둘을 한 스위치로 묶으면 어느 쪽이든 손해다.
+   *
+   * 둘 중 하나라도 켜져 있으면 그 컬럼은 멈춘다. 판정은 `isPowerSaving()` 한 곳에서만 한다.
+   */
+  powerSaveColumns: TimelineKind[]
+  /**
    * 사진 속 글자 번역을 쓸지. 켜도 브리지에 로그인이 확인되기 전에는 단추가 뜨지 않는다 —
    * 켜는 것과 쓸 수 있는 것은 다르다.
    */
@@ -179,6 +190,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fontFamily: '',
   autoMount: true,
   powerSave: false,
+  powerSaveColumns: [],
   imageTranslate: false,
   imageTranslateEngine: 'codex',
   codexOutput: 'image',
@@ -187,6 +199,20 @@ export const DEFAULT_SETTINGS: Settings = {
 
 /** 컬럼과 지켜보기를 가르는 데 필요한 만큼만 받는다 — 테스트에서 설정 전체를 짓지 않아도 된다. */
 type Watchable = Pick<Settings, 'columns' | 'watch'>
+
+/** 절전 판정에 필요한 만큼만 받는다. */
+type Savable = Pick<Settings, 'powerSave' | 'powerSaveColumns'>
+
+/**
+ * 그 컬럼이 지금 멈춰 있는지.
+ *
+ * 전체 스위치와 컬럼별 지정 중 **하나라도** 켜져 있으면 멈춘다. 판정을 여기 한 곳에
+ * 모아둔 것은 두 값을 각자 보는 자리가 늘어나면 어느 하나를 빠뜨리기 때문이다 —
+ * 수집기가 두드리지 않는데 화면에는 '수신 중' 이라고 적혀 있는 식으로 어긋난다.
+ */
+export function isPowerSaving(settings: Savable, kind: TimelineKind): boolean {
+  return settings.powerSave || settings.powerSaveColumns.includes(kind)
+}
 
 /**
  * 컬럼 없이 종으로만 지켜보는 타임라인.

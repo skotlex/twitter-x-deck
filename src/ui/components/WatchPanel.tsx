@@ -19,6 +19,7 @@ export interface WatchPanelProps {
   onHold: (kind: TimelineKind, hold: boolean) => void
   onBusy: (kind: TimelineKind, busy: boolean) => void
   onRefresh: (kind: TimelineKind) => void
+  onTogglePowerSave: (kind: TimelineKind) => void
   onLoadMore: (kind: TimelineKind) => void
   rotating: boolean
   onActed: () => void
@@ -46,6 +47,7 @@ export function WatchPanel({
   onHold,
   onBusy,
   onRefresh,
+  onTogglePowerSave,
   onLoadMore,
   rotating,
   onActed,
@@ -133,6 +135,7 @@ export function WatchPanel({
             onHold={onHold}
             onBusy={onBusy}
             onRefresh={onRefresh}
+            onTogglePowerSave={onTogglePowerSave}
             onLoadMore={onLoadMore}
             rotating={rotating}
             reorder={null}
