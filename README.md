@@ -152,7 +152,7 @@ npm run build      # dist/ 에 확장 번들을 생성합니다
 - 각 구독 요금제의 사용량을 씁니다. 같은 계정으로 다른 작업을 하고 있다면 한도를 나눠 쓰게 됩니다
 - 단추를 누른 그때에 한해 **사진 한 장** 이 각 회사 서버로 나갑니다 ([개인정보와 보안](#개인정보와-보안))
 
-잘 되지 않을 때의 세부(브리지 미등록, `~/.codex/config.toml` 오류, 로그인 풀림)는 [bridge/README.md](bridge/README.md) 에 있습니다.
+`~/.codex/config.toml` 이 지금 codex 판과 맞지 않아 codex 가 뜨지 못하면, 브리지가 문제가 된 줄을 꺼두고 다시 시도합니다 (고치기 전 파일은 `config.toml.bak` 에 남습니다). 그 밖에 잘 되지 않을 때의 세부(브리지 미등록, 로그인 풀림)는 [bridge/README.md](bridge/README.md) 에 있습니다.
 
 ### npm 스크립트
 
@@ -420,7 +420,7 @@ tests/
 ├─ core/          파서 · 설정 · 세션 힌트 테스트
 ├─ content/       선택자 판단 규칙 · 강제 갱신 사다리 테스트 (손으로 만든 DOM)
 ├─ ui/            표시 형식 · 안 본 수 세기 · 계정 읽기 · 카드 클릭 판정 테스트
-├─ bridge/        사진 번역 브리지가 실패를 옮겨 적는 문구 테스트
+├─ bridge/        사진 번역 브리지의 실패 문구 · codex 설정 자동 수리 테스트
 ├─ fixtures/      실제 x.com 화면을 떠 온 파일 (커밋하지 않습니다)
 └─ setup/         happy-dom 보정
 ```
@@ -437,6 +437,7 @@ tests/
 | [src/content/imageTranslate.ts](src/content/imageTranslate.ts) | 사진 번역 창구. 배경 워커를 거쳐 브리지에 말을 걸고, 쓸 수 있는 명령을 고릅니다 |
 | [bridge/host.mjs](bridge/host.mjs) | `codex` · `claude` 를 대신 부르는 네이티브 메시징 호스트. 로그인 판정도 여기서 합니다 |
 | [bridge/messages.mjs](bridge/messages.mjs) | 그 호스트가 실패를 사람 말로 옮기는 자리. 명령을 띄우지 않고 잴 수 있게 떼어 두었습니다 |
+| [bridge/codex-config.mjs](bridge/codex-config.mjs) | codex 가 자기 `config.toml` 때문에 못 뜰 때 그 줄을 꺼줍니다 (원본은 `.bak` 로 보관) |
 | [bridge/install.mjs](bridge/install.mjs) | 그 호스트를 브라우저에 등록·해제합니다 (최초 1회) |
 | [src/content/frameQueue.ts](src/content/frameQueue.ts) | 숨은 프레임 작업을 하나씩 줄 세웁니다 |
 | [src/content/frameBlock.ts](src/content/frameBlock.ts) | 프레임이 막힌 원인(CSP vs X-Frame-Options)을 가려내는 관측점 |

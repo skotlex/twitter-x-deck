@@ -9,6 +9,8 @@
  * 짚이는 것은 우리 문장으로 바꾸고, 정말 모르는 것만 원문을 덧붙인다.
  */
 
+import { configFault } from './codex-config.mjs'
+
 /**
  * 사람에게 보여줄 것이 못 되는 줄.
  *
@@ -48,15 +50,17 @@ function clip(text, limit = 160) {
 }
 
 /**
- * `config.toml` 이 지금 codex 판과 안 맞는 흔한 경우.
+ * `config.toml` 이 지금 codex 판과 안 맞아 codex 가 아예 뜨지 못한 경우.
  *
- * 값 하나가 어긋나면 codex 는 아예 뜨지 않는다. 남의 설정 파일을 말없이 고치지
- * 않는다 — 무엇을 고쳐야 하는지 그대로 올려보내고 판단은 사용자가 한다.
+ * 짚어준 줄을 꺼서 살려보는 것은 [codex-config.mjs](./codex-config.mjs) 가 먼저 한다.
+ * 여기까지 온 것은 그걸로도 안 되는 모양(표 머리, 여러 줄에 걸친 값, 줄 번호를 알려주지
+ * 않는 옛 말투)이라는 뜻이다. 그러면 무엇이 문제인지 그대로 올려보내고 판단은 사용자가 한다.
  */
 export function configComplaint(stderr) {
-  const match = /Error loading config\.toml:\s*(.+)/.exec(stderr)
-  if (!match) return null
-  return `~/.codex/config.toml 을 codex 가 읽지 못합니다 — ${match[1].trim()}`
+  const fault = configFault(stderr)
+  if (!fault) return null
+  const where = fault.line ? `${fault.line}번째 줄: ` : ''
+  return `~/.codex/config.toml 을 codex 가 읽지 못합니다 — ${where}${fault.detail}`
 }
 
 /** 실패를 우리 말로 옮긴다. */

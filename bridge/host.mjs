@@ -23,6 +23,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { REPAIR_LIMIT, configFault, repairConfigFile } from './codex-config.mjs'
 import { configComplaint, explain, firstLine, noImageReason } from './messages.mjs'
 
 /**
@@ -108,6 +109,27 @@ function run(command, args, timeoutMs, input) {
   })
 }
 
+/**
+ * codex 를 부른다. 설정 파일 때문에 못 뜨면 그 줄을 꺼주고 다시 부른다.
+ *
+ * `config.toml` 에 지금 판이 받아들이지 않는 값이 하나라도 있으면 codex 는 **어떤 명령도**
+ * 실행하지 않는다 — 로그인도, 상태 확인도, 번역도 같은 자리에서 멈춘다. 사용자 눈에는
+ * 확장이 고장 난 것으로 보이고, 설정 파일을 직접 열어 고치라는 안내는 대부분 읽히지 않는다.
+ * 그래서 codex 가 짚어준 줄만 꺼주고 곧바로 다시 부른다 (고치는 규칙은
+ * [codex-config.mjs](./codex-config.mjs)).
+ *
+ * 되풀이에는 끝이 있어야 한다. 껐는데도 같은 자리에서 또 넘어지면 우리가 잘못 짚은
+ * 것이므로, 몇 번 만에 손을 떼고 사정을 사용자에게 올려보낸다.
+ */
+async function runCodex(args, timeoutMs, input) {
+  let result = await run('codex', args, timeoutMs, input)
+  for (let attempt = 0; attempt < REPAIR_LIMIT; attempt += 1) {
+    const fault = configFault(result.stderr)
+    if (!fault || !repairConfigFile(fault)) break
+    result = await run('codex', args, timeoutMs, input)
+  }
+  return result
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 로그인 상태
@@ -129,7 +151,7 @@ function run(command, args, timeoutMs, input) {
  * 모델 호출이 나가 구독 사용량을 태웠다.** 묻기만 하는 명령으로 바꾼다.
  */
 async function probeCodex() {
-  const result = await run('codex', ['login', 'status'], PROBE_TIMEOUT_MS)
+  const result = await runCodex(['login', 'status'], PROBE_TIMEOUT_MS)
   const said = `${result.stdout}${result.stderr}`
 
   if (result.code === null && /ENOENT|not recognized|command not found/i.test(result.stderr)) {
@@ -279,8 +301,7 @@ const CODEX_PROMPT = [
 
 async function translateWithCodex(imagePath) {
   const before = snapshotGenerated()
-  const result = await run(
-    'codex',
+  const result = await runCodex(
     [
       'exec',
       '--skip-git-repo-check',
@@ -346,8 +367,7 @@ const CODEX_TEXT_PROMPT = [
 ].join('\n')
 
 async function translateWithCodexText(imagePath, fast) {
-  const result = await run(
-    'codex',
+  const result = await runCodex(
     [
       'exec',
       '--skip-git-repo-check',
@@ -530,6 +550,9 @@ async function handle(message) {
 
     if (type === 'login') {
       const engine = message.engine === 'claude' ? 'claude' : 'codex'
+      // 창을 띄우기 전에 설정부터 살려둔다. 저쪽 콘솔은 우리 눈에 보이지 않아서,
+      // 설정이 어긋나 있으면 사용자는 로그인 절차 대신 빨간 줄 하나만 보게 된다.
+      if (engine === 'codex') await runCodex(['login', 'status'], PROBE_TIMEOUT_MS)
       startLogin(engine)
       // 다음에 물으면 다시 재게 한다. 방금 로그인을 마쳤을 수 있다.
       statusCache = { at: 0, value: null }
