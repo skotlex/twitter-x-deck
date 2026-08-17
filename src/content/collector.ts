@@ -97,6 +97,36 @@ const LADDER_RUNGS = 4
  */
 const TIMELINE_MARKER_RE = /"(instructions|entryId|globalObjects)"/
 
+/** 목록 지문에 넣을 항목 수. 앞쪽 몇 개만 봐도 같은 목록인지는 갈린다. */
+const SIGNATURE_ENTRIES = 20
+const ENTRY_ID_RE = /"entryId"\s*:\s*"([^"]+)"/g
+
+/**
+ * 응답이 실어온 목록의 지문. 뽑을 것이 없으면 null.
+ *
+ * **응답이 온 것과 새 목록이 온 것은 다르다.** 이미 열려 있는 화면을 다시 두드리면
+ * x.com 은 대개 방금 준 것과 똑같은 목록을 한 번 더 준다. 그것을 성공으로 세면
+ * 사다리가 첫 칸에서 되감기기만 하고, 실제로 새 목록을 받아오는 뒷칸(탭 튕기기)까지
+ * 영영 올라가지 못한다 — 추천 컬럼이 첫 적재 뒤로 같은 글만 들고 있던 자리다.
+ *
+ * 커서는 같은 목록이어도 값이 매번 달라 뺀다. 광고 항목도 마찬가지로 매번 갈리므로
+ * 함께 뺀다 — 하나라도 섞이면 지문이 늘 달라져 아무 것도 가려내지 못한다.
+ *
+ * 뽑을 것이 하나도 없으면(항목 표시가 없는 옛 알림 경로 등) null 을 준다. 부르는 쪽은
+ * 그때 새 목록으로 친다 — 모르는 것을 같다고 우기면 갱신이 멎는 쪽으로 틀리게 된다.
+ */
+export function timelineSignature(body: string): string | null {
+  ENTRY_ID_RE.lastIndex = 0
+  const ids: string[] = []
+  for (let hit = ENTRY_ID_RE.exec(body); hit !== null; hit = ENTRY_ID_RE.exec(body)) {
+    const id = hit[1] ?? ''
+    if (id.startsWith('cursor-') || id.includes('promoted')) continue
+    ids.push(id)
+    if (ids.length >= SIGNATURE_ENTRIES) break
+  }
+  return ids.length > 0 ? ids.join(',') : null
+}
+
 /**
  * 응답이 어느 타임라인 것인지는 GraphQL operation 이름이 알려준다.
  * 지금 어느 탭이 열려 있는지 추측하는 것보다 정확하다.
@@ -155,14 +185,24 @@ export function startCollector(
    * 갱신된 근거로 쓰면 팔로잉은 영영 안 채워진 채 사다리만 제자리를 돈다.
    */
   const captures = new Map<TimelineKind, number>()
+  /** 컬럼별 마지막 목록 지문. 같은 목록을 다시 받은 것인지 가리는 데 쓴다. */
+  const signatures = new Map<TimelineKind, string>()
   /** 맡은 컬럼의 응답을 한 번이라도 받았는지. 상태를 '수신 중' 으로 올릴 유일한 근거다. */
   const receiving = (): boolean => kinds.some((kind) => captures.has(kind))
   let lastPillClickAt = 0
   let lastTabAssertAt = 0
   let lastRotateAt = Date.now()
   let lastForcedRefreshAt = Date.now()
-  /** 강제 갱신 사다리의 현재 칸. 담당 컬럼의 새 응답이 들어오면 0 으로 되돌린다. */
+  /** 강제 갱신 사다리의 현재 칸. 담당 컬럼에 **새 목록** 이 들어오면 0 으로 되돌린다. */
   let escalation = 0
+  /**
+   * 이번에 사다리를 오르는 동안 담당 컬럼의 응답이 한 번이라도 왔는지.
+   *
+   * 사다리 끝에서 문서를 다시 띄울지 가르는 기준이다. 응답이 오는데 내용만 그대로인
+   * 것은 문서가 죽은 게 아니라 x.com 에 내놓을 새 글이 없는 것이라, 다시 띄워봐야
+   * 같은 목록을 처음부터 받을 뿐이다.
+   */
+  let answered = false
   /** 사다리 끝의 재적재를 이미 걸었는지. 문서가 곧 사라지므로 두 번 걸 일이 없다. */
   let reloading = false
   /**
@@ -296,11 +336,25 @@ export function startCollector(
     // 알약은 여기서 손대지 않는다. 떠 있으면 tick 이 이미 눌러보고 있고,
     // 그것으로 안 되니 여기까지 온 것이다.
     const rungs = ladder()
-    const step = rungs[escalation]
-    if (!step) {
-      hardReload()
-      return
+    if (escalation >= rungs.length) {
+      /*
+       * 사다리를 다 밟았다.
+       *
+       * 오르는 내내 응답이 오고 있었다면 문서가 죽은 것이 아니라 x.com 이 내놓을 새
+       * 글이 없는 것이다. 다시 띄워봐야 같은 목록을 처음부터 받을 뿐이므로 맨 아래로
+       * 되돌려 같은 사다리를 한 번 더 오른다 — 마지막 칸까지 밟고 나면 사다리를 오르는
+       * 중이 아니게 되어, 다음 오름은 유휴 간격만큼 쉰 뒤에 시작된다.
+       */
+      if (!answered) {
+        hardReload()
+        return
+      }
+      escalation = 0
     }
+    const step = rungs[escalation]
+    if (!step) return
+    // 맨 아래 칸에서 다시 센다 — 이번 오름에서 응답을 봤는지가 다음 판단의 근거다.
+    if (escalation === 0) answered = false
     report(`강제 갱신 ${escalation + 1}/${rungs.length}: ${step.label}`)
     step.run()
     escalation = Math.min(escalation + 1, rungs.length)
@@ -516,13 +570,24 @@ export function startCollector(
 
     captures.set(role, capturedAt)
 
+    // 방금 준 것과 같은 목록인지 가린다. 같은 목록이면 두드림이 헛돈 것이다.
+    const signature = timelineSignature(event.data.body)
+    const renewed = signature === null || signatures.get(role) !== signature
+    if (signature !== null) signatures.set(role, signature)
+
     // 사다리와 유휴 시계는 **지금 채우려던 컬럼**의 응답으로만 되돌린다.
     // 다른 컬럼 것으로 되돌리면 헛돈 시도를 성공으로 읽어 같은 칸만 되풀이한다.
     if (role === target()) {
-      lastForcedRefreshAt = capturedAt
-      escalation = 0
-      // 새로고침이 통했다. 빠른 재시도 구간을 여기서 닫는다.
-      manualUntil = 0
+      // 응답이 왔다는 것만은 목록이 그대로여도 사실이다. 문서는 살아 있다.
+      answered = true
+      // 되돌리는 근거는 **새 목록** 하나뿐이다. 같은 목록을 다시 받은 것으로
+      // 되감으면 사다리가 첫 칸을 되풀이하며 뒷칸에 영영 닿지 못한다.
+      if (renewed) {
+        lastForcedRefreshAt = capturedAt
+        escalation = 0
+        // 새로고침이 통했다. 빠른 재시도 구간을 여기서 닫는다.
+        manualUntil = 0
+      }
     }
 
     setState('streaming')
@@ -715,6 +780,11 @@ export function startCollector(
       // 담당이 바뀌었으니 대타 방문은 의미가 없다. 새 담당 탭으로 돌아온다.
       endPrime()
       lastRotateAt = Date.now()
+      // 새 담당의 목록은 아직 한 번도 안 봤다. 남의 지문으로 '같은 목록' 판정을
+      // 내리지 않도록 비운다.
+      signatures.clear()
+      escalation = 0
+      answered = false
       // 새로 맡은 컬럼에도 현재 상태를 알려야 하므로 캐시를 비운다.
       states.clear()
       setState(receiving() ? 'streaming' : 'loading')

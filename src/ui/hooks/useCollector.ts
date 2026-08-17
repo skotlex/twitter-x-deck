@@ -42,8 +42,15 @@ const PRIME_QUIET_MS = 15_000
 const PRIME_STALE_MS = 90_000
 /** 대타 방문이 필요한지 살피는 주기. */
 const PRIME_CHECK_MS = 2_500
-/** 새로고침을 누른 뒤 응답을 기다리는 한계. */
-const REFRESH_TIMEOUT_MS = 8_000
+/**
+ * 새로고침을 누른 뒤 응답을 기다리는 한계.
+ *
+ * 수집기는 한 수단씩 밟아 올라간다 ([collector.ts](../../content/collector.ts) 의
+ * 사다리). 사람이 누른 뒤에는 2.5 초 간격으로 네 칸을 다 밟으므로, 마지막 칸이
+ * 응답을 물어올 때까지는 기다려야 한다 — 그 전에 '새 글 없음' 을 띄우면 바로 뒤에
+ * 글이 쏟아지는 것과 어긋난다.
+ */
+const REFRESH_TIMEOUT_MS = 14_000
 /** 새로고침 결과 안내를 띄워두는 시간. */
 const NOTE_MS = 4_000
 /** 보관 정책 적용 주기. */
