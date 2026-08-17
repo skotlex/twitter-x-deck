@@ -2,7 +2,7 @@
  * [playback.ts](../../src/core/playback.ts) 는 "이 영상을 세울 것인가" 만 정한다.
  *
  * 여기 있는 테스트는 전부 실제로 겪은 회귀에 대응한다. 특히 `createStopLedger` 는
- * 성능 트레이스에서 잡아낸 무한 왕복 — 우리가 세우면 x.com 이 다시 트는 것을
+ * 성능 트레이스에서 잡아낸 무한 왕복 — 우리가 손대면 x.com 이 다시 살리는 것을
  * 초당 170~640 번 되풀이하며 코어 하나를 태우던 것 — 을 막기 위한 자리다.
  */
 import { describe, expect, it } from 'vitest'
@@ -51,7 +51,7 @@ describe('isDeckMedia', () => {
 })
 
 describe('createStopLedger', () => {
-  it('한도까지는 세우고 그 뒤로는 포기한다', () => {
+  it('한도까지는 떼어내고 그 뒤로는 포기한다', () => {
     const ledger = createStopLedger(3)
     const media = {}
 

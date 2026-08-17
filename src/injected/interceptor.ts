@@ -11,6 +11,7 @@ import {
   isDeckHostDocument,
   isDeckPanelFrame,
   isMasked,
+  MASK_ATTR,
   OVERLAY_ID,
   readFrameRole,
   whenTrue,
@@ -195,7 +196,14 @@ function spoofVisibility(): void {
  * 1:1 로 맞물려 찍혔다. 초당 170 회, 최고 643 회로 47 초 내내 돌았다. 합성 갱신
  * 한 번이 0.52ms 에서 5.63ms 로 뛰어 그것만으로 코어의 60% 를 태웠다.
  *
- * 그래서 반응하지 않고 **애초에 시작하지 못하게** 한다. 아래 두 겹이다.
+ * **삼키는 것만으로도 안 된다.** 다음으로 `play()` 를 삼켜 이행된 프라미스만 돌려줬다.
+ * 왕복은 죽었지만 플레이어가 '재생 중' 이라고 믿은 채 눌러앉아, HLS 로더의 틱이
+ * 호스트 문서에서만 초당 246 회 돌며 매 프레임 스타일을 더럽혔다. 바뀐 것이 없는
+ * 화면에 대해 초당 136 번 합성을 다시 하고 63.8 초 동안 실제로 그린 것은 47 장이었다.
+ *
+ * 그래서 세우지도 삼키지도 말고 **떼어낸다.** 원본을 떼고 `load()` 로 되돌리면
+ * 플레이어는 `emptied` 를 받고 스스로 물러난다 — 트레이스에 x.com 의 `_onMediaEmptied`
+ * 가 찍혀 있어, 그 경로를 자기가 갖고 있다는 것은 확인된 사실이다.
  */
 function stopUnseenPlayback(role: TimelineKind | null): void {
   const ledger = createStopLedger()
@@ -204,21 +212,43 @@ function stopUnseenPlayback(role: TimelineKind | null): void {
   const unseen = (media: HTMLMediaElement): boolean =>
     blocksPlayback(role, isMasked()) && !isDeckMedia(media.getRootNode(), OVERLAY_ID)
 
-  /*
-   * 1) 재생 요청 자체를 삼킨다.
+  /**
+   * 원본을 떼어 플레이어가 붙잡을 것을 없앤다.
    *
-   * 이행된 프라미스를 돌려주면 x.com 은 재생에 성공한 줄 알고 재시도를 멈춘다.
-   * `onMediaPlaying` 이 뜨지 않으므로 왕복이 성립하지 않는다.
+   * `srcObject` 를 먼저 비우는 것이 핵심이다 — HLS 는 `MediaSource` 를 blob 주소로
+   * 물리므로 속성만 지우면 스트림이 그대로 남는다. `load()` 는 진행 중인 것을
+   * 중단하고 자원 선택을 다시 돌리는데, 물릴 것이 없으니 빈 상태로 떨어진다.
+   *
+   * `<source>` 자식은 건드리지 않는다. 그걸 쓰는 영상이라면 `load()` 가 거기서
+   * 다시 물어오지만, 지우면 x.com 의 React 가 자기가 만든 자식을 잃고 언마운트에서
+   * 터진다. 되살아나는 쪽은 아래 한도가 받아낸다.
+   */
+  const detach = (media: HTMLMediaElement): void => {
+    if (!unseen(media)) return
+    if (!ledger.allow(media)) return
+    media.autoplay = false
+    media.pause()
+    media.srcObject = null
+    media.removeAttribute('src')
+    media.load()
+  }
+
+  /*
+   * 1) 재생 요청을 받아 그 자리에서 떼어낸다.
+   *
+   * 이행된 프라미스를 돌려주는 것은 그대로 둔다. 여기서 거절하면 x.com 이 다시
+   * 시도하는 경로로 새는데, 그게 처음의 초당 643 회 왕복이었다.
    *
    * 덱 자신의 영상은 여기 닿지 않는다. 확장의 ISOLATED world 는 prototype 을 따로
    * 가지므로 덱이 부르는 `play()` 는 원래 것 그대로다. `isDeckMedia` 는 그래도
-   * 남겨 둔다 — 아래 2) 가 같은 판단을 쓰고, 덱이 light DOM 에 영상을 두게 되는
+   * 남겨 둔다 — 아래 2)·3) 이 같은 판단을 쓰고, 덱이 light DOM 에 영상을 두게 되는
    * 날 조용히 재생이 죽는 것을 막는다.
    */
   try {
     const original = HTMLMediaElement.prototype.play
     HTMLMediaElement.prototype.play = function patchedPlay(this: HTMLMediaElement) {
       if (!unseen(this) || ledger.gaveUp(this)) return original.call(this)
+      detach(this)
       return Promise.resolve()
     }
   } catch {
@@ -226,26 +256,40 @@ function stopUnseenPlayback(role: TimelineKind | null): void {
   }
 
   /*
-   * 2) 그래도 돌기 시작한 것은 세운다.
+   * 2) 그래도 돌기 시작한 것은 떼어낸다.
    *
    * `autoplay` 속성으로 시작하는 재생은 `play()` 를 거치지 않아 1) 이 못 잡는다.
    *
-   * 다만 무한정 세우지는 않는다. 어떤 경로로든 상대가 계속 되살리면 한도에서
-   * 손을 뗀다 — 그 영상 하나가 디코딩을 이어가는 값은, 초당 수백 번의 왕복이
-   * 만들던 값에 비하면 없는 것이나 같다.
+   * 다만 무한정 떼지는 않는다. 어떤 경로로든 상대가 계속 되살리면 한도에서 손을
+   * 뗀다 — 그 영상 하나가 디코딩을 이어가는 값은, 초당 수백 번의 왕복이 만들던
+   * 값에 비하면 없는 것이나 같다.
    */
-  document.addEventListener(
-    'play',
-    (event) => {
-      const media = event.target
-      if (!(media instanceof HTMLMediaElement)) return
-      if (!unseen(media)) return
-      if (!ledger.allow(media)) return
-      media.autoplay = false
-      media.pause()
-    },
-    true,
-  )
+  document.addEventListener('play', (event) => {
+    const media = event.target
+    if (media instanceof HTMLMediaElement) detach(media)
+  }, true)
+
+  /*
+   * 3) 덱이 화면을 덮는 순간, 이미 돌고 있던 것을 훑어 떼어낸다.
+   *
+   * 1)·2) 는 재생이 시작되는 순간을 잡는다. 덱이 뜨기 전에 이미 돌던 영상과,
+   * 통과 모드로 비켜서 있는 동안 사용자가 틀어둔 영상은 그 순간을 이미 지났다.
+   * 가림막이 걸리는 때가 곧 '아무도 안 보게 되는' 때이므로 거기서 한 번 훑는다.
+   *
+   * 수집 프레임은 처음부터 끝까지 아무도 안 보므로 가림막이 오갈 일이 없다.
+   */
+  if (role === null) {
+    let covered = isMasked()
+    new MutationObserver(() => {
+      const now = isMasked()
+      if (now === covered) return
+      covered = now
+      if (!now) return
+      for (const media of document.querySelectorAll('video,audio')) {
+        if (media instanceof HTMLMediaElement) detach(media)
+      }
+    }).observe(document.documentElement, { attributes: true, attributeFilter: [MASK_ATTR] })
+  }
 }
 
 function main(): void {
