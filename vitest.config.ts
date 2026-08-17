@@ -21,7 +21,8 @@ export default defineConfig({
     // 문서의 출처를 x.com 으로 둔다. 기본값(localhost)이면 셀렉터가 보는
     // `window.location.pathname` 을 테스트가 갈아 끼울 수 없다 — 교차 출처라 막힌다.
     environmentOptions: { happyDOM: { url: 'https://x.com/home' } },
-    include: ['tests/**/*.test.ts'],
+    // 브리지는 빌드 없이 도는 순수 Node 코드라 `.mjs` 다. 그쪽 테스트도 같은 확장자로 둔다.
+    include: ['tests/**/*.test.{ts,mjs}'],
     setupFiles: ['./tests/setup/dom.ts'],
   },
 })

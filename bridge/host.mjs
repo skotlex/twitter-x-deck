@@ -23,6 +23,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { configComplaint, explain, firstLine, noImageReason } from './messages.mjs'
 
 /**
  * 한 덩이로 보낼 수 있는 크기.
@@ -107,17 +108,6 @@ function run(command, args, timeoutMs, input) {
   })
 }
 
-/**
- * `config.toml` 이 지금 codex 판과 안 맞는 흔한 경우.
- *
- * 값 하나가 어긋나면 codex 는 아예 뜨지 않는다. 남의 설정 파일을 말없이 고치지
- * 않는다 — 무엇을 고쳐야 하는지 그대로 올려보내고 판단은 사용자가 한다.
- */
-function configComplaint(stderr) {
-  const match = /Error loading config\.toml:\s*(.+)/.exec(stderr)
-  if (!match) return null
-  return `~/.codex/config.toml 을 codex 가 읽지 못합니다 — ${match[1].trim()}`
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 로그인 상태
@@ -180,52 +170,6 @@ async function probeClaude() {
     return { installed: true, loggedIn: false, note: firstLine(result.stderr) || '실행에 실패했습니다.' }
   }
   return { installed: true, loggedIn: true }
-}
-
-/**
- * 사람에게 보여줄 만한 줄만 골라낸다.
- *
- * CLI 들은 stderr 로 잡소리를 많이 한다 — 진행 상황("Reading prompt from stdin..."),
- * 노드 경고, 모델 목록을 못 읽었다는 내부 로그 따위다. 그중 첫 줄을 집어 그대로
- * 올려보내면 진짜 실패 이유는 가려지고 영어 잡음만 사용자 앞에 뜬다.
- */
-const NOISE = [
-  /reading (prompt|additional input) from stdin/i,
-  /^\s*\(?node:\d+\)?/i,
-  /DeprecationWarning|ExperimentalWarning/i,
-  /codex_models_manager|failed to (load|refresh) models/i,
-  /^\s*$/,
-]
-
-function firstLine(text) {
-  return (
-    String(text ?? '')
-      .split('\n')
-      .map((line) => line.trim())
-      .find((line) => line.length > 0 && !NOISE.some((pattern) => pattern.test(line))) ?? ''
-  )
-}
-
-/**
- * 실패를 우리 말로 옮긴다.
- *
- * 남의 명령이 뱉은 영어를 그대로 올리면 읽는 사람이 무엇을 해야 할지 알 수 없다.
- * 짚이는 것은 우리 문장으로 바꾸고, 정말 모르는 것만 원문을 덧붙인다.
- */
-function explain(kind, result) {
-  const said = `${result.stdout}${result.stderr}`
-  if (result.timedOut) return `${kind} 가 시간 안에 끝내지 못했습니다.`
-  if (/rate limit|quota|usage limit|too many requests/i.test(said)) {
-    return `${kind} 의 사용량 한도에 걸렸습니다. 잠시 뒤 다시 시도하세요.`
-  }
-  if (/not logged in|please run|unauthor|authentication/i.test(said)) {
-    return `${kind} 로그인이 풀렸습니다. 설정에서 다시 로그인하세요.`
-  }
-  if (/ENOTFOUND|ECONNRESET|ETIMEDOUT|network|offline/i.test(said)) {
-    return `${kind} 가 서버에 닿지 못했습니다. 網 연결을 확인하세요.`.replace('網', '망')
-  }
-  const detail = firstLine(said)
-  return detail ? `${kind} 가 실패했습니다 — ${detail}` : `${kind} 가 실패했습니다.`
 }
 
 let statusCache = { at: 0, value: null }
@@ -366,7 +310,8 @@ async function translateWithCodex(imagePath) {
   if (!produced) {
     // 그림이 안 나온 것과 명령이 넘어진 것은 원인이 다르다. 넘어졌으면 그 사정을 옮겨준다.
     if (result.timedOut || result.code !== 0) throw new Error(explain('Codex', result))
-    throw new Error('Codex 가 번역된 이미지를 만들지 못했습니다. 다시 시도해 보세요.')
+    // 멀쩡히 끝났는데 그림만 없다. 사정은 codex 가 마지막으로 한 말에만 남아 있다.
+    throw new Error(noImageReason(result.stdout))
   }
 
   const bytes = readFileSync(produced)

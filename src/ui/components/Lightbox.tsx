@@ -352,7 +352,12 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
             )}
           </>
         )}
-        {error && <span className="truncate text-[12.5px] text-red-300">{error}</span>}
+        {/* 이유가 길 수 있다. 머리글은 한 줄이므로 잘리는 뒷부분은 툴팁으로 남긴다. */}
+        {error && (
+          <span title={error} className="min-w-0 truncate text-[12.5px] text-red-300">
+            {error}
+          </span>
+        )}
 
         <button
           type="button"

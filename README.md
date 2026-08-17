@@ -178,12 +178,13 @@ npm run build      # dist/ 에 확장 번들을 생성합니다
 npm run check      # 타입 검사 + 테스트
 ```
 
-재는 대상은 네 갈래입니다.
+재는 대상은 다섯 갈래입니다.
 
 - **응답 파싱** — [src/core/parser.ts](src/core/parser.ts) 가 GraphQL 응답을 제대로 옮기는지. 리포스트 · 인용 · 알림 · 폴백 판정처럼 조용히 깨지는 자리를 봅니다
 - **DOM 판단 규칙** — [src/content/selectors.ts](src/content/selectors.ts) 의 탭 찾기, 알약 판별, 주인공 게시물 고르기, 사진 클릭 가로채기 등을 손으로 만든 최소 DOM 으로 확인합니다
 - **순회 비용** — 매 초 도는 판정(로그인 여부 · 알약 찾기)이 타임라인 길이를 타지 않는지. 결과가 아니라 **게시물 안을 몇 번 만졌는지** 를 세므로, 답만 맞고 문서 전체를 훑는 구현은 걸러집니다
 - **설정 저장** — 확장을 다시 설치했을 때 지정해둔 값이 살아남는지, 예전 저장값이 지금 형태로 옮겨지는지
+- **브리지 문구** — 사진 번역이 실패했을 때 그 사정이 사용자에게까지 닿는지. `codex` 를 한 번도 띄우지 않고 잽니다
 
 셀렉터가 **실제 x.com 에 지금도 걸리는지** 는 손으로 만든 DOM 으로는 알 수 없습니다. 그건 진짜 화면을 떠 넣는 [tests/fixtures/](tests/fixtures/README.md) 쪽이 맡습니다. 픽스처에는 계정 정보가 들어 있어 저장소에 올리지 않으며, 없으면 해당 테스트만 건너뛰고 나머지는 그대로 돕니다. 뜨는 방법은 [tests/fixtures/README.md](tests/fixtures/README.md) 에 있습니다.
 
@@ -419,6 +420,7 @@ tests/
 ├─ core/          파서 · 설정 · 세션 힌트 테스트
 ├─ content/       선택자 판단 규칙 · 강제 갱신 사다리 테스트 (손으로 만든 DOM)
 ├─ ui/            표시 형식 · 안 본 수 세기 · 계정 읽기 · 카드 클릭 판정 테스트
+├─ bridge/        사진 번역 브리지가 실패를 옮겨 적는 문구 테스트
 ├─ fixtures/      실제 x.com 화면을 떠 온 파일 (커밋하지 않습니다)
 └─ setup/         happy-dom 보정
 ```
@@ -433,6 +435,7 @@ tests/
 | [src/content/papago.ts](src/content/papago.ts) | 번역 프레임 **안에서** 도는 스크립트. 글월을 받아 넣고 결과만 돌려줍니다 |
 | [src/content/imageTranslate.ts](src/content/imageTranslate.ts) | 사진 번역 창구. 배경 워커를 거쳐 브리지에 말을 걸고, 쓸 수 있는 명령을 고릅니다 |
 | [bridge/host.mjs](bridge/host.mjs) | `codex` · `claude` 를 대신 부르는 네이티브 메시징 호스트. 로그인 판정도 여기서 합니다 |
+| [bridge/messages.mjs](bridge/messages.mjs) | 그 호스트가 실패를 사람 말로 옮기는 자리. 명령을 띄우지 않고 잴 수 있게 떼어 두었습니다 |
 | [bridge/install.mjs](bridge/install.mjs) | 그 호스트를 브라우저에 등록·해제합니다 (최초 1회) |
 | [src/content/frameQueue.ts](src/content/frameQueue.ts) | 숨은 프레임 작업을 하나씩 줄 세웁니다 |
 | [src/content/frameBlock.ts](src/content/frameBlock.ts) | 프레임이 막힌 원인(CSP vs X-Frame-Options)을 가려내는 관측점 |
