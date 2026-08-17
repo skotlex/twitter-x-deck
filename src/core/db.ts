@@ -15,7 +15,7 @@ import {
 } from './types'
 
 const DB_NAME = 'x-deck'
-const DB_VERSION = 2
+const DB_VERSION = 3
 const STORE = 'tweets'
 
 /**
@@ -25,6 +25,15 @@ const STORE = 'tweets'
  * 청하지 않는 것이 여기서는 성능이 아니라 비용 문제다.
  */
 const TRANSLATION_STORE = 'imageTranslations'
+
+/**
+ * 한 번만 하면 되는 일의 완료 표식을 두는 자리. 지금은 쓰는 곳이 없다.
+ *
+ * 그래도 판 3 에 만들어 두는 이유는, 이 자리를 쓰던 코드가 다시 들어올 수 있어서다.
+ * 판 3 이 어떤 곳에서는 이 스토어가 있고 어떤 곳에서는 없는 상태가 되면, 되돌아온
+ * 코드가 `oldVersion === 3` 을 보고 만들기를 건너뛴 채 없는 스토어를 연다.
+ */
+const META_STORE = 'metadata'
 
 export interface StoredTranslation {
   /** 원본 이미지 주소. 그대로 열쇠로 쓴다. */
@@ -60,12 +69,16 @@ interface DeckSchema extends DBSchema {
     key: string
     value: StoredTranslation
   }
+  [META_STORE]: {
+    key: string
+    value: { key: string; done: boolean }
+  }
 }
 
 let dbPromise: Promise<IDBPDatabase<DeckSchema>> | null = null
 
-export function getDb(): Promise<IDBPDatabase<DeckSchema>> {
-  dbPromise ??= openDB<DeckSchema>(DB_NAME, DB_VERSION, {
+function open(): Promise<IDBPDatabase<DeckSchema>> {
+  return openDB<DeckSchema>(DB_NAME, DB_VERSION, {
     // 이미 쓰던 데이터베이스가 있을 수 있다. 어느 판에서 올라오는지를 보고 없는 것만 만든다 —
     // 조건 없이 만들면 기존 사용자의 첫 실행에서 곧바로 터진다.
     upgrade(db, oldVersion) {
@@ -77,7 +90,26 @@ export function getDb(): Promise<IDBPDatabase<DeckSchema>> {
       if (oldVersion < 2) {
         db.createObjectStore(TRANSLATION_STORE, { keyPath: 'url' })
       }
+      if (oldVersion < 3) {
+        db.createObjectStore(META_STORE, { keyPath: 'key' })
+      }
     },
+  })
+}
+
+export function getDb(): Promise<IDBPDatabase<DeckSchema>> {
+  /*
+   * 저장소가 코드보다 높은 판에 있으면 IndexedDB 는 여는 것 자체를 거절한다
+   * (`VersionError`). 확장을 이전 빌드로 되돌리면 곧바로 걸리는 자리이고, 여기서
+   * 터지면 읽기·쓰기가 전부 조용히 실패해 덱이 빈 채로 뜬다 — 글을 못 읽어오는
+   * 것처럼 보이지만 수집은 멀쩡히 돌고 있다.
+   *
+   * 스토어는 판이 오를 때 더해지기만 하므로, 높은 판을 그대로 여는 것은 안전하다.
+   * 판 번호를 대지 않고 다시 열어 있는 판에 맞춘다.
+   */
+  dbPromise ??= open().catch((error: unknown) => {
+    if (!(error instanceof DOMException) || error.name !== 'VersionError') throw error
+    return openDB<DeckSchema>(DB_NAME)
   })
   return dbPromise
 }
