@@ -11,15 +11,13 @@
  */
 import { createRoot } from 'react-dom/client'
 import css from '../ui/index.css?inline'
-import { isDeckScreen, isDeckTab, MASK_ATTR, readFrameRole, whenTrue } from '@core/role'
+import { isDeckScreen, isDeckTab, MASK_ATTR, OVERLAY_ID, readFrameRole, whenTrue } from '@core/role'
 import { loadSettings } from '@core/settings'
 import type { TimelineKind } from '@core/types'
 import { App } from '../ui/App'
 import { setHostCollector } from '../ui/hostCollector'
 import { startCollector } from './collector'
 import { watchFrameBlocks } from './frameBlock'
-
-const OVERLAY_ID = 'x-deck-overlay'
 
 /**
  * 덱이 화면을 덮는 동안 아래 x.com 을 잠재운다 — 스크롤을 잠그고, 그리지 않게 한다.

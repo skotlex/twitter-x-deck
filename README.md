@@ -273,7 +273,7 @@ x.com 은 `frame-ancestors 'self'` 로 임베드를 막는데, 이는 곧 **x.co
 
 살려두되 **그리지는 않습니다.** 수집기가 탭을 오갈 때마다 x.com 은 타임라인을 통째로 다시 그리는데, 덱에 가려 아무도 볼 수 없는 화면에 대해 레이아웃부터 페인트 · 사진 디코딩까지 전부 치릅니다. 그래서 덱이 덮고 있는 동안에는 `<body>` 를 `visibility: hidden` 으로 둡니다. 덱은 `<body>` 가 아니라 `<html>` 바로 아래에 붙으므로 함께 감춰지지 않습니다. 자리는 그대로 잡아두는 속성이라 화면상의 위치를 읽는 셀렉터(탭 찾기 · 알림 찾기)도 그대로 동작하고, `document.hidden` 과 무관하므로 폴링도 이어집니다. 통과 모드로 넘어가면 덮개를 걷습니다.
 
-**영상은 따로 세웁니다.** 그리지 않는 것만으로는 영상이 멈추지 않습니다 — 화면에 안 보여도 재생과 디코딩은 계속됩니다. 추천 타임라인은 영상이 많아 이 몫이 작지 않습니다. 그래서 수집 문서에서는 재생이 시작되는 순간(`play`)에 세웁니다. 덱 자신의 영상은 그림자 DOM 안에 있고 미디어 이벤트는 그 경계를 넘지 않으므로 영향받지 않으며, 덱에서 마우스를 올려 보는 미리보기는 그대로입니다. 통과 모드로 원본을 볼 때와 덱 안 창으로 띄운 게시물에서도 영상은 정상 재생됩니다.
+**영상은 아예 틀지 않습니다.** 그리지 않는 것만으로는 영상이 멈추지 않습니다 — 화면에 안 보여도 재생과 디코딩은 계속됩니다. 추천 타임라인은 영상이 많아 이 몫이 작지 않습니다. 그래서 수집 문서에서는 x.com 이 보내는 재생 요청을 받아 넘기지 않고 삼킵니다. 세웠다가 다시 트는 왕복이 생기지 않도록, 반응하는 대신 시작 자체를 막는 방식입니다. `autoplay` 속성으로 이미 돌기 시작한 영상은 세우되, 계속 되살아나면 정해진 횟수에서 손을 뗍니다. 덱 자신의 영상은 그림자 DOM 안에 있고 확장은 페이지와 다른 실행 환경을 쓰므로 영향받지 않으며, 덱에서 마우스를 올려 보는 미리보기는 그대로입니다. 통과 모드로 원본을 볼 때와 덱 안 창으로 띄운 게시물에서도 영상은 정상 재생됩니다.
 
 ### 수집 경로
 
@@ -439,12 +439,13 @@ tests/
 | [bridge/install.mjs](bridge/install.mjs) | 그 호스트를 브라우저에 등록·해제합니다 (최초 1회) |
 | [src/content/frameQueue.ts](src/content/frameQueue.ts) | 숨은 프레임 작업을 하나씩 줄 세웁니다 |
 | [src/content/frameBlock.ts](src/content/frameBlock.ts) | 프레임이 막힌 원인(CSP vs X-Frame-Options)을 가려내는 관측점 |
-| [src/injected/interceptor.ts](src/injected/interceptor.ts) | 타임라인 응답만 복제해 넘기고, 문서를 '보임' 상태로 유지합니다 |
+| [src/injected/interceptor.ts](src/injected/interceptor.ts) | 타임라인 응답만 복제해 넘기고, 문서를 '보임' 상태로 유지하며, 아무도 보지 않는 영상을 틀지 않습니다 |
 | [src/core/parser.ts](src/core/parser.ts) | GraphQL 응답을 `Tweet` · `DeckNotification` 으로 정규화합니다 |
 | [src/core/db.ts](src/core/db.ts) | IndexedDB 영속 저장과 보관 정책 |
 | [src/core/settings.ts](src/core/settings.ts) | 설정 스키마 · 저장 · 마이그레이션 |
 | [src/core/types.ts](src/core/types.ts) | 컬럼 종류와 데이터 모델의 단일 정의 |
 | [src/core/role.ts](src/core/role.ts) | 이 문서가 덱인지 · 어느 컬럼 담당인지의 판정. 덱과 인터셉터가 함께 씁니다 |
+| [src/core/playback.ts](src/core/playback.ts) | 어느 영상을 틀지 않을지의 판정. 인터셉터가 씁니다 |
 | [src/ui/](src/ui/) | 덱 UI. x.com DOM 을 아는 코드가 한 줄도 없습니다 |
 
 `@core` · `@ui` 경로 별칭을 사용하며, Vite 와 esbuild 양쪽에 같은 별칭을 등록해 두었습니다.

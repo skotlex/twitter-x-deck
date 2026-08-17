@@ -52,6 +52,12 @@ export function isMasked(): boolean {
   return document.documentElement.hasAttribute(MASK_ATTR)
 }
 
+/**
+ * 덱 오버레이를 얹는 요소의 id. MASK_ATTR 과 같은 이유로 여기 있다 —
+ * 덱을 세우는 쪽(ISOLATED)과 영상을 가려내는 쪽(MAIN)이 같은 값을 봐야 한다.
+ */
+export const OVERLAY_ID = 'x-deck-overlay'
+
 const SESSION_KEY = 'xdeck:role'
 
 /** 컬럼 종류 목록에서 직접 확인한다. 종류가 늘 때 여기를 빠뜨리면 그 프레임은 조용히 죽는다. */

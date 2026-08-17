@@ -6,7 +6,15 @@
  * 페이지 컨텍스트라 chrome API 를 못 쓰므로 결과는 postMessage 로 브리지에 넘긴다.
  */
 import { CHANNEL, type CapturedPayload } from '@core/messages'
-import { isDeckHostDocument, isDeckPanelFrame, isMasked, readFrameRole, whenTrue } from '@core/role'
+import { blocksPlayback, createStopLedger, isDeckMedia } from '@core/playback'
+import {
+  isDeckHostDocument,
+  isDeckPanelFrame,
+  isMasked,
+  OVERLAY_ID,
+  readFrameRole,
+  whenTrue,
+} from '@core/role'
 import {
   CREATE_TWEET_OPERATION,
   DELETE_TWEET_OPERATION,
@@ -173,7 +181,7 @@ function spoofVisibility(): void {
 }
 
 /**
- * 아무도 보지 않는 영상을 돌기 시작하는 즉시 세운다.
+ * 아무도 보지 않는 영상을 틀지 않는다.
  *
  * `visibility:hidden` 은 그리기를 건너뛰게 하지만 **영상 디코딩은 못 막는다.** 화면에
  * 안 보여도 재생은 계속된다 (백그라운드 탭에서 소리가 계속 나는 것과 같다). 게다가
@@ -181,27 +189,58 @@ function spoofVisibility(): void {
  * 추천 타임라인은 영상이 많아, 실제로 재던 값의 절반쯤이 여기였다 — x.com 설정에서
  * 자동재생을 끄자 새로고침 CPU 가 80~90% 에서 40~50% 로 떨어졌다.
  *
- * `play` 이벤트를 잡는다. 자동재생이든 코드가 부른 것이든 재생이 시작되면 반드시
- * 발생하므로 경로를 가리지 않는다. `autoplay` 도 함께 꺼서 브라우저가 다시 틀지
- * 않게 한다.
+ * **세우는 것으로는 안 된다.** 처음에는 `play` 이벤트를 잡아 그 자리에서 `pause()`
+ * 했다. x.com 플레이어는 정지를 알아채면 곧바로 다시 튼다 — 성능 트레이스에서
+ * 우리 리스너 9,037 회 · x.com 의 `onPause` 9,036 회 · `onMediaPlaying` 9,027 회가
+ * 1:1 로 맞물려 찍혔다. 초당 170 회, 최고 643 회로 47 초 내내 돌았다. 합성 갱신
+ * 한 번이 0.52ms 에서 5.63ms 로 뛰어 그것만으로 코어의 60% 를 태웠다.
  *
- * **덱 자신의 영상은 걸리지 않는다.** 미디어 이벤트는 `composed: false` 라 그림자 DOM
- * 경계를 넘지 못한다. 덱의 영상은 그림자 DOM 안에 있어 이 리스너에 닿지 않고,
- * x.com 의 영상은 light DOM 이라 닿는다 — 따로 가려낼 코드가 필요 없다.
+ * 그래서 반응하지 않고 **애초에 시작하지 못하게** 한다. 아래 두 겹이다.
  */
 function stopUnseenPlayback(role: TimelineKind | null): void {
+  const ledger = createStopLedger()
+
+  /** 이 영상은 아무도 안 보는가. 통과 모드는 오갈 수 있어 부를 때마다 다시 본다. */
+  const unseen = (media: HTMLMediaElement): boolean =>
+    blocksPlayback(role, isMasked()) && !isDeckMedia(media.getRootNode(), OVERLAY_ID)
+
+  /*
+   * 1) 재생 요청 자체를 삼킨다.
+   *
+   * 이행된 프라미스를 돌려주면 x.com 은 재생에 성공한 줄 알고 재시도를 멈춘다.
+   * `onMediaPlaying` 이 뜨지 않으므로 왕복이 성립하지 않는다.
+   *
+   * 덱 자신의 영상은 여기 닿지 않는다. 확장의 ISOLATED world 는 prototype 을 따로
+   * 가지므로 덱이 부르는 `play()` 는 원래 것 그대로다. `isDeckMedia` 는 그래도
+   * 남겨 둔다 — 아래 2) 가 같은 판단을 쓰고, 덱이 light DOM 에 영상을 두게 되는
+   * 날 조용히 재생이 죽는 것을 막는다.
+   */
+  try {
+    const original = HTMLMediaElement.prototype.play
+    HTMLMediaElement.prototype.play = function patchedPlay(this: HTMLMediaElement) {
+      if (!unseen(this) || ledger.gaveUp(this)) return original.call(this)
+      return Promise.resolve()
+    }
+  } catch {
+    // 재정의가 막힌 환경이면 아래 2) 만으로 버틴다.
+  }
+
+  /*
+   * 2) 그래도 돌기 시작한 것은 세운다.
+   *
+   * `autoplay` 속성으로 시작하는 재생은 `play()` 를 거치지 않아 1) 이 못 잡는다.
+   *
+   * 다만 무한정 세우지는 않는다. 어떤 경로로든 상대가 계속 되살리면 한도에서
+   * 손을 뗀다 — 그 영상 하나가 디코딩을 이어가는 값은, 초당 수백 번의 왕복이
+   * 만들던 값에 비하면 없는 것이나 같다.
+   */
   document.addEventListener(
     'play',
     (event) => {
       const media = event.target
       if (!(media instanceof HTMLMediaElement)) return
-      /*
-       * 수집 프레임의 영상은 어떤 경우에도 사람이 보지 않는다.
-       *
-       * 덱이 얹힌 문서는 다르다 — 통과 모드로 비켜서면 그 아래 x.com 을 실제로
-       * 보고 쓰는 중이다. 그때 영상을 세우면 원본에서 영상을 못 보게 된다.
-       */
-      if (role === null && !isMasked()) return
+      if (!unseen(media)) return
+      if (!ledger.allow(media)) return
       media.autoplay = false
       media.pause()
     },
