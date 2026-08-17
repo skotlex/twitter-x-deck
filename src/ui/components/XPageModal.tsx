@@ -3,8 +3,9 @@ import { isDeletedMessage } from '@core/messages'
 import { parseDeletedId } from '@core/parser'
 import { PAGE_FRAME_NAME } from '@core/role'
 import { describeFrameBlock, refreshRuleReport } from '../../content/frameBlock'
-import { HIDE_X_CHROME_CSS } from '../../content/selectors'
+import { findPhotoTarget, HIDE_X_CHROME_CSS, type PhotoHit } from '../../content/selectors'
 import { CloseIcon } from './icons'
+import { Lightbox } from './Lightbox'
 
 /**
  * 창 폭. x.com 게시물 칸(600px) 에 스크롤바와 여백만 더한 값이다.
@@ -33,17 +34,26 @@ export function XPageModal({ url, handle, label = '님의 게시물', onClose }:
   const [blocked, setBlocked] = useState(false)
   /** 막혔을 때 왜 막혔는지. 규칙이 안 걸린 것과 조건이 비껴간 것은 손볼 자리가 다르다. */
   const [why, setWhy] = useState<string | null>(null)
+  /** 프레임 안에서 눌러 가로챈 사진. 있으면 덱의 라이트박스로 띄운다. */
+  const [photos, setPhotos] = useState<PhotoHit | null>(null)
+  /** 프레임 문서에 걸어둔 사진 가로채기를 떼는 손잡이. 문서가 갈리면 다시 건다. */
+  const dropPhotoHook = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     // 오버레이가 키 이벤트를 x.com 쪽으로 못 가게 끊으므로 캡처 단계로 받는다.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      // 사진을 띄워둔 동안의 Esc 는 사진만 닫는 것이다. 여기서 함께 받으면 뒤에 있던
+      // 게시물 창까지 한 번에 사라진다.
+      if (event.key !== 'Escape' || photos) return
       event.preventDefault()
       onClose()
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose])
+  }, [onClose, photos])
+
+  // 창이 사라질 때 프레임 문서에 남은 것을 거둔다.
+  useEffect(() => () => dropPhotoHook.current?.(), [])
 
   /**
    * 보고 있던 글이 지워지면 스스로 닫는다.
@@ -91,6 +101,29 @@ export function XPageModal({ url, handle, label = '님의 게시물', onClose }:
     }
     setBlocked(false)
 
+    /*
+     * 사진 클릭을 우리 쪽으로 가져온다.
+     *
+     * 캡처 단계로 받아야 한다. x.com 은 문서 안쪽에서 클릭을 듣고 자기 사진 보기로
+     * 넘어가므로, 거기까지 내려가기 전에 끊어야 우리 라이트박스가 뜬다. 사진이 아닌
+     * 클릭은 손대지 않고 그대로 흘려보낸다 — 답글도 프로필도 저쪽 화면이 맡는다.
+     */
+    const onFrameClick = (event: MouseEvent) => {
+      // 새 탭으로 열려는 것(가운데 단추·보조키)은 본래 뜻대로 둔다.
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return
+      }
+      const hit = findPhotoTarget(event.target)
+      if (!hit) return
+      event.preventDefault()
+      event.stopPropagation()
+      setPhotos(hit)
+    }
+    dropPhotoHook.current?.()
+    doc.addEventListener('click', onFrameClick, true)
+    const frameDoc = doc
+    dropPhotoHook.current = () => frameDoc.removeEventListener('click', onFrameClick, true)
+
     // 껍데기 감추기는 덤이다. 여기서 넘어져도 게시물은 그대로 보여야 하므로
     // 프레임을 못 띄운 것으로 취급하지 않는다.
     try {
@@ -106,65 +139,80 @@ export function XPageModal({ url, handle, label = '님의 게시물', onClose }:
   }, [])
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`@${handle} ${label}`}
-      onClick={onClose}
-      className="animate-fade fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4 backdrop-blur-sm"
-    >
+    <>
       <div
-        onClick={(event) => event.stopPropagation()}
-        className={`flex h-[880px] max-h-full ${WIDTH} max-w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl shadow-black/40`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`@${handle} ${label}`}
+        onClick={onClose}
+        className="animate-fade fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4 backdrop-blur-sm"
       >
-        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
-          <span className="truncate text-[14px] font-semibold text-text">
-            <span className="text-accent">@{handle}</span> {label}
-          </span>
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="ml-auto shrink-0 text-[12.5px] text-faint transition-colors hover:text-accent"
-          >
-            새 탭에서 열기
-          </a>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="닫기"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-text"
-          >
-            <CloseIcon className="h-4.5 w-4.5" />
-          </button>
-        </header>
+        <div
+          onClick={(event) => event.stopPropagation()}
+          className={`flex h-[880px] max-h-full ${WIDTH} max-w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl shadow-black/40`}
+        >
+          <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
+            <span className="truncate text-[14px] font-semibold text-text">
+              <span className="text-accent">@{handle}</span> {label}
+            </span>
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="ml-auto shrink-0 text-[12.5px] text-faint transition-colors hover:text-accent"
+            >
+              새 탭에서 열기
+            </a>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="닫기"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-text"
+            >
+              <CloseIcon className="h-4.5 w-4.5" />
+            </button>
+          </header>
 
-        {blocked ? (
-          <div className="grid flex-1 place-items-center px-8 text-center">
-            <div>
-              <p className="text-[14px] text-text">덱 안에 띄우지 못했습니다.</p>
-              {why && <p className="mt-1.5 text-[12px] leading-relaxed text-faint">{why}</p>}
-              <a
-                href={url}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="mt-3 inline-block rounded-lg bg-button px-3 py-1.5 text-[13px] font-semibold text-button-text transition-colors hover:bg-button-strong"
-              >
-                새 탭에서 보기
-              </a>
+          {blocked ? (
+            <div className="grid flex-1 place-items-center px-8 text-center">
+              <div>
+                <p className="text-[14px] text-text">덱 안에 띄우지 못했습니다.</p>
+                {why && <p className="mt-1.5 text-[12px] leading-relaxed text-faint">{why}</p>}
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="mt-3 inline-block rounded-lg bg-button px-3 py-1.5 text-[13px] font-semibold text-button-text transition-colors hover:bg-button-strong"
+                >
+                  새 탭에서 보기
+                </a>
+              </div>
             </div>
-          </div>
-        ) : (
-          <iframe
-            ref={frameRef}
-            name={PAGE_FRAME_NAME}
-            src={url}
-            title={`@${handle} ${label}`}
-            onLoad={handleLoad}
-            className="min-h-0 flex-1 border-0 bg-canvas"
-          />
-        )}
+          ) : (
+            <iframe
+              ref={frameRef}
+              name={PAGE_FRAME_NAME}
+              src={url}
+              title={`@${handle} ${label}`}
+              onLoad={handleLoad}
+              className="min-h-0 flex-1 border-0 bg-canvas"
+            />
+          )}
+        </div>
       </div>
-    </div>
+
+      {/*
+        게시물 창 **밖** 에 둔다. 안에 넣으면 사진 배경을 눌렀을 때 그 클릭이 창의
+        바깥 판까지 올라가, 사진만 닫으려던 것이 게시물 창까지 함께 닫는다.
+      */}
+      {photos && (
+        <Lightbox
+          media={photos.media}
+          startIndex={photos.index}
+          sourceUrl={photos.sourceUrl}
+          onClose={() => setPhotos(null)}
+        />
+      )}
+    </>
   )
 }

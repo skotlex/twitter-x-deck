@@ -5,7 +5,7 @@
  * 수리할 때 다른 파일을 건드릴 일이 없도록 전부 이 모듈에만 둔다.
  * 각 함수는 선택자 여러 개를 순서대로 시도하고, 마지막에는 텍스트 기반으로 찾아낸다.
  */
-import { isNotificationKind, type TimelineKind, type ViewerInfo } from '@core/types'
+import { isNotificationKind, type TimelineKind, type TweetMedia, type ViewerInfo } from '@core/types'
 
 /** 탭 라벨 후보. 언어 설정이 무엇이든 걸리도록 주요 로케일을 넣어둔다. */
 const TAB_LABELS: Record<TimelineKind, string[]> = {
@@ -316,6 +316,100 @@ header[role="banner"],
 [data-testid="BottomBar"] { display: none !important; }
 [data-testid="primaryColumn"] { max-width: 100% !important; border: 0 !important; margin: 0 auto !important; }
 `
+
+/** 덱 안 상세 창에서 사진을 눌렀을 때 라이트박스에 넘길 것. */
+export interface PhotoHit {
+  /** 그 게시물의 사진 묶음. 화살표로 넘길 수 있게 한 글의 것을 전부 모은다. */
+  media: TweetMedia[]
+  /** 그중 방금 누른 사진의 자리. */
+  index: number
+  /** 그 사진이 실린 게시물 주소. */
+  sourceUrl: string
+}
+
+/** `/handle/status/123/photo/2` 에서 글 주소와 사진 번호를 가른다. */
+const PHOTO_HREF_RE = /^(\/[^/]+\/status\/\d+)\/photo\/(\d+)$/
+
+/**
+ * 이벤트가 가리킨 것을 요소로 받는다.
+ *
+ * `instanceof Element` 로 가리면 안 된다. 이 판정은 **프레임 안** 문서에서 일어난
+ * 클릭에 쓰는데, 프레임의 요소는 덱 쪽 `Element` 의 인스턴스가 아니라서 (실행 환경이
+ * 다르다) 멀쩡한 사진을 눌러도 늘 아닌 것으로 떨어진다. 쓸 수 있는지만 본다.
+ */
+function asElement(node: EventTarget | null): Element | null {
+  const candidate = node as Element | null
+  return candidate && typeof candidate.closest === 'function' ? candidate : null
+}
+
+/** 사진 링크가 어느 글의 몇 번째 사진인지. 사진 링크가 아니면 null. */
+function readPhotoRef(link: HTMLAnchorElement): { status: string; index: number } | null {
+  const match = PHOTO_HREF_RE.exec(link.pathname)
+  if (!match?.[1] || !match[2]) return null
+  return { status: match[1], index: Number.parseInt(match[2], 10) }
+}
+
+/**
+ * 사진 링크가 감싼 그림.
+ *
+ * 링크가 그림을 직접 품지 않고 그림 위에 겹쳐 놓이는 판도 있어, 그때는 같은 사진 칸
+ * 안에서 찾는다. 크기는 아직 다 받지 못했으면 0 이 오는데 라이트박스는 쓰지 않는 값이라
+ * 그대로 둔다.
+ */
+function readPhotoMedia(link: HTMLAnchorElement): TweetMedia | null {
+  const img =
+    link.querySelector<HTMLImageElement>('img[src]') ??
+    link.closest('[data-testid="tweetPhoto"]')?.querySelector<HTMLImageElement>('img[src]') ??
+    null
+  const previewUrl = img?.src ?? ''
+  if (!img || !previewUrl || previewUrl.startsWith('data:')) return null
+  return {
+    kind: 'photo',
+    previewUrl,
+    width: img.naturalWidth || 0,
+    height: img.naturalHeight || 0,
+    altText: img.alt || undefined,
+  }
+}
+
+/**
+ * 상세 창 안에서 누른 사진이 무엇인지 가려낸다.
+ *
+ * x.com 에 그대로 맡기면 사진은 그 창 크기 안에서만 커진다 — 창은 게시물 칸에 맞춰
+ * 좁게 잡아둔 것이라, 정작 사진을 크게 볼 수도 사진 번역을 걸 수도 없다. 그래서
+ * 사진만은 이쪽이 가로채 덱의 라이트박스로 띄운다.
+ *
+ * 묶음은 **한 글 단위**로 모은다. 인용글의 사진은 같은 article 안에 있어도 다른 글의
+ * 것이라, 주소의 글 부분이 같은 것만 담는다 — 안 그러면 원글을 보다 화살표를 눌렀을 때
+ * 인용글 사진이 딸려 나온다.
+ *
+ * 동영상·GIF 는 걸리지 않는다. 저쪽에 사진 주소가 붙지 않아 자연히 빠지고, 그편이
+ * 맞다 — 재생은 x.com 이 그 자리에서 하는 편이 낫다.
+ */
+export function findPhotoTarget(node: EventTarget | null): PhotoHit | null {
+  const link = asElement(node)?.closest<HTMLAnchorElement>('a[href*="/photo/"]')
+  const clicked = link ? readPhotoRef(link) : null
+  if (!link || !clicked) return null
+
+  const scope = link.closest('article') ?? link.ownerDocument.body
+  const media: TweetMedia[] = []
+  // 같은 사진에 링크가 둘씩 붙는 판이 있다. 번호로 한 번씩만 담는다.
+  const seen = new Set<number>()
+  let index = 0
+
+  for (const candidate of scope.querySelectorAll<HTMLAnchorElement>('a[href*="/photo/"]')) {
+    const ref = readPhotoRef(candidate)
+    if (!ref || ref.status !== clicked.status || seen.has(ref.index)) continue
+    const photo = readPhotoMedia(candidate)
+    if (!photo) continue
+    if (ref.index === clicked.index) index = media.length
+    seen.add(ref.index)
+    media.push(photo)
+  }
+
+  if (media.length === 0) return null
+  return { media, index, sourceUrl: `https://x.com${clicked.status}` }
+}
 
 /**
  * 작성창에 지금 들어 있는 글. 편집기를 못 찾으면 null.

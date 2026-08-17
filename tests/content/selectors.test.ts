@@ -13,6 +13,7 @@ import {
   findAccountMenuButton,
   findFocalArticle,
   findLogoutMenuItem,
+  findPhotoTarget,
   findPrimaryTweetAction,
   findRefreshPill,
   findTab,
@@ -568,5 +569,93 @@ describe('simulateClick', () => {
     })
     simulateClick(document.getElementById('target')!)
     expect(bubbled).toBe(1)
+  })
+})
+
+/**
+ * 상세 창 안의 사진 클릭을 가로채는 판정.
+ *
+ * 프레임에 그대로 맡기면 사진이 그 창 크기 안에서만 커져 사진 번역을 걸 수 없었다.
+ */
+describe('findPhotoTarget — 상세 창에서 누른 사진', () => {
+  /** 사진이 걸린 게시물 한 덩이. 사진마다 `/photo/N` 링크가 감싸는 짜임이다. */
+  function photos(status: string, srcs: string[]): string {
+    return srcs
+      .map(
+        (src, at) =>
+          `<a href="${status}/photo/${at + 1}">
+             <div data-testid="tweetPhoto"><img src="${src}" alt="사진 ${at + 1}"></div>
+           </a>`,
+      )
+      .join('')
+  }
+
+  const A = 'https://pbs.twimg.com/media/a.jpg?name=small'
+  const B = 'https://pbs.twimg.com/media/b.jpg?name=small'
+  const C = 'https://pbs.twimg.com/media/c.jpg?name=small'
+
+  function click(selector: string) {
+    return findPhotoTarget(document.querySelector(selector))
+  }
+
+  it('그 글의 사진을 모아 누른 자리부터 연다', () => {
+    render(`<article>${photos('/alice/status/1', [A, B])}</article>`)
+
+    const hit = click('a[href$="/photo/2"] img')
+
+    expect(hit?.media.map((item) => item.previewUrl)).toEqual([A, B])
+    expect(hit?.index).toBe(1)
+    expect(hit?.sourceUrl).toBe('https://x.com/alice/status/1')
+    expect(hit?.media[0]?.altText).toBe('사진 1')
+  })
+
+  it('인용글 사진이 원글 묶음에 섞이지 않는다', () => {
+    // 인용글은 같은 article 안에 그려지지만 다른 글이다. 함께 담으면 화살표를 눌렀을 때
+    // 보고 있던 글에 없는 사진이 딸려 나온다.
+    render(`
+      <article>
+        ${photos('/alice/status/1', [A, B])}
+        <div>${photos('/bob/status/9', [C])}</div>
+      </article>
+    `)
+
+    const origin = click('a[href="/alice/status/1/photo/1"] img')
+    expect(origin?.media).toHaveLength(2)
+
+    const quoted = click('a[href="/bob/status/9/photo/1"] img')
+    expect(quoted?.media.map((item) => item.previewUrl)).toEqual([C])
+    expect(quoted?.sourceUrl).toBe('https://x.com/bob/status/9')
+  })
+
+  it('한 사진에 링크가 둘이면 한 번만 담는다', () => {
+    render(`
+      <article>
+        <a href="/alice/status/1/photo/1"><img src="${A}"></a>
+        <a href="/alice/status/1/photo/1"><img src="${A}"></a>
+      </article>
+    `)
+
+    expect(click('a img')?.media).toHaveLength(1)
+  })
+
+  it('사진 링크가 아니면 손대지 않는다 — 답글도 프로필도 저쪽 화면이 맡는다', () => {
+    render(`
+      <article>
+        <a href="/alice/status/1">원문</a>
+        <a href="/alice">프로필</a>
+        <div data-testid="videoPlayer"><video src="blob:x"></video></div>
+      </article>
+    `)
+
+    expect(click('a[href="/alice/status/1"]')).toBeNull()
+    expect(click('a[href="/alice"]')).toBeNull()
+    expect(click('video')).toBeNull()
+    expect(findPhotoTarget(null)).toBeNull()
+  })
+
+  it('그림이 아직 안 붙은 링크는 담지 않는다', () => {
+    render(`<article><a href="/alice/status/1/photo/1"><div data-testid="tweetPhoto"></div></a></article>`)
+
+    expect(click('a')).toBeNull()
   })
 })

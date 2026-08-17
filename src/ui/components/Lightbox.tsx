@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadTranslation, saveTranslation } from '@core/db'
 import type { ImageTranslation, TranslateEngineId } from '@core/messages'
 import { loadSettings, saveSettings, watchSettings } from '@core/settings'
@@ -24,6 +24,7 @@ export interface LightboxProps {
 /** 이미지 원본 보기. 화살표·Esc 로 조작하고, 배경을 누르면 닫힌다. */
 export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProps) {
   const [index, setIndex] = useState(startIndex)
+  const rootRef = useRef<HTMLDivElement | null>(null)
   const total = media.length
   const current = media[Math.min(index, total - 1)]
 
@@ -67,6 +68,17 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
     },
     [total],
   )
+
+  /**
+   * 뜨자마자 초점을 가져온다.
+   *
+   * 상세 창의 사진을 눌러 열렸을 때는 초점이 아직 그 프레임 안에 있다. 키 입력은 초점이
+   * 있는 문서로 가므로, 그대로 두면 Esc 도 화살표도 이쪽 창에 닿지 않아 닫히지도
+   * 넘어가지도 않는다.
+   */
+  useEffect(() => {
+    rootRef.current?.focus()
+  }, [])
 
   // 쓸 수 있는 명령이 있는지 알아둔다. 설정을 바꾸면 다시 본다.
   useEffect(() => {
@@ -176,11 +188,13 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
 
   return (
     <div
+      ref={rootRef}
       role="dialog"
       aria-modal="true"
       aria-label="이미지 원본 보기"
+      tabIndex={-1}
       onClick={onClose}
-      className="animate-fade fixed inset-0 z-[60] flex flex-col bg-black/92 backdrop-blur-sm"
+      className="animate-fade fixed inset-0 z-[60] flex flex-col bg-black/92 outline-none backdrop-blur-sm"
     >
       <header
         className="flex h-14 shrink-0 items-center gap-3 px-4 text-white"

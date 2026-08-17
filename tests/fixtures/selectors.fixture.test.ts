@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import {
   findFocalArticle,
+  findPhotoTarget,
   findPrimaryTweetAction,
   findRefreshPill,
   findTab,
@@ -143,6 +144,21 @@ describe.skipIf(!has('status.html'))('status.html — 게시물 상세', () => {
   it('하트·리포스트 버튼을 찾는다', () => {
     expect(findPrimaryTweetAction(document, ['like', 'unlike'])).not.toBeNull()
     expect(findPrimaryTweetAction(document, ['retweet', 'unretweet'])).not.toBeNull()
+  })
+
+  /**
+   * 사진 클릭을 가로채는 자리. 사진이 없는 글로 뜬 픽스처면 잴 것이 없어 그냥 지나간다 —
+   * 이 항목까지 보려면 사진이 걸린 글의 상세를 떠야 한다.
+   */
+  it('사진을 누르면 라이트박스로 넘길 것을 읽는다', () => {
+    const link = document.querySelector<HTMLAnchorElement>('a[href*="/photo/"]')
+    if (!link) return
+
+    const hit = findPhotoTarget(link.querySelector('img') ?? link)
+    expect(hit).not.toBeNull()
+    expect(hit?.media.length).toBeGreaterThan(0)
+    expect(hit?.media[0]?.previewUrl).toContain('http')
+    expect(hit?.sourceUrl).toMatch(/^https:\/\/x\.com\/[^/]+\/status\/\d+$/)
   })
 })
 
