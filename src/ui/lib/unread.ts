@@ -33,15 +33,16 @@ export interface UnreadSlice {
  * 본 시각은 갈래마다 다르다. 한쪽에서만 안 본 글이어도 아직 확인할 것이 남은
  * 것이므로 센다.
  *
- * 목록은 최신이 앞이므로 오래된 것을 만나는 순간 그 갈래를 접는다 — 상한(400건)까지
- * 쌓인 컬럼을 다시 그릴 때마다 전부 훑지 않는다.
+ * **오래된 것을 만나도 접지 않는다.** 예전에는 목록이 늘 관측 시각 내림차순이라
+ * 거기서 끊어도 됐지만, 알림 컬럼은 글 자체의 시각 순서로 그려진다 — 방금 관측한
+ * 항목이 목록 한가운데 앉을 수 있어, 앞에서 끊으면 세다 말게 된다. 상한이 400건이라
+ * 끝까지 훑어도 값이 크지 않다.
  */
 export function countUniqueSince(slices: readonly UnreadSlice[]): number {
   const seen = new Set<string>()
   for (const { items, since } of slices) {
     for (const item of items) {
-      if (item.capturedAt <= since) break
-      seen.add(item.id)
+      if (item.capturedAt > since) seen.add(item.id)
     }
   }
   return seen.size

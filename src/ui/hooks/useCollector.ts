@@ -116,7 +116,7 @@ const initialColumns = (): ColumnMap =>
  */
 function visibleFor(kind: TimelineKind, items: StoredItem[]): StoredItem[] {
   const kept = kind === 'mentions' ? items.filter((item) => !isNotification(item)) : items
-  return dedupeNotifications([...kept].sort(byNewest))
+  return dedupeNotifications([...kept].sort(newestFirst(kind)))
 }
 
 /**
@@ -139,20 +139,30 @@ function dedupeNotifications(items: StoredItem[]): StoredItem[] {
 }
 
 /**
- * 최신이 앞. 스트림에서의 자리는 관측 시각이 정하고, 같은 뭉치 안에서는 글 자체의
- * 시각으로 가른다 — 한 응답으로 들어온 것들은 관측 시각이 모두 같아 그것만으로는
- * 차례가 정해지지 않는다. 알림은 id 마저 시간 순서를 담고 있지 않아 더 그렇다.
+ * 최신이 앞. 무엇을 '최신' 으로 볼지는 컬럼에 따라 다르다.
+ *
+ * **홈 컬럼(추천 · 팔로잉)은 관측 시각이 자리를 정한다.** 알고리즘 타임라인이라 글
+ * 자체의 시각은 뒤죽박죽이고, 방금 받아온 것이 위에 오는 것이 스트림의 뜻이다. 한
+ * 응답으로 들어온 것들은 관측 시각이 모두 같으므로 그 안에서는 글의 시각으로 가른다.
+ *
+ * **알림 컬럼(알림 · 멘션)은 글의 시각이 정한다.** x.com 의 알림 화면 자체가 시간
+ * 순서라 사용자도 그렇게 읽는다. 여기서 관측 시각을 앞세우면 사흘 전 알림이 방금
+ * 다시 관측됐다는 이유만으로 어제 온 답글 위에 앉는다 — 실제로 그렇게 보였다.
+ * 알림은 id 에도 시간 순서가 없어 관측 시각을 버금 기준으로 둔다.
  */
-const byNewest = (a: StoredItem, b: StoredItem): number =>
-  b.capturedAt - a.capturedAt || b.createdAt - a.createdAt
+export function newestFirst(kind: TimelineKind): (a: StoredItem, b: StoredItem) => number {
+  return isNotificationKind(kind)
+    ? (a, b) => b.createdAt - a.createdAt || b.capturedAt - a.capturedAt
+    : (a, b) => b.capturedAt - a.capturedAt || b.createdAt - a.createdAt
+}
 
-/** id 중복 없이 새 항목을 앞에 붙이고 렌더 상한까지 자른다. */
-function prepend(incoming: StoredItem[], current: StoredItem[]): StoredItem[] {
+/** id 중복 없이 새 항목을 붙이고 렌더 상한까지 자른다. 자리는 컬럼의 차례가 정한다. */
+function prepend(kind: TimelineKind, incoming: StoredItem[], current: StoredItem[]): StoredItem[] {
   if (incoming.length === 0) return current
   const known = new Set(current.map((t) => t.key))
   const fresh = incoming.filter((t) => !known.has(t.key))
   if (fresh.length === 0) return current
-  return dedupeNotifications([...fresh, ...current].sort(byNewest)).slice(0, RENDER_CAP)
+  return dedupeNotifications([...fresh, ...current].sort(newestFirst(kind))).slice(0, RENDER_CAP)
 }
 
 export interface Collector {
@@ -319,8 +329,8 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
             ...column,
             status,
             degraded,
-            tweets: hold ? column.tweets : prepend(inserted, column.tweets),
-            buffered: hold ? prepend(inserted, column.buffered) : [],
+            tweets: hold ? column.tweets : prepend(kind, inserted, column.tweets),
+            buffered: hold ? prepend(kind, inserted, column.buffered) : [],
           },
         }
       })
@@ -341,7 +351,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
 
     void saveTweets([created]).then((inserted) => {
       if (inserted.length === 0) return
-      setColumns((prev) => ({ ...prev, [kind]: { ...prev[kind], tweets: prepend(inserted, prev[kind].tweets) } }))
+      setColumns((prev) => ({ ...prev, [kind]: { ...prev[kind], tweets: prepend(kind, inserted, prev[kind].tweets) } }))
     })
   }, [])
 
@@ -508,7 +518,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
       if (column.buffered.length === 0) return prev
       return {
         ...prev,
-        [kind]: { ...column, tweets: prepend(column.buffered, column.tweets), buffered: [] },
+        [kind]: { ...column, tweets: prepend(kind, column.buffered, column.tweets), buffered: [] },
       }
     })
   }, [])
@@ -548,7 +558,15 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     if (loadingMore.current[kind]) return
     loadingMore.current[kind] = true
     try {
-      const oldest = columnsRef.current[kind].tweets.at(-1)?.capturedAt
+      /*
+       * 다음 페이지의 경계는 **가장 먼저 관측한 시각**이다. 저장소는 관측 시각으로
+       * 줄지어 있는데(`by-source-captured`), 알림 컬럼은 화면에 글의 시각 순서로
+       * 그려지므로 목록의 마지막 항목이 관측 시각까지 가장 이른 것이라는 보장이 없다 —
+       * 그걸 경계로 삼으면 그보다 늦게 관측된 과거 글을 통째로 건너뛴다.
+       * 홈 컬럼에서는 마지막 항목이 곧 최솟값이라 결과가 달라지지 않는다.
+       */
+      const loaded = columnsRef.current[kind].tweets
+      const oldest = loaded.length > 0 ? Math.min(...loaded.map((item) => item.capturedAt)) : undefined
       const older = await loadRecent(kind, PAGE_SIZE, oldest)
       setColumns((prev) => {
         const column = prev[kind]
@@ -558,7 +576,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
           ...prev,
           [kind]: {
             ...column,
-            tweets: dedupeNotifications([...column.tweets, ...fresh].sort(byNewest)),
+            tweets: dedupeNotifications([...column.tweets, ...fresh].sort(newestFirst(kind))),
             hasMore: older.length === PAGE_SIZE,
           },
         }
