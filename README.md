@@ -288,7 +288,7 @@ x.com/home?xdeck_role=foryou&xdeck=1        ← 확장 아이콘이 여는 탭 (
    └─ x.com/notifications?...=notifications      ← 알림 담당
 ```
 
-숨은 프레임은 `opacity: 0` 으로 감춥니다. `display: none` 이나 화면 밖 배치는 렌더링이 멈춰 타임라인이 갱신되지 않기 때문입니다.
+숨은 프레임은 `opacity: 0` 으로 감춥니다. `display: none` 이나 화면 밖 배치는 렌더링이 멈춰 타임라인이 갱신되지 않기 때문입니다. 다만 `opacity: 0` 은 투명하게 그릴 뿐 그리기 자체를 건너뛰지는 않으므로, 프레임 안쪽 `<body>` 에는 최상위 문서와 같은 `visibility: hidden` 을 걸어 둡니다. 자리는 그대로 잡아두는 속성이라 셀렉터는 그대로 동작합니다.
 
 프레임은 **띄우는 컬럼과 종으로 지켜보는 타임라인 모두**에 세웁니다. 컬럼을 끄면 화면에서만 사라지는 것이 아니라 그 타임라인을 한 건도 받지 않게 되므로, 지켜보기는 화면 자리를 내주지 않을 뿐 수집 비용은 컬럼과 같습니다.
 
@@ -428,6 +428,7 @@ tests/
 | 경로 | 역할 |
 | --- | --- |
 | [src/content/mount.tsx](src/content/mount.tsx) | 덱 진입점. 그림자 DOM 을 만들고 최상위 문서의 수집기를 띄웁니다 |
+| [src/content/underlay.ts](src/content/underlay.ts) | 아무도 보지 않는 x.com 을 그리지 않게 합니다 (최상위 문서 · 수집 프레임) |
 | [src/content/collector.ts](src/content/collector.ts) | 수집 본체. 탭 유지, 알림 감지 · 클릭, 강제 갱신 사다리, 교대 수집 |
 | [src/content/selectors.ts](src/content/selectors.ts) | x.com DOM 선택자 **전부**. UI 개편 시 이 파일만 고칩니다 |
 | [src/content/actions.ts](src/content/actions.ts) | 하트 · 리포스트 수행, 작성 화면 주소 |

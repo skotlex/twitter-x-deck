@@ -12,12 +12,18 @@ import { CHANNEL, isCapturedPayload, isDeckCommand } from '@core/messages'
 import { isDeckPanelFrame, readFrameRole } from '@core/role'
 import { CREATE_TWEET_OPERATION, DELETE_TWEET_OPERATION } from '@core/types'
 import { startCollector } from './collector'
+import { hideFrameUnderlay } from './underlay'
 
 const role = readFrameRole()
 const origin = window.location.origin
 const framed = window.parent !== window.self
 
 if (role && framed) {
+  // 이 프레임은 사람 눈에 닿지 않는다. 최상위 문서가 덱에 덮여 있을 때와 같은
+  // 이유로, 같은 방법으로 그리기를 멈춘다. 작성창·상세 창은 보라고 띄운 것이므로
+  // 여기 걸리지 않는다.
+  hideFrameUnderlay()
+
   const handle = startCollector([role], (message) => {
     window.parent.postMessage(message, origin)
   })
