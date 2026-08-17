@@ -11,6 +11,10 @@
 install-bridge.bat    ← 더블클릭
 ```
 
+등록하는 김에 `codex` · `claude` 도 최신 판으로 받아둡니다 (npm 으로 깔아둔 것만).
+판이 낡으면 넘어지는 쪽은 브리지가 아니라 그 명령들입니다. 받지 않으려면
+`install-bridge.bat --skip-update` 로 실행하세요.
+
 브라우저를 완전히 껐다 켠 뒤, 덱의 **설정 › 번역**에서 상태를 확인하세요.
 
 **그 뒤로는 아무것도 띄워둘 필요가 없습니다.** 번역이 필요할 때 브라우저가 이 프로그램을
@@ -25,19 +29,23 @@ install-bridge.bat    ← 더블클릭
 - **`codex` 또는 `claude` CLI**, 그리고 각각의 유료 구독에 로그인
   (`npm i -g @openai/codex` · `npm i -g @anthropic-ai/claude-code`)
 
+둘 다 깔려 있지 않으면 `install-bridge.bat` 이 두 명령을 대신 깔아줍니다. 하나만 쓰고
+있다면 그 하나만 갱신하고, 나머지는 건드리지 않습니다.
+
 로그인은 설정 화면의 로그인 단추로도 시작할 수 있습니다 — 콘솔 창이 하나 뜨고, 거기서
 절차를 마친 뒤 **상태 다시 확인**을 누르면 됩니다.
 
 ## 무엇을 건드리나
 
-`HKEY_CURRENT_USER` 의 레지스트리 값과 이 폴더 안뿐입니다. 관리자 권한이 필요 없고,
-해제하면 흔적이 남지 않습니다.
+`HKEY_CURRENT_USER` 의 레지스트리 값, 이 폴더 안, 그리고 npm 전역 패키지(`codex` ·
+`claude` 갱신)뿐입니다. 관리자 권한이 필요 없고, 해제하면 등록 흔적이 남지 않습니다.
 
-| 만드는 것 | 자리 |
+| 만들거나 건드리는 것 | 자리 |
 | --- | --- |
 | `com.xdeck.bridge.json` | 이 폴더. 무엇을 실행할지 적은 매니페스트 |
 | `host.bat` | 이 폴더. 윈도우는 네이티브 호스트로 실행 파일만 받아, `node` 를 부르는 한 줄이 필요합니다 |
 | 레지스트리 값 | `HKCU\...\NativeMessagingHosts\com.xdeck.bridge` (Chrome · Edge · Chromium · Brave · Whale) |
+| `codex` · `claude` 최신 판 | npm 전역(`npm i -g`). 이미 깔린 것만 갱신하고, 둘 다 없을 때만 새로 깝니다 |
 
 깔려 있지 않은 브라우저에 등록해도 해가 없습니다 — 나중에 깔면 그대로 동작합니다.
 

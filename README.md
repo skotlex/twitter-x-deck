@@ -126,7 +126,7 @@ npm run build      # dist/ 에 확장 번들을 생성합니다
 | --- | --- |
 | **Windows** | 등록 스크립트가 지금은 윈도우 레지스트리(`HKEY_CURRENT_USER`)만 다룹니다 |
 | **Node.js** | 브리지가 Node 로 도는 프로그램입니다. 빌드에 쓴 설치본을 그대로 씁니다 |
-| **`codex` 또는 `claude` CLI** | `npm i -g @openai/codex` · `npm i -g @anthropic-ai/claude-code`. 하나만 깔아도 되고 둘 다 깔아도 됩니다 |
+| **`codex` 또는 `claude` CLI** | `npm i -g @openai/codex` · `npm i -g @anthropic-ai/claude-code`. 하나만 깔아도 되고 둘 다 깔아도 됩니다. 등록 스크립트가 깔린 쪽을 최신 판으로 받아둡니다 |
 | **각 CLI 의 구독 로그인** | `codex login` · `claude /login` 으로 마칩니다. 이미 내고 있는 요금제를 그대로 빌려 쓰므로 **별도 API 키는 필요하지 않습니다** |
 | **`dist/` 폴더로 로드한 확장** | 브리지는 확장 ID 하나만 받아들입니다. 그 ID 는 `manifest.json` 의 `key` 가 정하므로 빌드 결과를 그대로 로드해야 값이 맞습니다 |
 
@@ -134,14 +134,14 @@ npm run build      # dist/ 에 확장 번들을 생성합니다
 
 **등록과 확인**
 
-1. `bridge/install-bridge.bat` 을 더블클릭합니다 (`npm run bridge:install` 도 같은 일을 합니다)
+1. `bridge/install-bridge.bat` 을 더블클릭합니다 (`npm run bridge:install` 도 같은 일을 합니다). 등록과 함께 `codex` · `claude` 를 최신 판으로 받습니다 — 받지 않으려면 `--skip-update` 를 붙입니다
 2. 브라우저를 **완전히 껐다 켭니다.** 창만 닫는 것으로는 부족한 경우가 있습니다
 3. 덱의 **설정 › 번역** 에서 `사진 번역 사용` 을 켭니다 (기본값은 꺼짐)
 4. **로그인** 칸에서 `codex` · `claude` 의 상태를 봅니다. 되어 있지 않으면 로그인 단추를 눌러 뜨는 콘솔 창에서 절차를 마친 뒤 **상태 다시 확인** 을 누릅니다
 5. 둘 다 로그인되었다면 **주로 쓸 명령** 과 **Codex 결과**(다시 그린 이미지 · 읽은 글) 를 고릅니다. 하나만 쓸 수 있으면 그쪽으로 자동으로 갑니다
 6. 라이트박스에서 사진을 열면 **사진 번역** 단추가 붙습니다
 
-해제는 `bridge/uninstall-bridge.bat`(`npm run bridge:uninstall`)입니다. 등록은 `HKEY_CURRENT_USER` 와 `bridge/` 폴더만 건드리므로 관리자 권한이 필요 없고, 해제하면 흔적이 남지 않습니다.
+해제는 `bridge/uninstall-bridge.bat`(`npm run bridge:uninstall`)입니다. 등록이 건드리는 자리는 `HKEY_CURRENT_USER` 와 `bridge/` 폴더뿐이라 관리자 권한이 필요 없고, 해제하면 흔적이 남지 않습니다. 여기에 더해 최신 판 받기는 npm 전역 패키지(`codex` · `claude`)를 갱신합니다.
 
 **필요 없는 것** — API 키, 띄워둘 터미널, 포트 · 열쇠 설정. 등록한 뒤로는 번역이 필요할 때 브라우저가 브리지를 알아서 켜고 끝나면 함께 내립니다.
 
@@ -164,7 +164,7 @@ npm run build      # dist/ 에 확장 번들을 생성합니다
 | `npm test` | 테스트를 한 번 실행합니다 |
 | `npm run test:watch` | 감시 모드로 테스트를 실행합니다 |
 | `npm run check` | 타입 검사와 테스트를 차례로 실행합니다 |
-| `npm run bridge:install` | 사진 번역 브리지를 등록합니다 (선택 기능을 쓸 때만, 한 번) |
+| `npm run bridge:install` | 사진 번역 브리지를 등록하고 `codex` · `claude` 를 최신 판으로 받습니다 (선택 기능을 쓸 때만, 한 번) |
 | `npm run bridge:uninstall` | 브리지 등록을 해제합니다 |
 | `npm run icons` | `icons/` 의 아이콘 세트를 다시 생성합니다 |
 
@@ -438,7 +438,7 @@ tests/
 | [bridge/host.mjs](bridge/host.mjs) | `codex` · `claude` 를 대신 부르는 네이티브 메시징 호스트. 로그인 판정도 여기서 합니다 |
 | [bridge/messages.mjs](bridge/messages.mjs) | 그 호스트가 실패를 사람 말로 옮기는 자리. 명령을 띄우지 않고 잴 수 있게 떼어 두었습니다 |
 | [bridge/codex-config.mjs](bridge/codex-config.mjs) | codex 가 자기 `config.toml` 때문에 못 뜰 때 그 줄을 꺼줍니다 (원본은 `.bak` 로 보관) |
-| [bridge/install.mjs](bridge/install.mjs) | 그 호스트를 브라우저에 등록·해제합니다 (최초 1회) |
+| [bridge/install.mjs](bridge/install.mjs) | 그 호스트를 브라우저에 등록·해제하고, `codex` · `claude` 를 최신 판으로 받습니다 (최초 1회) |
 | [src/content/frameQueue.ts](src/content/frameQueue.ts) | 숨은 프레임 작업을 하나씩 줄 세웁니다 |
 | [src/content/frameBlock.ts](src/content/frameBlock.ts) | 프레임이 막힌 원인(CSP vs X-Frame-Options)을 가려내는 관측점 |
 | [src/injected/interceptor.ts](src/injected/interceptor.ts) | 타임라인 응답만 복제해 넘기고, 문서를 '보임' 상태로 유지하며, 아무도 보지 않는 영상을 틀지 않습니다 |

@@ -9,11 +9,14 @@
  * 아무 실행파일이나 켜게 만들 수 있다는 뜻이라, 막혀 있는 것이 맞다. 그래서 이
  * 한 번만 사람이 돌린다.
  *
- * 손대는 자리는 `HKEY_CURRENT_USER` 와 이 폴더뿐이다 — 관리자 권한이 필요 없고,
+ * 등록이 손대는 자리는 `HKEY_CURRENT_USER` 와 이 폴더뿐이다 — 관리자 권한이 필요 없고,
  * 해제하면 흔적이 남지 않는다.
+ *
+ * 등록하는 김에 `codex` · `claude` 도 최신으로 받아둔다. 브리지가 부르는 것이 그 둘이고,
+ * 판이 낡으면 넘어지는 쪽은 브리지가 아니라 그쪽이다. 받기 싫으면 `--skip-update`.
  */
-import { execFileSync } from 'node:child_process'
-import { writeFileSync, unlinkSync } from 'node:fs'
+import { execFileSync, execSync } from 'node:child_process'
+import { existsSync, writeFileSync, unlinkSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -40,6 +43,93 @@ const BROWSER_KEYS = [
 
 function registryPath(base) {
   return `HKCU\\${base}\\NativeMessagingHosts\\${HOST_NAME}`
+}
+
+/**
+ * 브리지가 부르는 두 명령.
+ *
+ * 하나만 깔아 쓰는 사람도 있어서 (덱은 있는 쪽으로 알아서 간다) **깔려 있지 않은 것을
+ * 여기서 새로 깔지 않는다.** 둘 다 없을 때만 둘 다 깐다 — 그때는 사진 번역 자체가
+ * 돌지 않으므로 브리지를 등록할 이유도 없기 때문이다.
+ */
+const ENGINES = [
+  { command: 'codex', pkg: '@openai/codex' },
+  { command: 'claude', pkg: '@anthropic-ai/claude-code' },
+]
+
+/**
+ * 명령을 조용히 한 번 돌려보고 그 말을 받아온다. 실패는 빈 문자열이다.
+ *
+ * 셸을 거친다. 윈도우에서 `npm` · `codex` · `claude` 는 npm 이 깔아둔 `.cmd` 스크립트인데,
+ * Node 는 셸 없이 `.cmd` 를 부르는 것을 막아 두었기 때문이다. 명령줄을 통째로 넘기는 것은
+ * 인자 배열과 셸을 함께 쓰면 경고를 찍기 때문이고 — 그 경고가 사용자 콘솔 창에 그대로
+ * 뜬다. 넘기는 값은 전부 이 파일 안의 상수라 셸에 실려도 새어 나갈 자리가 없다.
+ */
+function ask(commandLine) {
+  try {
+    return execSync(commandLine, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 60_000,
+    }).trim()
+  } catch {
+    return ''
+  }
+}
+
+/** 그 명령이 이 PC 에 있는지. */
+function installed(command) {
+  try {
+    execFileSync('where', [command], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * `codex` · `claude` 를 최신으로 받는다.
+ *
+ * npm 이 깔아둔 것만 npm 으로 갱신한다. 네이티브 설치본을 npm 으로 덮으면 같은 명령이
+ * 두 벌이 되어 어느 쪽이 뜨는지 알 수 없게 되므로, 그런 것은 손대지 않고 알려만 준다.
+ *
+ * 여기서 무엇이 실패해도 등록은 이미 끝나 있다. 망이 끊겨 있다고 브리지까지 못 쓰게
+ * 만들지 않는다 — 한 줄 알려주고 넘어간다.
+ */
+function updateEngines() {
+  console.log('')
+  const root = ask('npm root -g')
+  if (!root || !existsSync(root)) {
+    console.log('  건너뜀 codex · claude 갱신 (npm 을 찾지 못했습니다)')
+    return
+  }
+
+  const managed = (pkg) => existsSync(join(root, ...pkg.split('/')))
+  const bare = ENGINES.every(({ command }) => !installed(command))
+
+  for (const { command, pkg } of ENGINES) {
+    if (!managed(pkg)) {
+      if (installed(command)) {
+        console.log(`  건너뜀 ${command} (npm 으로 깔린 것이 아닙니다. 쓰던 방식으로 갱신하세요)`)
+        continue
+      }
+      if (!bare) {
+        console.log(`  건너뜀 ${command} (깔려 있지 않습니다. 쓰려면 npm i -g ${pkg})`)
+        continue
+      }
+    }
+
+    console.log(`  ${managed(pkg) ? '갱신' : '설치'}  ${command} (${pkg}) — 조금 걸립니다`)
+    try {
+      execSync(`npm install -g ${pkg}@latest --no-fund --no-audit --loglevel=error`, {
+        stdio: 'inherit',
+      })
+      const said = ask(`${command} --version`).split(/[\r\n]/)[0]
+      console.log(`  완료  ${command}${said ? ` ${said}` : ''}`)
+    } catch {
+      console.log(`  건너뜀 ${command} (내려받지 못했습니다 — 망 연결을 확인하세요)`)
+    }
+  }
 }
 
 function install() {
@@ -84,6 +174,11 @@ function install() {
   console.log('')
   console.log('  브리지를 등록했습니다.')
   console.log(`  확장 ID  ${EXTENSION_ID}`)
+
+  // 등록이 먼저다. 내려받기는 오래 걸리고 망을 타므로, 여기서 무엇이 어긋나도
+  // 브리지는 이미 쓸 수 있는 상태여야 한다.
+  if (!process.argv.includes('--skip-update')) updateEngines()
+
   console.log('')
   console.log('  브라우저를 완전히 껐다 켠 뒤, 덱의 설정 › 번역 에서 상태를 확인하세요.')
   console.log('  이제 터미널을 띄워둘 필요가 없습니다 — 필요할 때 브라우저가 알아서 켭니다.')
