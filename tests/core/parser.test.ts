@@ -459,6 +459,57 @@ describe('알림', () => {
     expect(notificationsOf(items)[0]?.target?.id).toBe('42')
     expect(tweetsOf(items)).toHaveLength(0)
   })
+
+  /**
+   * 모아 보여주는 알림('N 개를 마음에 들어 합니다')은 다시 받아올 때마다 x.com 이
+   * 주는 id 가 갈린다. 그걸 신원으로 쓰는 동안에는 저장소가 중복을 못 가려내
+   * 같은 문구 · 같은 대상 글의 알림이 네 줄씩 쌓였다.
+   */
+  const likeNotification = (id: string, text: string, target: Raw): string =>
+    notificationEntry({
+      itemType: 'TimelineNotification',
+      id,
+      notification_icon: 'heart_icon',
+      message: { text },
+      template: { target_objects: [target], user_results: { result: user('alice', '앨리스') } },
+    })
+
+  const idOf = (body: string): string | undefined =>
+    notificationsOf(parseTimelinePayload(body, 'notifications', CAPTURED_AT).items)[0]?.id
+
+  it('x.com 이 id 를 갈아도 내용이 같으면 같은 알림이다', () => {
+    const target = tweet('42', 'bob')
+    expect(idOf(likeNotification('n-first', '앨리스님이 마음에 들어 합니다', target))).toBe(
+      idOf(likeNotification('n-second', '앨리스님이 마음에 들어 합니다', target)),
+    )
+  })
+
+  /** 건수가 늘어 문구가 바뀌어도 같은 알림이다 — 아니면 '2개' 와 '3개' 가 따로 쌓인다. */
+  it('건수가 늘어 문구가 바뀌어도 같은 알림이다', () => {
+    const target = tweet('42', 'bob')
+    expect(idOf(likeNotification('n-a', '게시물 2개를 마음에 들어 합니다', target))).toBe(
+      idOf(likeNotification('n-b', '게시물 3개를 마음에 들어 합니다', target)),
+    )
+  })
+
+  it('대상 글이 다르면 다른 알림이다', () => {
+    expect(idOf(likeNotification('n-a', '좋아합니다', tweet('42', 'bob')))).not.toBe(
+      idOf(likeNotification('n-b', '좋아합니다', tweet('43', 'bob'))),
+    )
+  })
+
+  /** 사람도 대상 글도 없으면 가려낼 내용이 없다. 아이콘으로 묶으면 안내가 뭉개진다. */
+  it('가려낼 내용이 없으면 x.com 의 id 로 물러선다', () => {
+    const bare = (id: string): string =>
+      notificationEntry({
+        itemType: 'TimelineNotification',
+        id,
+        notification_icon: 'bell_icon',
+        message: { text: '안내' },
+      })
+    expect(idOf(bare('n-a'))).toBe('n-a')
+    expect(idOf(bare('n-b'))).toBe('n-b')
+  })
 })
 
 describe('망가진 입력', () => {

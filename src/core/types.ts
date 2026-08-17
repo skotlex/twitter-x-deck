@@ -171,6 +171,33 @@ export function isNotification(item: DeckItem): item is DeckNotification {
   return (item as DeckNotification).kind === 'notification'
 }
 
+/**
+ * 알림의 신원. 같은 알림인지 가리는 근거다. 가려낼 내용이 없으면 null.
+ *
+ * **x.com 이 준 id 를 그대로 쓰면 같은 알림이 여러 줄로 쌓인다.** 모아 보여주는
+ * 알림('N 개를 마음에 들어 합니다')은 다시 받아올 때마다 id 가 갈리는데, 우리는
+ * `${source}:${id}` 로만 중복을 가리므로 새 줄이 된다 — 문구도 대상 글도 똑같은
+ * '마음에 들어 합니다' 가 네 줄씩 쌓였다.
+ *
+ * 그래서 신원을 **내용에서** 만든다. 누가(`actors`) · 무엇을(`icon`) · 어느 글에
+ * (`target`). 문구는 넣지 않는다 — 건수가 늘면 문구가 바뀌므로, 넣으면 '2개' 와
+ * '3개' 가 서로 다른 알림이 되어 결국 같은 것이 두 줄로 남는다.
+ *
+ * 사람도 대상 글도 없는 알림은 null 을 준다. 아이콘 하나로 묶으면 서로 다른 안내가
+ * 한 줄로 뭉개지므로, 그때는 부르는 쪽이 x.com 의 id 로 물러선다.
+ */
+export function notificationIdentity(
+  item: Pick<DeckNotification, 'icon' | 'actors' | 'target'>,
+): string | null {
+  const who = item.actors
+    .map((actor) => actor.handle)
+    .sort()
+    .join(',')
+  const target = item.target?.id ?? ''
+  if (!who && !target) return null
+  return `${item.icon}:${who}:${target}`
+}
+
 /** 수집 프레임의 상태. 상단 바 인디케이터에 그대로 노출한다. */
 export type CollectorState =
   | 'idle'

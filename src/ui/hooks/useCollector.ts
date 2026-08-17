@@ -21,6 +21,7 @@ import { acceptsNewItems, collectedKinds, isPowerSaving, type Settings } from '@
 import {
   isNotification,
   isNotificationKind,
+  notificationIdentity,
   TIMELINE_KINDS,
   type CollectorState,
   type CollectorStatus,
@@ -115,7 +116,26 @@ const initialColumns = (): ColumnMap =>
  */
 function visibleFor(kind: TimelineKind, items: StoredItem[]): StoredItem[] {
   const kept = kind === 'mentions' ? items.filter((item) => !isNotification(item)) : items
-  return [...kept].sort(byNewest)
+  return dedupeNotifications([...kept].sort(byNewest))
+}
+
+/**
+ * 같은 알림이 여러 줄로 보이지 않게 거른다. 최신이 앞인 목록을 받아 앞의 것을 남긴다.
+ *
+ * 저장소는 열쇠로 이미 가려낸다. 여기서 한 번 더 보는 것은 **예전 방식(x.com 의 id)
+ * 으로 쌓인 줄** 때문이다 — 그 줄들은 새로 받는 것과 열쇠가 달라 짝지어지지 않는다.
+ * 보관 정리가 걷어내지만, 그전에도 화면에는 한 줄만 보여야 한다.
+ */
+function dedupeNotifications(items: StoredItem[]): StoredItem[] {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    if (!isNotification(item)) return true
+    const identity = notificationIdentity(item)
+    if (identity === null) return true
+    if (seen.has(identity)) return false
+    seen.add(identity)
+    return true
+  })
 }
 
 /**
@@ -132,7 +152,7 @@ function prepend(incoming: StoredItem[], current: StoredItem[]): StoredItem[] {
   const known = new Set(current.map((t) => t.key))
   const fresh = incoming.filter((t) => !known.has(t.key))
   if (fresh.length === 0) return current
-  return [...fresh, ...current].sort(byNewest).slice(0, RENDER_CAP)
+  return dedupeNotifications([...fresh, ...current].sort(byNewest)).slice(0, RENDER_CAP)
 }
 
 export interface Collector {
@@ -538,7 +558,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
           ...prev,
           [kind]: {
             ...column,
-            tweets: [...column.tweets, ...fresh].sort(byNewest),
+            tweets: dedupeNotifications([...column.tweets, ...fresh].sort(byNewest)),
             hasMore: older.length === PAGE_SIZE,
           },
         }

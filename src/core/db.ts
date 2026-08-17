@@ -6,7 +6,13 @@
  */
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { ImageTranslation } from './messages'
-import { isNotification, TIMELINE_KINDS, type DeckItem, type TimelineKind } from './types'
+import {
+  isNotification,
+  notificationIdentity,
+  TIMELINE_KINDS,
+  type DeckItem,
+  type TimelineKind,
+} from './types'
 
 const DB_NAME = 'x-deck'
 const DB_VERSION = 2
@@ -122,6 +128,15 @@ export async function saveTweets(items: DeckItem[]): Promise<StoredItem[]> {
       if (existing) {
         if (!isNotification(item) && !isNotification(existing)) {
           await store.put({ ...existing, stats: item.stats, text: item.text })
+        } else if (isNotification(item) && isNotification(existing) && existing.text !== item.text) {
+          /*
+           * 같은 알림이 자라났다 ('2개' → '3개').
+           *
+           * 새 줄로 쌓으면 같은 알림이 여러 줄이 되므로 자리는 처음 본 그대로 두고
+           * 문구와 사람만 갈아 끼운다. 문구가 그대로면 아무 것도 쓰지 않는다 —
+           * 갱신이 없는 응답마다 목록 전체를 다시 쓰게 된다.
+           */
+          await store.put({ ...existing, text: item.text, actors: item.actors })
         }
         return
       }
@@ -172,7 +187,21 @@ export async function countBySource(source: TimelineKind): Promise<number> {
 }
 
 /**
+ * 예전 방식으로 쌓인 알림인지.
+ *
+ * 알림의 신원은 x.com 이 준 id 에서 내용 기반으로 바뀌었다 (`notificationIdentity`).
+ * 그전에 쌓인 줄은 열쇠가 달라 새로 받는 것과 짝지어지지 않으므로, 같은 알림이
+ * 옛 줄 여럿과 새 줄 하나로 남는다. 열쇠가 지금 규칙과 어긋나는 것을 그 표시로 삼는다.
+ */
+function staleNotification(item: StoredItem): boolean {
+  if (!isNotification(item)) return false
+  const identity = notificationIdentity(item)
+  return identity !== null && item.key !== storageKey(item.source, identity)
+}
+
+/**
  * 보관 정책 적용. 기간이 지났거나 컬럼당 상한을 넘긴 오래된 글부터 지운다.
+ * 예전 방식으로 쌓인 알림도 함께 걷어낸다.
  * @returns 삭제한 건수
  */
 export async function pruneTweets(
@@ -192,7 +221,7 @@ export async function pruneTweets(
     let cursor = await index.openCursor(sourceRange(source), 'prev')
     while (cursor) {
       seen += 1
-      if (seen > maxPerColumn || cursor.value.capturedAt < cutoff) {
+      if (seen > maxPerColumn || cursor.value.capturedAt < cutoff || staleNotification(cursor.value)) {
         await cursor.delete()
         removed += 1
       }

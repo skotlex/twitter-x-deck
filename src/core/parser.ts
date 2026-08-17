@@ -6,6 +6,7 @@
  *   2) 1) 이 하나도 못 건지면 payload 전체를 훑어 tweet 객체를 긁고,
  *      인용·리포스트 원본으로 이미 소비된 id 는 제외해 중복을 막는다.
  */
+import { notificationIdentity } from './types'
 import type {
   DeckItem,
   DeckNotification,
@@ -276,8 +277,8 @@ function normalizeNotification(
   source: TimelineKind,
   capturedAt: number,
 ): DeckNotification | null {
-  const id: string = item?.id ?? entryId
-  if (!id) return null
+  // x.com 이 준 id 는 신원이 아니라 마지막 수단이다 — 같은 알림에도 매번 갈릴 수 있다.
+  const given: string = item?.id ?? entryId
 
   const actors = collectUsers(item?.template)
     .map((user) => parseAuthor(user))
@@ -292,6 +293,10 @@ function normalizeNotification(
 
   const targetRaw = deepCollectTweets(item?.template)[0]
   const target = targetRaw ? normalize(targetRaw, source, capturedAt) : null
+
+  // 내용으로 신원을 세운다. 가려낼 내용이 없을 때만 x.com 의 id 로 물러선다.
+  const id = notificationIdentity({ icon, actors, ...(target ? { target } : {}) }) ?? given
+  if (!id) return null
 
   const result: DeckNotification = {
     kind: 'notification',
