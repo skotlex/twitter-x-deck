@@ -88,6 +88,12 @@
 
   --animate-enter: enter 0.32s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-fade: fade 0.2s ease-out;
+  /*
+   * 물레는 Tailwind 기본값(1초)보다 느리게 돈다. 새로고침 아이콘도, 번역 준비를
+   * 알아보는 동안 도는 원도 '기다리는 중' 이라는 말만 하면 되는 자리다. 1초짜리는
+   * 그 자리에서 재촉하는 것처럼 보인다.
+   */
+  --animate-spin: spin 1.8s linear infinite;
 }
 
 @keyframes enter {
