@@ -211,12 +211,27 @@
     background-clip: content-box;
   }
 
+  /*
+   * 움직임을 줄여 달라고 한 사람에게는 등장·사라짐을 없앤다.
+   *
+   * 반복 횟수를 1 로 함께 묶는 것이 핵심이다. 이걸 빼면 `infinite` 인 애니메이션은
+   * 멈추는 대신 **0.01ms 마다 한 바퀴**를 돌아, 물레가 형체 없이 떨리는 것으로 보인다.
+   */
   @media (prefers-reduced-motion: reduce) {
     .xdeck *,
     .xdeck *::before,
     .xdeck *::after {
       animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
+    }
+
+    /*
+     * 물레만은 계속 돌린다 — 도는 것 자체가 '아직 기다리는 중' 이라는 말이라
+     * 멈추면 끝난 것과 구별되지 않는다. 대신 눈에 거슬리지 않게 더 느리게.
+     */
+    .xdeck .animate-spin {
+      animation: spin 3s linear infinite !important;
     }
   }
 }
