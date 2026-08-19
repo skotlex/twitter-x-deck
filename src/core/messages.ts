@@ -102,6 +102,19 @@ export type FrameMessage =
       /** 감지한 '새 게시물 보기' 개수. 숫자를 못 읽으면 null. */
       count: number | null
     }
+  /**
+   * 이 문서로는 그 컬럼을 되살리지 못했다는 신고.
+   *
+   * 숨은 프레임은 막히면 자기를 다시 띄워 빠져나온다. 최상위 문서는 그럴 수 없다 —
+   * 그 위에 덱이 얹혀 있어서 다시 띄우면 사용자가 보던 화면이 통째로 날아간다.
+   * 그래서 되살리는 대신 손을 든다. 덱은 이 신고를 받아 그 컬럼을 숨은 프레임에
+   * 넘기고, 새로 뜬 프레임은 막힌 세션 바깥에서 처음부터 시작한다.
+   */
+  | {
+      channel: typeof CHANNEL
+      type: 'stalled'
+      role: TimelineKind
+    }
 
 /**
  * 작성창 프레임 → 덱. 글이 실제로 올라갔다는 신호.
@@ -158,7 +171,7 @@ export type DeckCommand =
   | { channel: typeof CHANNEL; type: 'command'; command: 'select-tab' }
   | { channel: typeof CHANNEL; type: 'command'; command: 'ping' }
 
-const FRAME_MESSAGE_TYPES = new Set(['timeline', 'status', 'pending'])
+const FRAME_MESSAGE_TYPES = new Set(['timeline', 'status', 'pending', 'stalled'])
 
 export function isFrameMessage(value: unknown): value is FrameMessage {
   return (

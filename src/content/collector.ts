@@ -344,8 +344,21 @@ export function startCollector(
    */
   function hardReload(): void {
     if (window.top === window.self) {
-      report('되살리지 못함 — 탭 새로고침이 필요합니다')
+      /*
+       * 최상위 문서는 다시 띄울 수 없다. 대신 **이 컬럼을 놓겠다고 알린다.**
+       *
+       * 여기까지 왔다는 것은 사다리를 다 밟는 동안 응답이 한 건도 없었다는 뜻이다 —
+       * 이 문서의 x.com 이 세션째로 막힌 상태이고, 그 자리에서 아무리 두드려도
+       * 돌아오지 않는다. 실제로 `viewer_context` 가 500 을 되풀이하는 동안 추천이
+       * 그렇게 멎었고, 예전에는 여기서 '탭 새로고침이 필요합니다' 라고 적고 손을
+       * 놓아 사람이 직접 새로고침할 때까지 컬럼이 죽어 있었다.
+       *
+       * 덱은 이 신고를 받아 숨은 프레임을 세운다. 새 문서라 막힌 세션 바깥에서
+       * 처음부터 시작하고, 그 프레임은 막히면 스스로 다시 뜰 수도 있다.
+       */
+      report('되살리지 못함 — 숨은 프레임에 넘김')
       escalation = 0
+      for (const kind of kinds) emit({ channel: CHANNEL, type: 'stalled', role: kind })
       return
     }
     // 한 번이면 족하다. 재적재가 어떤 이유로 듣지 않아도 20초마다 다시 부르지 않는다.
@@ -469,7 +482,8 @@ export function startCollector(
    */
   function prime(kind: TimelineKind): void {
     // 멈춰둔 컬럼은 대신 훑어주지도 않는다. 대타 방문도 결국 탭을 옮기는 일이다.
-    if (paused || priming || kinds.includes(kind) || saving(kind)) return
+    // 맡은 것이 없으면 대신 훑어주지도 않는다 — 이 문서는 이미 손을 뗀 상태다.
+    if (paused || priming || kinds.length === 0 || kinds.includes(kind) || saving(kind)) return
     const tab = findTab(kind)
     if (!tab) return
     const now = Date.now()
@@ -651,6 +665,15 @@ export function startCollector(
   }
 
   function tick(): void {
+    /*
+     * 맡은 컬럼이 하나도 없으면 아무 것도 하지 않는다.
+     *
+     * 덱이 이 문서에서 손을 뗀 상태다 (되살리지 못해 프레임에 넘긴 뒤). 그런데도
+     * 탭을 누르고 다니면, 새로 맡은 프레임이 받아오는 것과 이 문서가 만들어내는
+     * 것이 한 컬럼에서 엉킨다.
+     */
+    if (kinds.length === 0) return
+
     const now = Date.now()
 
     /*
@@ -840,7 +863,8 @@ export function startCollector(
       primeNudgeAt = 0
     },
     setKinds(next) {
-      if (next.length === 0) return
+      // 빈 목록은 '이 문서는 이제 아무 컬럼도 맡지 않는다' 는 뜻이다. tick 이 그
+      // 자리에서 물러난다 — 예전에는 여기서 되돌아 나가 손을 뗀 척만 했다.
       kinds = [...next]
       activeIndex = 0
       // 담당이 바뀌었으니 대타 방문은 의미가 없다. 새 담당 탭으로 돌아온다.

@@ -258,9 +258,12 @@ export function App({ hostKind, onPassthrough }: AppProps) {
   // 교대 수집으로 넘어갔으면 프레임은 더 이상 쓸모가 없다.
   // 띄우는 컬럼만이 아니라 지켜보는 타임라인까지 세운다 — 프레임이 없으면 그 타임라인은
   // 화면에서만 사라지는 게 아니라 한 건도 들어오지 않는다.
+  // 최상위 문서가 되살리지 못해 넘긴 컬럼에는, 그것이 이 문서의 담당이었더라도 프레임을 세운다.
   const collectorKinds = collector.rotating
     ? []
-    : collectedKinds(settings).filter((kind) => kind !== hostKind)
+    : collectedKinds(settings).filter(
+        (kind) => kind !== hostKind || collector.handedOff.includes(kind),
+      )
 
   return (
     <div

@@ -179,6 +179,8 @@ export interface Collector {
   loginNeededFor: TimelineKind | null
   /** 프레임을 못 띄워 최상위 문서가 탭을 교대로 방문하는 중인지. */
   rotating: boolean
+  /** 최상위 문서가 되살리지 못해 숨은 프레임에 넘긴 컬럼. 그 컬럼에도 프레임을 세운다. */
+  handedOff: TimelineKind[]
   registerFrame: (kind: TimelineKind, frame: HTMLIFrameElement | null) => void
   /** 프레임이 뜬 뒤 확인한 진단 문구를 전달한다. */
   reportFrame: (kind: TimelineKind, message: string) => void
@@ -200,6 +202,14 @@ export interface Collector {
 export function useCollector(settings: Settings, hostKind: TimelineKind): Collector {
   const [columns, setColumns] = useState<ColumnMap>(initialColumns)
   const [rotating, setRotating] = useState(false)
+  /**
+   * 최상위 문서가 되살리지 못해 숨은 프레임에 넘긴 컬럼.
+   *
+   * 이 문서의 x.com 이 세션째로 막히면(로그를 `viewer_context` 500 이 뒤덮는
+   * 그 상태) 어떤 수단으로도 타임라인이 돌아오지 않는다. 프레임은 새 문서라 그
+   * 바깥에서 시작하므로, 넘기는 것이 사람이 탭을 새로고침하는 것과 같은 효과를 낸다.
+   */
+  const [handedOff, setHandedOff] = useState<TimelineKind[]>([])
 
   const frames = useRef(new Map<TimelineKind, HTMLIFrameElement>())
   const refreshTimers = useRef<Partial<Record<TimelineKind, number>>>({})
@@ -215,6 +225,8 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
   // 콜백에서 최신 컬럼 상태를 읽되 의존성으로 끌어들이지 않기 위한 거울.
   const columnsRef = useRef(columns)
   columnsRef.current = columns
+  const rotatingRef = useRef(rotating)
+  rotatingRef.current = rotating
 
   const registerFrame = useCallback((kind: TimelineKind, frame: HTMLIFrameElement | null) => {
     if (frame) frames.current.set(kind, frame)
@@ -263,6 +275,28 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
         [kind]: {
           ...prev[kind],
           status: { ...prev[kind].status, state: message.state, message: message.message },
+        },
+      }))
+      return
+    }
+
+    /*
+     * 최상위 문서가 그 컬럼을 되살리지 못했다. 숨은 프레임에 넘긴다.
+     *
+     * 교대 수집으로 넘어간 뒤라면 무시한다 — 그건 프레임을 못 띄우는 환경이라는
+     * 뜻이라, 넘길 곳이 애초에 없다. 프레임이 뜨면 그때부터 그쪽이 상태를 알린다.
+     */
+    if (message.type === 'stalled') {
+      if (rotatingRef.current || !hostOwns(kind)) return
+      setHostKinds(TIMELINE_KINDS.filter((owned) => owned !== kind && hostOwns(owned)))
+      // 새로 세우는 프레임은 아직 한 건도 안 냈다. 남의 기록으로 살아 있다고 읽지 않게 비운다.
+      frameSeen.current[kind] = null
+      setHandedOff((prev) => (prev.includes(kind) ? prev : [...prev, kind]))
+      setColumns((prev) => ({
+        ...prev,
+        [kind]: {
+          ...prev[kind],
+          status: { ...prev[kind].status, state: 'loading', message: '숨은 프레임으로 넘김' },
         },
       }))
       return
@@ -625,6 +659,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     columns,
     loginNeededFor,
     rotating,
+    handedOff,
     registerFrame,
     reportFrame,
     flush,

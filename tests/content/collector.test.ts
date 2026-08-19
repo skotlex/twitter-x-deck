@@ -147,19 +147,65 @@ describe('강제 갱신 사다리', () => {
     expect(rungs()).toEqual(['강제 갱신 1/4: 홈 링크 재클릭'])
   })
 
-  it('사다리를 다 밟아도 응답은 오고 있었으면 문서를 다시 띄우지 않는다', () => {
+  it('사다리를 다 밟아도 응답은 오고 있었으면 컬럼을 넘기지 않는다', () => {
     collector.command('foryou', 'refresh')
     for (let step = 0; step < 5; step += 1) {
       capture(timelineBody(['1', '2', '3']))
       vi.advanceTimersByTime(4_000)
     }
 
-    // 최상위 문서에서는 재적재 대신 이 문구가 나간다. 나왔다면 사다리 끝을
-    // '고장' 으로 읽었다는 뜻이다.
-    const notes = messages
-      .filter((m) => m.type === 'status' && typeof m.message === 'string')
-      .map((m) => (m as { message: string }).message)
-    expect(notes).not.toContain('되살리지 못함 — 탭 새로고침이 필요합니다')
+    // 넘김 신고가 나갔다면 사다리 끝을 '고장' 으로 읽었다는 뜻이다. 목록이 그대로인
+    // 것은 문서가 죽은 게 아니라 x.com 에 내놓을 새 글이 없는 것이다.
+    expect(messages.some((m) => m.type === 'stalled')).toBe(false)
+  })
+})
+
+/**
+ * 최상위 문서는 다시 띄울 수 없다 — 그 위에 덱이 얹혀 있다.
+ *
+ * 그렇다고 손을 놓으면 그 컬럼은 사람이 탭을 새로고침할 때까지 죽어 있다. 이
+ * 문서의 x.com 이 세션째로 막히면(로그가 `viewer_context` 500 으로 뒤덮이는 그
+ * 상태) 실제로 그렇게 됐다. 되살리는 대신 **컬럼을 놓겠다고 알리고**, 덱이 숨은
+ * 프레임에 넘기게 한다.
+ */
+describe('되살리지 못하면 컬럼을 넘긴다', () => {
+  let collector: CollectorHandle
+
+  beforeEach(async () => {
+    stubChrome()
+    vi.useFakeTimers()
+    window.history.pushState({}, '', '/home')
+    renderHome()
+    messages = []
+    collector = startCollector(['foryou'], (message) => messages.push(message))
+    await settle()
+  })
+
+  afterEach(() => {
+    collector.dispose()
+    vi.useRealTimers()
+  })
+
+  const stalled = (): string[] =>
+    messages.filter((m) => m.type === 'stalled').map((m) => m.role)
+
+  it('응답이 한 건도 없으면 사다리 끝에서 넘긴다', async () => {
+    // 사다리 네 칸을 다 밟고 다음 차례가 올 때까지 둔다.
+    await vi.advanceTimersByTimeAsync(400_000)
+
+    expect(stalled()).toContain('foryou')
+  })
+
+  it('넘긴 뒤에는 더 두드리지 않는다 — 프레임과 엉키면 안 된다', async () => {
+    await vi.advanceTimersByTimeAsync(400_000)
+    // 덱이 신고를 받고 이 문서에서 손을 뗀다.
+    collector.setKinds([])
+    messages = []
+
+    await vi.advanceTimersByTimeAsync(400_000)
+
+    expect(rungs()).toEqual([])
+    expect(messages).toEqual([])
   })
 })
 
