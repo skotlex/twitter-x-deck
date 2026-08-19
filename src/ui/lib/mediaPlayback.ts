@@ -14,6 +14,27 @@ interface Playing {
   engaged: boolean
 }
 
+/**
+ * 이 영상이 컬럼을 붙들어야 하는지 — 새 글을 목록에 끼워 넣지 말고 알약으로 세워둘지.
+ *
+ * **돌고 있는 동안만이다.** 소리를 켠(`engaged`) 영상은 마우스가 떠나도 요소가 그대로
+ * 남는데, 켜뒀다는 사실만으로 붙들면 한 번 누른 영상 하나가 그 컬럼을 영영 잠근다 —
+ * 스크롤이 맨 위인데도 새 글이 전부 알약으로만 쌓였다. 끝났거나 세워둔 영상은 보고
+ * 있는 것이 아니므로 놓아준다. 붙드는 이유가 '보던 것이 아래로 밀려나지 않게' 이므로,
+ * 보고 있지 않으면 붙들 이유도 없다.
+ */
+export function videoHoldsColumn({
+  mounted,
+  playing,
+}: {
+  /** 영상 요소가 지금 떠 있는지 (미리보기든 소리를 켠 것이든). */
+  mounted: boolean
+  /** 실제로 돌고 있는지. */
+  playing: boolean
+}): boolean {
+  return mounted && playing
+}
+
 /** 영상을 눌렀을 때 할 일. */
 export type MediaClick =
   /** 원본 보기로 연다 — 사진과 틀 수 없는 첨부. */

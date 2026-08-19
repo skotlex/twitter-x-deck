@@ -134,6 +134,21 @@ export function DeckColumn({
   // 컬럼이 사라질 때 표시를 남겨두지 않는다.
   useEffect(() => () => onBusy(kind, false), [kind, onBusy])
 
+  /*
+   * '내려 읽는 중' 표시는 **이 인스턴스의 스크롤 위치**가 정한다.
+   *
+   * 그 표시는 컬럼 밖(수집기 쪽)에 쌓이는데, 값을 바꾸는 것은 스크롤 이벤트뿐이다.
+   * 그래서 목록을 내린 채로 컬럼이 사라지면(탭 배치에서 다른 컬럼으로 옮기거나,
+   * 창 크기가 바뀌어 배치가 갈리거나, 컬럼을 껐다 켜면) 그 값이 남는다. 다시 뜬
+   * 컬럼은 스크롤이 맨 위라 이벤트가 날 일이 없어, 맨 위인데도 새 글이 전부 알약으로만
+   * 쌓인다. 뜰 때 지금 위치로 맞추고, 사라질 때 걷는다 — 겹쳐 펼치는 판은 이미
+   * 그렇게 한다 ([WatchPanel](./WatchPanel.tsx)).
+   */
+  useEffect(() => {
+    onHold(kind, (scrollRef.current?.scrollTop ?? 0) > TOP_THRESHOLD)
+    return () => onHold(kind, false)
+  }, [kind, onHold])
+
   // 사진을 어느 크기로 받을지는 이 칸의 실제 폭이 정한다.
   const columnPixels = useMeasuredColumnPixels(scrollRef)
 

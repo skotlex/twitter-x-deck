@@ -4,7 +4,7 @@ import type { TweetMedia } from '@core/types'
 import { useColumnActivity } from '../columnActivity'
 import { GRID_SHARE, useColumnPixels } from '../columnWidth'
 import { aspectRatio, sizedMediaUrl } from '../lib/format'
-import { isUserVolume, mediaClick } from '../lib/mediaPlayback'
+import { isUserVolume, mediaClick, videoHoldsColumn } from '../lib/mediaPlayback'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { ImageIcon, PlayIcon } from './icons'
 
@@ -60,6 +60,8 @@ function MediaItem({
   const [regionLeads, setRegionLeads] = useState(false)
   /** 사용자가 눌러 소리를 켠 상태. 한 번 켜면 마우스가 떠나도 계속 돈다. */
   const [engaged, setEngaged] = useState(false)
+  /** 지금 실제로 돌고 있는지. 컬럼을 붙들지 말지가 여기서 갈린다. */
+  const [playing, setPlaying] = useState(false)
   const hostRef = useRef<HTMLButtonElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
@@ -78,9 +80,14 @@ function MediaItem({
    */
   const showVideo = playable && !failed && (engaged || (hoverPlay && (hovered || regionLeads)))
 
-  // 영상이 도는 동안에는 새 글을 목록에 끼워 넣지 않는다 — 보고 있던 화면이
-  // 그 높이만큼 아래로 밀려난다. 그동안 온 글은 알약으로 세워둔다.
-  useColumnActivity(showVideo)
+  /*
+   * 영상이 **도는 동안에는** 새 글을 목록에 끼워 넣지 않는다 — 보고 있던 화면이
+   * 그 높이만큼 아래로 밀려난다. 그동안 온 글은 알약으로 세워둔다.
+   *
+   * 요소가 떠 있다는 것만으로는 붙들지 않는다. 소리를 켠 영상은 마우스가 떠나도
+   * 남으므로, 그 기준으로 붙들면 한 번 누른 영상이 그 컬럼을 영영 잠근다.
+   */
+  useColumnActivity(videoHoldsColumn({ mounted: showVideo, playing }))
 
   /**
    * 이 영상이 든 영역을 지금 보고 있는지 지켜본다.
@@ -232,6 +239,10 @@ function MediaItem({
             setEngaged(true)
             rememberVolume(video)
           }}
+          // 컬럼을 붙드는 근거는 '돌고 있다' 하나다. 끝났거나 세운 것은 놓아준다.
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => setPlaying(false)}
           onError={() => setFailed(true)}
           className={`h-full w-full bg-black ${fit === 'cover' ? 'object-cover' : 'object-contain'}`}
         />
