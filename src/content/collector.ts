@@ -191,6 +191,17 @@ export function startCollector(
    * 갱신된 근거로 쓰면 팔로잉은 영영 안 채워진 채 사다리만 제자리를 돈다.
    */
   const captures = new Map<TimelineKind, number>()
+  /**
+   * 컬럼별로 마지막에 **새 목록**을 받은 시각. 그 컬럼이 조용한지를 재는 유일한 근거다.
+   *
+   * 수신 시각(`captures`)으로 재면 안 된다. 우리는 x.com 의 폴링이 계속 돌도록
+   * 문서를 늘 '보임' 으로 위장해 두므로, 두드리지 않아도 응답은 꾸준히 들어온다.
+   * 추천은 알고리즘 타임라인이라 그 응답이 늘 같은 목록인데, 그것으로 유휴 시계를
+   * 되감으면 컬럼은 영영 '조용하지 않은' 것이 되어 사다리가 **시작조차 못 한다** —
+   * 추천이 20 분이 지나도 그대로였던 자리다. 팔로잉은 시간순이라 폴링 응답에 새
+   * 글이 실려 오고, 그래서 같은 결함이 그쪽에서는 드러나지 않았다.
+   */
+  const renewals = new Map<TimelineKind, number>()
   /** 컬럼별 마지막 목록 지문. 같은 목록을 다시 받은 것인지 가리는 데 쓴다. */
   const signatures = new Map<TimelineKind, string>()
   /** 맡은 컬럼의 응답을 한 번이라도 받았는지. 상태를 '수신 중' 으로 올릴 유일한 근거다. */
@@ -524,8 +535,14 @@ export function startCollector(
     primeNudgeAt = 0
     const tab = findTab(home())
     if (tab) simulateClick(tab)
-    // 돌아오며 담당 타임라인을 새로 받게 되므로 강제 갱신 시계도 함께 되돌린다.
-    lastForcedRefreshAt = Date.now()
+    /*
+     * 강제 갱신 시계는 **되돌리지 않는다.**
+     *
+     * 돌아오며 담당 타임라인을 새로 받을 수도 있지만, 그것은 응답이 알려준다.
+     * 미리 되감아 두면 대타 방문이 잦은 동안 담당 컬럼의 유휴 시계가 방문 때마다
+     * 0 으로 밀려 유휴 간격에 영영 닿지 못한다 — 최상위 문서가 맡은 추천이 20 분이
+     * 지나도록 한 칸도 못 오르던 자리다.
+     */
   }
 
   function command(kind: TimelineKind, next: DeckCommand['command']): void {
@@ -601,9 +618,19 @@ export function startCollector(
     const renewed = signature === null || signatures.get(role) !== signature
     if (signature !== null) signatures.set(role, signature)
 
-    // 사다리와 유휴 시계는 **지금 채우려던 컬럼**의 응답으로만 되돌린다.
-    // 다른 컬럼 것으로 되돌리면 헛돈 시도를 성공으로 읽어 같은 칸만 되풀이한다.
-    if (role === target()) {
+    // 유휴 시계는 **어느 컬럼이든** 자기 것이 새로 왔으면 되감는다. 담당이 아닌
+    // 컬럼도 대타 방문이나 교대 수집으로 이 문서를 거쳐 채워지기 때문이다.
+    if (renewed) renewals.set(role, capturedAt)
+
+    /*
+     * 사다리와 유휴 시계는 **담당 컬럼**의 응답으로만 되돌린다.
+     * 다른 컬럼 것으로 되돌리면 헛돈 시도를 성공으로 읽어 같은 칸만 되풀이한다.
+     *
+     * 대타 방문 중이어도 기준은 담당 컬럼이다. 사다리는 담당 컬럼의 것이고 방문
+     * 중에는 오르지도 않는데, 들른 컬럼의 응답으로 되감으면 방문이 있을 때마다
+     * 사다리가 첫 칸으로 돌아가 뒷칸에 영영 닿지 못한다.
+     */
+    if (role === home()) {
       // 응답이 왔다는 것만은 목록이 그대로여도 사실이다. 문서는 살아 있다.
       answered = true
       // 되돌리는 근거는 **새 목록** 하나뿐이다. 같은 목록을 다시 받은 것으로
@@ -743,10 +770,12 @@ export function startCollector(
     // 마찬가지이고, 그때 멈춰 서면 되살아날 길이 사라진다. 실제로 갱신이 통째로
     // 멎었던 자리다 — 판정은 응답이 들어왔는지 하나로만 한다.
     //
-    // 조용한지는 **이 컬럼이** 받은 시각으로 잰다. 옆 컬럼의 응답은 이 컬럼이 살아
-    // 있다는 근거가 못 된다.
+    // 조용한지는 **이 컬럼에 새 목록이 들어온** 시각으로 잰다. 옆 컬럼의 응답은
+    // 이 컬럼이 살아 있다는 근거가 못 되고, 같은 목록을 다시 받은 것도 마찬가지다.
+    // 방금 두드린 시각을 함께 보는 것이 칸과 칸 사이의 간격을 지키는 장치다 —
+    // 그것 없이 새 목록만 보면 조용한 동안 사다리를 매 tick 한 칸씩 태워버린다.
     // 대타 방문 중에는 건너뛴다 — 사다리 끝의 문서 재적재가 방문을 통째로 날린다.
-    const idleFor = now - Math.max(captures.get(wanted) ?? 0, lastForcedRefreshAt)
+    const idleFor = now - Math.max(renewals.get(wanted) ?? 0, lastForcedRefreshAt)
     // 사다리를 오르는 중이면 유휴 간격을 다시 채울 것 없이 곧바로 다음 칸으로 간다.
     // 문서를 다시 띄우는 마지막 칸만은 예외다 — 최상위 문서에서는 덱까지 함께 다시 뜬다.
     const climbing = escalation > 0 && escalation < LADDER_RUNGS
@@ -818,8 +847,10 @@ export function startCollector(
       endPrime()
       lastRotateAt = Date.now()
       // 새 담당의 목록은 아직 한 번도 안 봤다. 남의 지문으로 '같은 목록' 판정을
-      // 내리지 않도록 비운다.
+      // 내리지 않도록 비운다. 유휴 시계도 함께 비워 방금 맡은 컬럼을 남이 받아둔
+      // 시각으로 '조용하지 않다' 고 읽지 않게 한다.
       signatures.clear()
+      renewals.clear()
       escalation = 0
       answered = false
       // 새로 맡은 컬럼에도 현재 상태를 알려야 하므로 캐시를 비운다.

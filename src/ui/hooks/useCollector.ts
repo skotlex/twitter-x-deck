@@ -39,8 +39,16 @@ const FRAME_TIMEOUT_MS = 25_000
 const PRIME_FIRST_MS = 5_000
 /** 프레임이 아직 한 번도 타임라인을 내놓지 않았을 때, 컬럼이 이만큼 조용하면 다시 대신 훑는다. */
 const PRIME_QUIET_MS = 15_000
-/** 프레임이 살아 있는 컬럼은 이만큼 조용할 때만 손을 댄다. */
+/**
+ * 프레임이 살아 있는 컬럼은 이만큼 조용할 때만 손을 댄다.
+ *
+ * **유휴 갱신 간격보다 넉넉해야 한다.** 프레임은 그 간격마다 한 번 두드리므로,
+ * 이 값이 그보다 짧으면 멀쩡히 도는 프레임까지 주기마다 대신 훑게 된다 — 그동안
+ * 최상위 문서는 자기 컬럼의 탭을 비우고, 돌아와서는 처음부터 다시 시작한다.
+ * 대타는 프레임이 **멎었을 때** 쓰는 수단이지 평소의 거들기가 아니다.
+ */
 const PRIME_STALE_MS = 90_000
+const staleLimit = (idleRefreshMs: number): number => Math.max(PRIME_STALE_MS, idleRefreshMs * 2)
 /** 대타 방문이 필요한지 살피는 주기. */
 const PRIME_CHECK_MS = 2_500
 /**
@@ -296,14 +304,20 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     const { degraded } = parsed
     const items = visibleFor(kind, parsed.items as StoredItem[])
     // 건진 게 하나도 없는 응답은 파싱 상태의 근거가 못 된다 — 판정을 그대로 유지한다.
-    if (items.length === 0) {
-      if (columnsRef.current[kind].refreshing) settleRefresh(kind, '새 글 없음')
-      return
-    }
+    if (items.length === 0) return
 
     void saveTweets(items).then((inserted) => {
-      if (columnsRef.current[kind].refreshing) {
-        settleRefresh(kind, inserted.length > 0 ? null : '새 글 없음')
+      /*
+       * 새로고침은 **새 글이 들어왔을 때만** 여기서 끝난다.
+       *
+       * 수집기는 한 수단씩 사다리를 오르고, 앞 칸이 헛돌면 x.com 은 방금 준 것과
+       * 똑같은 목록을 한 번 더 준다. 그 응답 하나로 '새 글 없음' 을 띄우면, 뒷칸이
+       * 몇 초 뒤에 물어온 새 글이 바로 이어져 안내와 화면이 어긋난다 — 눌렀더니
+       * 없다더니 곧 쏟아지는 그 자리다. 끝내 아무 것도 안 오면 위의 시간 제한이
+       * 사다리를 다 밟고 난 뒤에 안내를 낸다.
+       */
+      if (inserted.length > 0 && columnsRef.current[kind].refreshing) {
+        settleRefresh(kind, null)
       }
       setColumns((prev) => {
         const column = prev[kind]
@@ -495,7 +509,12 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
         const seen = frameSeen.current[kind]
         const lastAny = columnsRef.current[kind].status.lastReceivedAt
         const quietFor = now - (lastAny ?? startedAt)
-        const limit = lastAny === null ? PRIME_FIRST_MS : seen === null ? PRIME_QUIET_MS : PRIME_STALE_MS
+        const limit =
+          lastAny === null
+            ? PRIME_FIRST_MS
+            : seen === null
+              ? PRIME_QUIET_MS
+              : staleLimit(settingsRef.current.idleRefreshMs)
         if (quietFor > limit) primeHostCollector(kind)
       }
     }, PRIME_CHECK_MS)

@@ -57,13 +57,16 @@ function timelineBody(ids: string[]): string {
   return `{"data":{"home":{"home_timeline_urt":{"instructions":[{"entries":[${entries.join(',')}]}]}}}}`
 }
 
-/** 인터셉터가 응답을 잡은 것처럼 같은 문서 안에서 메시지를 띄운다. */
-function capture(body: string): void {
+/**
+ * 인터셉터가 응답을 잡은 것처럼 같은 문서 안에서 메시지를 띄운다.
+ * operation 이름이 곧 귀속이다 — 기본값은 추천, `HomeLatestTimeline` 이면 팔로잉.
+ */
+function capture(body: string, operation = 'HomeTimeline'): void {
   const payload: CapturedPayload = {
     channel: CHANNEL,
     type: 'captured',
-    operation: 'HomeTimeline',
-    url: 'https://x.com/i/api/graphql/abc/HomeTimeline',
+    operation,
+    url: `https://x.com/i/api/graphql/abc/${operation}`,
     body,
   }
   const event = new MessageEvent('message', { data: payload })
@@ -157,6 +160,135 @@ describe('강제 갱신 사다리', () => {
       .filter((m) => m.type === 'status' && typeof m.message === 'string')
       .map((m) => (m as { message: string }).message)
     expect(notes).not.toContain('되살리지 못함 — 탭 새로고침이 필요합니다')
+  })
+})
+
+/**
+ * **조용한지는 새 목록으로 잰다 — 응답이 왔는지로 재면 안 된다.**
+ *
+ * 우리는 x.com 의 폴링이 계속 돌도록 문서를 늘 '보임' 으로 위장해 둔다. 그래서
+ * 두드리지 않아도 응답은 꾸준히 들어온다. 추천은 알고리즘 타임라인이라 그 응답이
+ * 늘 같은 목록인데, 그것으로 유휴 시계를 되감으면 컬럼은 영영 '조용하지 않은' 것이
+ * 되어 사다리가 **시작조차 하지 못한다.** 팔로잉은 시간순이라 폴링 응답에 새 글이
+ * 실려 오므로 이 함정이 드러나지 않았다 — 추천만 20 분이 지나도 그대로였다.
+ */
+describe('유휴 판정 — 응답이 아니라 새 목록', () => {
+  let collector: CollectorHandle
+
+  beforeEach(async () => {
+    stubChrome()
+    vi.useFakeTimers()
+    window.history.pushState({}, '', '/home')
+    renderHome()
+    messages = []
+    collector = startCollector(['foryou'], (message) => messages.push(message))
+    await settle()
+    capture(timelineBody(['1', '2', '3']))
+  })
+
+  afterEach(() => {
+    collector.dispose()
+    vi.useRealTimers()
+  })
+
+  it('x.com 이 제 폴링으로 같은 목록을 계속 줘도 사다리는 제 시간에 오른다', async () => {
+    // 5 분 동안 15 초마다 같은 목록이 들어온다.
+    for (let step = 0; step < 20; step += 1) {
+      await vi.advanceTimersByTimeAsync(15_000)
+      capture(timelineBody(['1', '2', '3']))
+    }
+
+    expect(rungs()).toContain('강제 갱신 4/4: 탭 튕기기')
+  })
+
+  it('새 목록이 계속 들어오는 동안에는 두드리지 않는다', async () => {
+    for (let step = 0; step < 20; step += 1) {
+      await vi.advanceTimersByTimeAsync(15_000)
+      capture(timelineBody([`${step}`, '1', '2']))
+    }
+
+    expect(rungs()).toEqual([])
+  })
+
+  it('폴링 응답이 계속 와도 새로고침은 사다리를 끝까지 밟는다', async () => {
+    collector.command('foryou', 'refresh')
+
+    // 1 초마다 같은 목록이 돌아온다 — 사람이 기다리는 동안에도 멈춰서는 안 된다.
+    for (let step = 0; step < 12; step += 1) {
+      await vi.advanceTimersByTimeAsync(1_000)
+      capture(timelineBody(['1', '2', '3']))
+    }
+
+    expect(rungs()).toEqual([
+      '강제 갱신 1/4: 홈 링크 재클릭',
+      '강제 갱신 2/4: 탭 재클릭',
+      '강제 갱신 3/4: 단축키',
+      '강제 갱신 4/4: 탭 튕기기',
+    ])
+  })
+})
+
+/**
+ * 대타 방문(`prime`)은 **담당 컬럼의 사다리를 건드리면 안 된다.**
+ *
+ * 최상위 문서는 자기 컬럼(추천)을 맡으면서, 프레임이 조용한 옆 컬럼을 잠깐 대신
+ * 훑고 온다. 그 방문에서 받은 옆 컬럼의 응답을 담당 컬럼의 갱신으로 세면 사다리가
+ * 매번 첫 칸으로 되감기고, 돌아오며 유휴 시계까지 되감으면 담당 컬럼은 유휴 간격에
+ * 영영 닿지 못한다 — 추천이 20 분이 지나도 목록을 새로 못 받던 자리다.
+ */
+describe('대타 방문 중의 사다리', () => {
+  let collector: CollectorHandle
+
+  beforeEach(async () => {
+    stubChrome()
+    vi.useFakeTimers()
+    window.history.pushState({}, '', '/home')
+    renderHome()
+    messages = []
+    collector = startCollector(['foryou'], (message) => messages.push(message))
+    await settle()
+    capture(timelineBody(['1', '2', '3']))
+  })
+
+  afterEach(() => {
+    collector.dispose()
+    vi.useRealTimers()
+  })
+
+  /** 옆 컬럼을 한 번 대신 훑고 온다. 그쪽은 늘 새 목록을 내놓는 상황. */
+  const primeFollowing = async (step: number): Promise<void> => {
+    collector.prime('following')
+    capture(timelineBody([`f${step}`]), 'HomeLatestTimeline')
+    await vi.advanceTimersByTimeAsync(2_000)
+  }
+
+  it('옆 컬럼을 대신 훑고 와도 담당 컬럼의 사다리가 끝까지 오른다', async () => {
+    // 추천은 두드려도 조용하다. 대타 방문은 실제 주기(90 초)대로 끼어든다.
+    for (let step = 0; step < 12; step += 1) {
+      await vi.advanceTimersByTimeAsync(100_000)
+      await primeFollowing(step)
+    }
+
+    expect(rungs()).toContain('강제 갱신 4/4: 탭 튕기기')
+  })
+
+  it('사람이 누른 뒤 대타 방문이 끼어들어도 사다리가 되감기지 않는다', async () => {
+    collector.command('foryou', 'refresh')
+    expect(rungs()).toEqual(['강제 갱신 1/4: 홈 링크 재클릭'])
+
+    for (let step = 0; step < 3; step += 1) {
+      // 담당 컬럼은 같은 목록만 돌려준다 — 다음 칸으로 올라가야 하는 상황.
+      capture(timelineBody(['1', '2', '3']))
+      await primeFollowing(step)
+      await vi.advanceTimersByTimeAsync(2_000)
+    }
+
+    expect(rungs()).toEqual([
+      '강제 갱신 1/4: 홈 링크 재클릭',
+      '강제 갱신 2/4: 탭 재클릭',
+      '강제 갱신 3/4: 단축키',
+      '강제 갱신 4/4: 탭 튕기기',
+    ])
   })
 })
 
