@@ -142,7 +142,47 @@ async function waitForResult(): Promise<string> {
   }
 }
 
-async function handle(text: string): Promise<void> {
+/**
+ * 이 프레임에서 도착 언어 때문에 이미 한 번 다시 띄웠는지.
+ *
+ * 표시를 주소에 두면 안 된다 — Papago 가 주소를 다시 쓸 때 함께 지워져 되풀이한다.
+ * 저장소가 막힌 프레임에서는 '이미 했다' 고 답한다. 되풀이하는 쪽이 더 위험하다.
+ */
+function alreadyRetargeted(): boolean {
+  try {
+    const key = `xdeck-retarget:${id ?? ''}`
+    if (window.sessionStorage.getItem(key)) return true
+    window.sessionStorage.setItem(key, '1')
+    return false
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Papago 가 도착 언어를 제 것으로 바꿔놓았으면 주소를 다시 잡아 띄운다.
+ *
+ * Papago 는 자기 SPA 를 띄우면서 주소를 제 상태로 다시 쓴다. 그 상태가 우리가 실어
+ * 보낸 `tk` 를 덮으면, 한국어를 부탁했는데 영어 번역문이 돌아온다. 주소가 부탁과
+ * 어긋날 때만, 그것도 한 번만 다시 띄운다. 우리 표시는 그 재작성에 지워지므로
+ * 직접 다시 넣는다.
+ *
+ * @returns 다시 띄웠으면 true — 이 문서는 곧 사라지므로 부르는 쪽은 손을 뗀다.
+ */
+function retarget(target: string): boolean {
+  const params = new URLSearchParams(window.location.search)
+  const now = params.get('tk')
+  if (!now || now === target || target.length === 0) return false
+  if (alreadyRetargeted()) return false
+
+  params.set('sk', 'auto')
+  params.set('tk', target)
+  params.set(PAPAGO_PARAM, id ?? '')
+  window.location.replace(`${window.location.pathname}?${params.toString()}`)
+  return true
+}
+
+async function handle(text: string, target: string): Promise<void> {
   const fail = (reason: string): void => {
     post({ channel: CHANNEL, type: 'papago-failed', id: id ?? '', reason })
   }
@@ -159,6 +199,10 @@ async function handle(text: string): Promise<void> {
     () => (read(SOURCE).length > 0 || read(TARGET).length > 0 ? true : null),
     PREFILL_TIMEOUT_MS,
   )
+
+  // 여기까지 오면 SPA 가 주소를 다 고쳐 쓴 뒤다. 도착 언어를 이때 확인한다.
+  if (retarget(target)) return
+
   if (!arrived) typeInto(box, text)
 
   const result = await waitForResult()
@@ -173,7 +217,7 @@ if (id && window.parent !== window.self) {
   window.addEventListener('message', (event: MessageEvent) => {
     if (event.origin !== X_ORIGIN || !isPapagoMessage(event.data)) return
     if (event.data.type !== 'papago-ask' || event.data.id !== id) return
-    void handle(event.data.text)
+    void handle(event.data.text, event.data.target)
   })
 
   post({ channel: CHANNEL, type: 'papago-ready', id })

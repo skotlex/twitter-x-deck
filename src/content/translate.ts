@@ -21,9 +21,12 @@ export class TranslateError extends Error {}
 
 /**
  * 사람이 읽는 언어. 번역의 도착 언어이자, 번역을 권할지 가리는 기준이다.
- * 게시물 언어가 이것과 같으면 번역 버튼을 달지 않는다 — x.com 과 같은 기준이다.
+ * 게시물 언어가 이것과 같으면 번역 버튼을 달지 않는다.
+ *
+ * **한국어로 못박는다.** 브라우저 언어를 따라가면 브라우저 UI 가 한국어가 아닌
+ * 환경에서 도착 언어가 영어가 되어, 영어 글을 눌러도 영어가 돌아온다.
  */
-export const READING_LANG = (navigator.language || 'ko').split('-')[0]?.toLowerCase() ?? 'ko'
+export const READING_LANG = 'ko'
 
 /** 어느 번역기가 한 것인지. 화면에 그대로 적어 사용자가 알 수 있게 한다. */
 export type TranslateEngine = 'papago' | 'browser'
@@ -40,16 +43,38 @@ export interface Translation {
  */
 const URL_TEXT_LIMIT = 6_000
 
-/** Papago 가 받는 도착 언어. 모르는 코드면 영어로 간다. */
+/** Papago 가 받는 도착 언어. 모르는 코드면 읽는 언어로 간다 — 영어로 새지 않게. */
 const PAPAGO_TARGETS = new Set([
   'ko', 'en', 'ja', 'zh-CN', 'zh-TW', 'es', 'fr', 'de', 'ru', 'pt', 'it', 'vi', 'th', 'id', 'hi',
 ])
 
-function papagoTarget(lang: string): string {
+export function papagoTarget(lang: string): string {
   const lower = lang.toLowerCase()
-  const base = lower.split('-')[0] ?? 'en'
+  const base = lower.split('-')[0] ?? READING_LANG
   if (base === 'zh') return lower.includes('tw') ? 'zh-TW' : 'zh-CN'
-  return PAPAGO_TARGETS.has(base) ? base : 'en'
+  return PAPAGO_TARGETS.has(base) ? base : READING_LANG
+}
+
+/**
+ * 이미 한국어로 쓰인 글인지 본다.
+ *
+ * x.com 이 붙이는 언어 코드는 자주 틀린다 — 한국어 글에 `ja`·`en` 이 붙는 일이 흔하다.
+ * 그 글을 한국어로 옮겨 달라고 넘기면 출발과 도착이 같아지고, 그때 Papago 는
+ * 도착 언어를 제멋대로 영어로 바꿔 영어 번역문을 돌려준다. 그래서 언어 코드만
+ * 믿지 않고 글자를 직접 센다.
+ *
+ * 주소는 세지 않는다 — 링크만 붙은 짧은 글에서 비율이 통째로 흔들린다.
+ */
+const HANGUL = /\p{Script=Hangul}/u
+
+/** 글자 가운데 한글이 이만큼을 넘으면 한국어 글로 본다. */
+const KOREAN_RATIO = 0.3
+
+export function looksKorean(text: string): boolean {
+  const letters = text.replace(/https?:\/\/\S+/g, ' ').match(/\p{L}/gu)
+  if (!letters || letters.length === 0) return false
+  const hangul = letters.filter((letter) => HANGUL.test(letter)).length
+  return hangul / letters.length >= KOREAN_RATIO
 }
 
 function createFrame(url: string): HTMLIFrameElement {

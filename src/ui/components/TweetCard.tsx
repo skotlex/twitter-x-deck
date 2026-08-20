@@ -9,6 +9,7 @@ import {
 } from '@core/settings'
 import { runTweetAction, type ComposeMode, type TweetAction } from '../../content/actions'
 import {
+  looksKorean,
   READING_LANG,
   translateText,
   type Translation,
@@ -404,9 +405,17 @@ function ToggleAction({
   )
 }
 
-/** 게시물 언어가 읽는 언어와 다를 때만 번역을 권한다 — 한국어 글마다 붙으면 성가시다. */
+/**
+ * 게시물 언어가 읽는 언어와 다를 때만 번역을 권한다 — 한국어 글마다 붙으면 성가시다.
+ *
+ * x.com 이 붙인 언어 코드만 믿지 않고 글자도 함께 본다. 한국어 글에 엉뚱한 코드가
+ * 붙어 오는 일이 잦은데, 그대로 번역에 넘기면 출발과 도착이 같아져 영어 번역문이 온다.
+ */
 const translatable = (tweet: Tweet): boolean =>
-  tweet.text.length > 0 && Boolean(tweet.lang) && tweet.lang !== READING_LANG
+  tweet.text.length > 0 &&
+  Boolean(tweet.lang) &&
+  tweet.lang !== READING_LANG &&
+  !looksKorean(tweet.text)
 
 /** 번역기 이름. 무엇이 옮긴 글인지 밝혀야 사용자가 곧이곧대로 믿지 않는다. */
 const ENGINE_LABEL: Record<TranslateEngine, string> = {
