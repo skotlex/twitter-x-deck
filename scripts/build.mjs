@@ -17,13 +17,22 @@ import { insideSyncedFolder, outDirFrom, reusableOutDir } from './out-dir.mjs'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const watch = process.argv.includes('--watch')
 
-/** 잘못 적은 `--out` 은 스택 대신 한 줄로 알려준다 — 고쳐 칠 사람이 읽을 글이다. */
+/**
+ * 사람이 고쳐 칠 수 있는 잘못은 스택 없이 한 줄로 알린다.
+ *
+ * 배치 파일로 두 번 눌러 실행하는 길이 있어, 창에 남는 마지막 줄이 곧 안내문이다.
+ * 스택이 깔리면 정작 읽어야 할 문장이 위로 밀려 올라간다.
+ */
+function fail(message) {
+  console.error(`[x-deck] ${message}`)
+  process.exit(1)
+}
+
 const dist = (() => {
   try {
     return outDirFrom({ argv: process.argv.slice(2), env: process.env, cwd: process.cwd(), root })
   } catch (err) {
-    console.error(`[x-deck] ${err.message}`)
-    process.exit(1)
+    return fail(err.message)
   }
 })()
 
@@ -78,9 +87,7 @@ const esbuildOptions = ({ entry, out }) => ({
  */
 async function cleanOut() {
   if (existsSync(dist) && !reusableOutDir(await readdir(dist))) {
-    throw new Error(
-      `${dist} 에는 이 확장의 빌드 결과가 아닌 것이 들어 있다. 빈 폴더나 지난 빌드 결과만 지운다.`,
-    )
+    fail(`${dist} 에는 이 확장의 빌드 결과가 아닌 것이 들어 있다. 빈 폴더나 지난 빌드 결과만 지운다.`)
   }
   await rm(dist, { recursive: true, force: true })
   await mkdir(dist, { recursive: true })
