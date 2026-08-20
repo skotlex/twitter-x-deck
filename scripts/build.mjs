@@ -1,20 +1,34 @@
 // 확장 번들 빌드 오케스트레이터.
-//   1) dist 청소
+//   1) 출력 폴더 청소
 //   2) vite    → deck.js (덱 UI. IIFE + CSS 인라인)
 //   3) esbuild → interceptor.js / bridge.js / papago.js / background.js (CSS·JSX 없는 단일 IIFE)
-//   4) manifest.json 과 아이콘을 dist 로 복사
+//   4) manifest.json 과 아이콘을 출력 폴더로 복사
 //
 // --watch 를 주면 감시 모드로 돈다.
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+// --out <폴더> (또는 XDECK_OUT) 을 주면 그리로 굽는다 — scripts/out-dir.mjs 참고.
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { dirname, resolve } from 'node:path'
+import { dirname, relative, resolve } from 'node:path'
 import * as esbuild from 'esbuild'
 import { build as viteBuild } from 'vite'
+import { insideSyncedFolder, outDirFrom, reusableOutDir } from './out-dir.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const dist = resolve(root, 'dist')
 const watch = process.argv.includes('--watch')
+
+/** 잘못 적은 `--out` 은 스택 대신 한 줄로 알려준다 — 고쳐 칠 사람이 읽을 글이다. */
+const dist = (() => {
+  try {
+    return outDirFrom({ argv: process.argv.slice(2), env: process.env, cwd: process.cwd(), root })
+  } catch (err) {
+    console.error(`[x-deck] ${err.message}`)
+    process.exit(1)
+  }
+})()
+
+/** 로그에 적을 이름. 저장소 안이면 짧게, 밖이면 절대 경로 그대로 보여준다. */
+const label = relative(root, dist).startsWith('..') ? dist : `${relative(root, dist)}/`
 
 const PLAIN_SCRIPTS = [
   { entry: 'src/injected/interceptor.ts', out: 'interceptor.js' },
@@ -56,23 +70,50 @@ const esbuildOptions = ({ entry, out }) => ({
   },
 })
 
-async function main() {
+/**
+ * 출력 폴더를 비운다.
+ *
+ * `--out` 은 손으로 적는 값이다. 오타 하나로 남의 폴더를 통째로 날리지 않도록,
+ * 비어 있거나 우리가 구워 둔 자리일 때만 지운다.
+ */
+async function cleanOut() {
+  if (existsSync(dist) && !reusableOutDir(await readdir(dist))) {
+    throw new Error(
+      `${dist} 에는 이 확장의 빌드 결과가 아닌 것이 들어 있다. 빈 폴더나 지난 빌드 결과만 지운다.`,
+    )
+  }
   await rm(dist, { recursive: true, force: true })
   await mkdir(dist, { recursive: true })
+}
+
+/** 동기화 폴더 안이면 알려만 준다. 재시작 뒤 확장이 사라지는 증상이 여기서 온다. */
+function warnIfSynced() {
+  if (!insideSyncedFolder(dist, process.env)) return
+  console.log(
+    `\n[x-deck] 경고: ${dist} 는 동기화 폴더 안이다.\n` +
+      '         브라우저가 시작할 때 이 폴더를 못 읽어 확장을 버리는 일이 있다.\n' +
+      '         --out 또는 XDECK_OUT 으로 동기화 밖에 구워 그쪽을 로드해라.',
+  )
+}
+
+async function main() {
+  await cleanOut()
 
   if (watch) {
-    await viteBuild({ build: { watch: {} } })
+    await viteBuild({ build: { outDir: dist, watch: {} } })
     const contexts = await Promise.all(PLAIN_SCRIPTS.map((s) => esbuild.context(esbuildOptions(s))))
     await Promise.all(contexts.map((c) => c.watch()))
     await copyStatic()
-    console.log('\n[x-deck] watch 모드로 실행 중. dist/ 를 chrome://extensions 에 로드해라.')
+    console.log(`\n[x-deck] watch 모드로 실행 중. ${label} 를 chrome://extensions 에 로드해라.`)
+    warnIfSynced()
     return
   }
 
-  await viteBuild()
+  await viteBuild({ build: { outDir: dist } })
   await Promise.all(PLAIN_SCRIPTS.map((s) => esbuild.build(esbuildOptions(s))))
   await copyStatic()
-  console.log('\n[x-deck] 빌드 완료 → dist/')
+  console.log(`\n[x-deck] 빌드 완료 → ${label}`)
+  warnIfSynced()
 }
 
 main().catch((err) => {

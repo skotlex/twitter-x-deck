@@ -25,8 +25,9 @@ export default defineConfig({
     'process.env.NODE_ENV': JSON.stringify('production'),
   },
   build: {
+    // 기본 자리다. `--out`·`XDECK_OUT` 을 주면 scripts/build.mjs 가 갈아 끼운다.
     outDir: 'dist',
-    // dist 청소는 scripts/build.mjs 가 먼저 한다. vite 가 지우면 esbuild 산출물이 날아간다.
+    // 청소는 scripts/build.mjs 가 먼저 한다. vite 가 지우면 esbuild 산출물이 날아간다.
     emptyOutDir: false,
     target: 'chrome120',
     sourcemap: true,
