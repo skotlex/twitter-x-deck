@@ -274,8 +274,19 @@ function LinkCard({ card, mediaSize }: { card: NonNullable<Tweet['card']>; media
   )
 }
 
+/**
+ * 동작 단추의 공통 치수.
+ *
+ * `whitespace-nowrap` 이 핵심이다. 개수는 한글로 줄여 적는데(`4.4천`·`8.4만`),
+ * 한글은 글자 사이 어디서나 줄이 갈릴 수 있어서 칸이 좁아지면 숫자와 단위가
+ * **한 단추 안에서 두 줄로 쪼개진다.** 컬럼을 넷 늘어놓고 개수가 큰 글을 만나면
+ * 그 자리에서 동작 줄의 높이가 두 배가 됐다.
+ *
+ * `shrink-0` 은 그 뒤를 받는다. 줄바꿈을 막으면 대신 단추가 눌려 찌그러지는데,
+ * 개수는 잘려서는 안 되는 값이다. 좁아서 다 못 들어가면 줄 자체가 접히게 둔다.
+ */
 const ACTION_BASE =
-  '-mx-1.5 flex items-center gap-1.5 rounded-full px-1.5 py-1 text-[12.5px] tabular-nums transition-colors disabled:cursor-progress'
+  '-mx-1.5 flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-1.5 py-1 text-[12.5px] tabular-nums transition-colors disabled:cursor-progress'
 
 /** 개수만 보여주고 누르면 새 창을 여는 동작 (답글). */
 function LinkAction({
@@ -721,7 +732,12 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
             />
           )}
 
-          <div className={`flex items-center gap-4 ${metrics.statsMargin}`}>
+          {/*
+            좁은 컬럼에서는 넷이 다 들어가지 못한다. 단추 안에서 개수가 쪼개지는 대신
+            줄이 접히게 둔다 — 접히는 것은 눈에 거슬려도 읽히지만, 쪼개진 숫자는 읽히지 않는다.
+            사이 간격을 조금 줄여 접히는 일 자체를 먼저 줄인다.
+          */}
+          <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${metrics.statsMargin}`}>
             <LinkAction
               icon={<ReplyIcon className="h-3.5 w-3.5" />}
               value={tweet.stats.replies}
@@ -753,7 +769,7 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
             {/* 조회수는 누를 수 없는 숫자다. 동작 버튼들 끝에 같은 리듬으로 붙인다. */}
             {tweet.stats.views ? (
               <span
-                className="flex items-center gap-1.5 text-[12.5px] tabular-nums text-faint"
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[12.5px] tabular-nums text-faint"
                 title="조회수"
               >
                 <ViewsIcon className="h-3.5 w-3.5" />
