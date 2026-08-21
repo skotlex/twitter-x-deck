@@ -172,6 +172,40 @@ export function isNotification(item: DeckItem): item is DeckNotification {
 }
 
 /**
+ * 받아온 차례를 그대로 지키는 컬럼.
+ *
+ * **추천은 알고리즘이 고른 차례 자체가 뜻이다.** 무엇을 위에 놓을지를 x.com 이
+ * 정해서 보내주는데, 그것을 글 시각순으로 다시 세우면 저쪽이 맨 위에 올린 글이
+ * 한참 아래로 내려간다 — 같은 목록을 받고도 원본 화면과 차례가 달라진다.
+ *
+ * 나머지 컬럼은 시간순이 곧 그 목록의 차례라 다시 세워도 결과가 같고, 알림 컬럼은
+ * 글 시각으로 세우는 편이 사람이 읽는 순서와 맞는다.
+ */
+export function keepsFeedOrder(kind: TimelineKind): boolean {
+  return kind === 'foryou'
+}
+
+/**
+ * 받아온 차례가 곧 정렬 결과가 되도록 관측 시각을 한 칸(1ms)씩 밀어 찍는다.
+ *
+ * 홈 컬럼은 관측 시각 내림차순으로 늘어서는데, 한 응답으로 들어온 것들은 시각이
+ * 모두 같아서 그 안의 차례를 **글 시각**이 정한다. 밀어 찍으면 그 자리를 받아온
+ * 차례가 대신 정하고, 정렬 규칙은 그대로 둘 수 있다 — 목록을 만드는 자리가
+ * 여럿이라(첫 적재 · 새 글 끼우기 · 과거 더 보기) 규칙을 건드리면 그 전부를
+ * 손봐야 한다.
+ *
+ * 밀어봐야 한 응답에 수십 밀리초라, 다음 응답과 뒤섞일 일은 없다.
+ */
+export function stampFeedOrder<T extends { capturedAt: number }>(
+  kind: TimelineKind,
+  items: T[],
+  capturedAt: number,
+): T[] {
+  if (!keepsFeedOrder(kind)) return items
+  return items.map((item, index) => ({ ...item, capturedAt: capturedAt - index }))
+}
+
+/**
  * 알림의 신원. 같은 알림인지 가리는 근거다. 가려낼 내용이 없으면 null.
  *
  * **x.com 이 준 id 를 그대로 쓰면 같은 알림이 여러 줄로 쌓인다.** 모아 보여주는

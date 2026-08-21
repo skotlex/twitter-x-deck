@@ -22,6 +22,7 @@ import {
   isNotification,
   isNotificationKind,
   notificationIdentity,
+  stampFeedOrder,
   TIMELINE_KINDS,
   type CollectorState,
   type CollectorStatus,
@@ -336,7 +337,8 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
     const capturedAt = Date.now()
     const parsed = parseTimelinePayload(message.body, kind, capturedAt)
     const { degraded } = parsed
-    const items = visibleFor(kind, parsed.items as StoredItem[])
+    // 추천은 x.com 이 보내준 차례가 곧 뜻이다. 정렬에 맡기기 전에 그 차례를 시각에 새긴다.
+    const items = visibleFor(kind, stampFeedOrder(kind, parsed.items as StoredItem[], capturedAt))
     // 건진 게 하나도 없는 응답은 파싱 상태의 근거가 못 된다 — 판정을 그대로 유지한다.
     if (items.length === 0) return
 
