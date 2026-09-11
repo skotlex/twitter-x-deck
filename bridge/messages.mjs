@@ -63,10 +63,35 @@ export function configComplaint(stderr) {
   return `~/.codex/config.toml 을 codex 가 읽지 못합니다 — ${where}${fault.detail}`
 }
 
+/**
+ * codex 가 `ERROR:` 로 남긴 사정. 뒤에 JSON 이 붙으면 그 안의 `message` 만 꺼낸다.
+ *
+ * `codex exec` 는 stderr 앞머리에 판 번호·작업 폴더·모델 따위의 머리말과 우리가 넘긴
+ * 프롬프트를 되읊는다. 첫 줄을 집으면 사용자는 'OpenAI Codex v0.149.0' 만 보게 된다.
+ */
+function errorLine(text) {
+  const match = /^ERROR:\s*(.+)$/m.exec(String(text ?? ''))
+  if (!match) return ''
+  const raw = match[1].trim()
+  try {
+    const parsed = JSON.parse(raw)
+    const message = parsed?.error?.message ?? parsed?.message
+    if (typeof message === 'string' && message.trim()) return message.trim()
+  } catch {
+    // JSON 이 아니면 그 줄을 그대로 쓴다.
+  }
+  return raw
+}
+
 /** 실패를 우리 말로 옮긴다. */
 export function explain(kind, result) {
   const said = `${result.stdout}${result.stderr}`
   if (result.timedOut) return `${kind} 가 시간 안에 끝내지 못했습니다.`
+  // 설정에 적힌 모델이 깔린 codex 보다 새로우면 서버가 요청을 통째로 거절한다.
+  // 다시 눌러서는 풀리지 않으므로 올리는 방법을 적는다.
+  if (/requires a newer version of codex/i.test(said)) {
+    return `${kind} 판이 낡아 지금 모델을 쓸 수 없습니다. install-bridge.bat 을 다시 실행하거나 npm i -g @openai/codex 로 올리세요.`
+  }
   if (/rate limit|quota|usage limit|too many requests/i.test(said)) {
     return `${kind} 의 사용량 한도에 걸렸습니다. 잠시 뒤 다시 시도하세요.`
   }
@@ -76,7 +101,7 @@ export function explain(kind, result) {
   if (/ENOTFOUND|ECONNRESET|ETIMEDOUT|network|offline/i.test(said)) {
     return `${kind} 가 서버에 닿지 못했습니다. 망 연결을 확인하세요.`
   }
-  const detail = firstLine(said)
+  const detail = errorLine(said) || firstLine(said)
   return detail ? `${kind} 가 실패했습니다 — ${detail}` : `${kind} 가 실패했습니다.`
 }
 

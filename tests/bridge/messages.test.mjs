@@ -81,6 +81,41 @@ describe('explain — 넘어진 명령의 사정', () => {
       'Codex 가 실패했습니다 — weird failure 42',
     )
   })
+
+  /**
+   * `codex exec` 는 stderr 앞머리에 판 번호·작업 폴더·모델 따위의 머리말과 우리가 넘긴
+   * 프롬프트를 되읊는다. 첫 줄을 집으면 사용자는 'OpenAI Codex v0.149.0' 만 보게 된다 —
+   * 실제로 그랬다. 진짜 사정은 `ERROR:` 줄의 JSON 안에 있다.
+   */
+  const codexSaid = (error) =>
+    [
+      'Reading prompt from stdin...',
+      'OpenAI Codex v0.149.0',
+      '--------',
+      'workdir: C:\\temp',
+      'model: gpt-6-astra',
+      'session id: 01a08ebd-2b8c-7920-bb7b-94ce448e5c21',
+      '--------',
+      'user',
+      'Read the attached image and extract every piece of visible text.',
+      'warning: Model metadata for `gpt-6-astra` not found. Defaulting to fallback metadata.',
+      `ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"${error}"}}`,
+      `ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"${error}"}}`,
+    ].join('\n')
+
+  it('codex 머리말이 아니라 ERROR 줄의 사정을 옮긴다', () => {
+    const message = explain('Codex', result({ stderr: codexSaid('Something odd happened.') }))
+    expect(message).toBe('Codex 가 실패했습니다 — Something odd happened.')
+  })
+
+  it('codex 판이 낡아 모델을 못 쓰면 올리라고 알려준다', () => {
+    const said = codexSaid(
+      "The 'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.",
+    )
+    const message = explain('Codex', result({ stderr: said }))
+    expect(message).toContain('npm i -g @openai/codex')
+    expect(message).not.toContain('OpenAI Codex v')
+  })
 })
 
 describe('configComplaint — codex 설정이 안 맞을 때', () => {
