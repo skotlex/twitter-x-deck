@@ -295,7 +295,9 @@ function normalizeNotification(
   const target = targetRaw ? normalize(targetRaw, source, capturedAt) : null
 
   // 내용으로 신원을 세운다. 가려낼 내용이 없을 때만 x.com 의 id 로 물러선다.
-  const id = notificationIdentity({ icon, actors, ...(target ? { target } : {}) }) ?? given
+  // 문구는 받은 그대로 넘긴다 — 지어낸 대체 문구로는 서로 다른 안내가 한 줄로 뭉개진다.
+  const id =
+    notificationIdentity({ icon, actors, text, ...(target ? { target } : {}) }) ?? given
   if (!id) return null
 
   const result: DeckNotification = {

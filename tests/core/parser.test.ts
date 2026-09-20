@@ -498,17 +498,40 @@ describe('알림', () => {
     )
   })
 
-  /** 사람도 대상 글도 없으면 가려낼 내용이 없다. 아이콘으로 묶으면 안내가 뭉개진다. */
-  it('가려낼 내용이 없으면 x.com 의 id 로 물러선다', () => {
-    const bare = (id: string): string =>
-      notificationEntry({
-        itemType: 'TimelineNotification',
-        id,
-        notification_icon: 'bell_icon',
-        message: { text: '안내' },
-      })
-    expect(idOf(bare('n-a'))).toBe('n-a')
-    expect(idOf(bare('n-b'))).toBe('n-b')
+  /**
+   * 사람도 대상 글도 없는 안내('X 가입 기념일입니다!')는 문구가 유일한 근거다.
+   * x.com 의 id 로 물러서던 동안에는 덱을 띄울 때마다 같은 안내가 한 줄씩 쌓였다.
+   */
+  const bare = (id: string, text: string, icon = 'bell_icon'): string =>
+    notificationEntry({
+      itemType: 'TimelineNotification',
+      id,
+      notification_icon: icon,
+      message: { text },
+    })
+
+  it('사람도 대상 글도 없으면 문구로 가린다', () => {
+    expect(idOf(bare('n-a', 'X 가입 기념일입니다!'))).toBe(
+      idOf(bare('n-b', 'X 가입 기념일입니다!')),
+    )
+  })
+
+  it('안내 문구가 다르면 다른 알림이다', () => {
+    expect(idOf(bare('n-a', 'X 가입 기념일입니다!'))).not.toBe(
+      idOf(bare('n-b', '새 소식이 있습니다')),
+    )
+  })
+
+  /** 건수만 자란 안내는 같은 알림이다 — 사람이 딸린 알림과 같은 잣대다. */
+  it('안내 문구의 건수가 자라도 같은 알림이다', () => {
+    expect(idOf(bare('n-a', '게시물 2개가 기다립니다'))).toBe(
+      idOf(bare('n-b', '게시물 3개가 기다립니다')),
+    )
+  })
+
+  it('문구도 없으면 x.com 의 id 로 물러선다', () => {
+    expect(idOf(bare('n-a', ''))).toBe('n-a')
+    expect(idOf(bare('n-b', ''))).toBe('n-b')
   })
 })
 

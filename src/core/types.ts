@@ -217,19 +217,31 @@ export function stampFeedOrder<T extends { capturedAt: number }>(
  * (`target`). 문구는 넣지 않는다 — 건수가 늘면 문구가 바뀌므로, 넣으면 '2개' 와
  * '3개' 가 서로 다른 알림이 되어 결국 같은 것이 두 줄로 남는다.
  *
- * 사람도 대상 글도 없는 알림은 null 을 준다. 아이콘 하나로 묶으면 서로 다른 안내가
- * 한 줄로 뭉개지므로, 그때는 부르는 쪽이 x.com 의 id 로 물러선다.
+ * **사람도 대상 글도 없는 안내는 문구가 유일한 근거다** ('X 가입 기념일입니다!').
+ * 그때만 문구를 쓴다 — 아이콘 하나로 묶으면 서로 다른 안내가 한 줄로 뭉개지고,
+ * x.com 의 id 로 물러서면 덱을 띄울 때마다 같은 안내가 한 줄씩 쌓였다. 건수가
+ * 자라도 같은 안내로 보도록 숫자는 지우고 본다. 문구마저 없으면 null 을 준다.
  */
 export function notificationIdentity(
-  item: Pick<DeckNotification, 'icon' | 'actors' | 'target'>,
+  item: Pick<DeckNotification, 'icon' | 'actors' | 'target' | 'text'>,
 ): string | null {
   const who = item.actors
     .map((actor) => actor.handle)
     .sort()
     .join(',')
   const target = item.target?.id ?? ''
-  if (!who && !target) return null
-  return `${item.icon}:${who}:${target}`
+  if (who || target) return `${item.icon}:${who}:${target}`
+  // 핸들에 `#` 이 올 수 없으므로 위 형식과 섞이지 않는다.
+  const said = announcementKey(item.text)
+  return said ? `${item.icon}:#:${said}` : null
+}
+
+/** 안내 문구에서 자리만 차지하는 것을 걷어낸다 — 공백 모양과 건수는 신원이 아니다. */
+function announcementKey(text: string): string {
+  return text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\d[\d,.]*/g, '#')
 }
 
 /** 수집 프레임의 상태. 상단 바 인디케이터에 그대로 노출한다. */
