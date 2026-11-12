@@ -477,7 +477,7 @@ function useGrokTranslation(tweetId: string) {
 /**
  * 번역문을 원문 아래에 붙인다.
  *
- * 기본으로는 x.com 처럼 Grok 번역을 보여준다. 마음에 안 들면 `한글로 번역하기` 로
+ * 기본으로는 x.com 처럼 Grok 번역을 보여준다. 마음에 안 들면 `Papago 번역하기` 로
  * 원문을 Papago 에 다시 맡긴다 — Papago 화면을 빌려 하고, 막히면 브라우저 내장
  * 번역기로 물러선다 (`translateText`). 어느 쪽이 옮겼는지는 아래에 적는다.
  *
@@ -524,7 +524,7 @@ function TranslateBlock({ tweet, textClass }: { tweet: Tweet; textClass: string 
       ? shown
         ? '번역 숨기기'
         : '번역 보기'
-      : '한글로 번역하기'
+      : 'Papago 번역하기'
 
   return (
     <div ref={ref} className="mt-1">
