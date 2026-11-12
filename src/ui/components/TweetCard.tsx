@@ -169,14 +169,16 @@ function QuotedTweet({
         <span className="text-faint">·</span>
         <span className="shrink-0 text-faint">{formatRelative(tweet.createdAt)}</span>
       </a>
-      <div className="mt-1.5 text-muted">
-        <RichText text={tweet.text} className={`${textClass} line-clamp-6`} />
-      </div>
       {/*
         인용된 글도 스스로 번역한다. 원문은 여섯 줄에서 잘리지만 번역은 글 전체를
         옮겨 통째로 편다 — 잘린 뒤를 읽으려고 원문으로 나가게 두지 않는다.
       */}
-      {translatable(tweet) && <TranslateBlock tweet={tweet} textClass={textClass} />}
+      <TweetBody
+        tweet={tweet}
+        className="mt-1.5 text-muted"
+        textClass={textClass}
+        clampClass="line-clamp-6"
+      />
       <MediaSlot
         media={tweet.media}
         mode={mediaMode}
@@ -430,8 +432,7 @@ const translatable = (tweet: Tweet): boolean =>
   !looksKorean(tweet.text)
 
 /** 번역기 이름. 무엇이 옮긴 글인지 밝혀야 사용자가 곧이곧대로 믿지 않는다. */
-const ENGINE_LABEL: Record<TranslateEngine | 'grok', string> = {
-  grok: 'Grok 번역',
+const ENGINE_LABEL: Record<TranslateEngine, string> = {
   papago: 'Papago 번역',
   browser: '브라우저 번역',
 }
@@ -474,31 +475,80 @@ function useGrokTranslation(tweetId: string) {
   return { ref, text }
 }
 
+interface BodyProps {
+  tweet: Tweet
+  /** 본문 상자에 붙는 여백 · 색. */
+  className: string
+  textClass: string
+  /** 원문을 몇 줄에서 자를지. 번역문은 자르지 않는다 — 잘린 뒤를 읽으러 원문으로 나가게 두지 않는다. */
+  clampClass: string
+}
+
+/** 게시물 본문. 번역할 글이면 번역과 함께 그린다. */
+function TweetBody(props: BodyProps) {
+  if (translatable(props.tweet)) return <TranslatedBody {...props} />
+  return (
+    <div className={props.className}>
+      <RichText text={props.tweet.text} className={`${props.textClass} ${props.clampClass}`} />
+    </div>
+  )
+}
+
 /**
- * 번역문을 원문 아래에 붙인다.
+ * 외국어 글의 본문.
  *
- * 기본으로는 x.com 처럼 Grok 번역을 보여준다. 마음에 안 들면 `Papago 번역하기` 로
- * 원문을 Papago 에 다시 맡긴다 — Papago 화면을 빌려 하고, 막히면 브라우저 내장
- * 번역기로 물러선다 (`translateText`). 어느 쪽이 옮겼는지는 아래에 적는다.
- *
- * 원문을 지우지 않고 아래에 덧붙인다. 좁은 컬럼에서는 원문과 번역을 나란히 볼 수
- * 없으니, 무엇을 읽고 있는지가 늘 분명해야 한다.
+ * x.com 처럼 **원문 자리에 Grok 번역을** 그리고, `원문 보기` 로 원문과 오간다.
+ * Grok 번역이 마음에 안 들면 `Papago 번역하기` 로 원문을 Papago 에 맡기는데, 그 번역은
+ * 본문 아래 따로 붙는다 — 본문 자리의 Grok 번역은 그대로 두어 둘을 견줘 볼 수 있다.
  */
-function TranslateBlock({ tweet, textClass }: { tweet: Tweet; textClass: string }) {
+function TranslatedBody({ tweet, className, textClass, clampClass }: BodyProps) {
   const { ref, text: grokText } = useGrokTranslation(tweet.id)
+  const [original, setOriginal] = useState(false)
+  const translated = grokText !== null && !original
+
+  return (
+    <div ref={ref}>
+      <div className={className}>
+        <RichText
+          text={translated ? grokText : tweet.text}
+          className={translated ? textClass : `${textClass} ${clampClass}`}
+        />
+      </div>
+
+      {grokText !== null && (
+        <p className="mt-0.5 text-[12px] text-faint">
+          {translated && <span>Grok 번역 · </span>}
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              setOriginal(!original)
+            }}
+            className="font-medium text-accent hover:underline"
+          >
+            {translated ? '원문 보기' : 'Grok 번역 보기'}
+          </button>
+        </p>
+      )}
+
+      <PapagoBlock tweet={tweet} textClass={textClass} />
+    </div>
+  )
+}
+
+/**
+ * Papago 번역을 본문 아래에 붙인다.
+ *
+ * Papago 화면을 빌려 하고, 막히면 브라우저 내장 번역기로 물러선다 (`translateText`).
+ * 어느 쪽이 옮겼는지는 아래에 적는다. 늘 원문을 옮긴다 — 본문 자리에 Grok 번역이
+ * 떠 있어도 그것을 다시 옮기지 않는다.
+ */
+function PapagoBlock({ tweet, textClass }: { tweet: Tweet; textClass: string }) {
   const [result, setResult] = useState<Translation | null>(null)
   const [shown, setShown] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const text = result?.text ?? null
-  // Papago 로 다시 옮긴 뒤로는 그것만 보여준다. 둘을 겹쳐 두면 무엇을 읽는지 헷갈린다.
-  const showing: { text: string; engine: TranslateEngine | 'grok' } | null = result
-    ? shown
-      ? result
-      : null
-    : grokText
-      ? { text: grokText, engine: 'grok' }
-      : null
 
   // 번역을 기다리는 동안에는 새 글을 목록에 끼워 넣지 않는다 — 결과가 붙을 카드가
   // 그 사이 아래로 밀려나면 어디에 떴는지 찾게 된다. 그동안 온 글은 알약으로 세워둔다.
@@ -527,11 +577,11 @@ function TranslateBlock({ tweet, textClass }: { tweet: Tweet; textClass: string 
       : 'Papago 번역하기'
 
   return (
-    <div ref={ref} className="mt-1">
-      {showing && (
+    <div className="mt-1">
+      {result && shown && (
         <div className="mb-1 border-l-2 border-line-strong pl-2.5">
-          <RichText text={showing.text} className={textClass} />
-          <p className="mt-0.5 text-[11.5px] text-faint">{ENGINE_LABEL[showing.engine]}</p>
+          <RichText text={result.text} className={textClass} />
+          <p className="mt-0.5 text-[11.5px] text-faint">{ENGINE_LABEL[result.engine]}</p>
         </div>
       )}
 
@@ -759,11 +809,12 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
             </p>
           )}
 
-          <div className="mt-1">
-            <RichText text={tweet.text} className={`${metrics.text} ${metrics.clamp}`} />
-          </div>
-
-          {translatable(tweet) && <TranslateBlock tweet={tweet} textClass={metrics.text} />}
+          <TweetBody
+            tweet={tweet}
+            className="mt-1"
+            textClass={metrics.text}
+            clampClass={metrics.clamp}
+          />
 
           <MediaSlot
             media={tweet.media}
