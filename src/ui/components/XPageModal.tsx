@@ -207,9 +207,9 @@ export function XPageModal({ url, handle, label = '님의 게시물', onClose }:
       */}
       {photos && (
         <Lightbox
-          media={photos.media}
+          groups={photos.groups}
+          startGroup={photos.group}
           startIndex={photos.index}
-          sourceUrl={photos.sourceUrl}
           onClose={() => setPhotos(null)}
         />
       )}

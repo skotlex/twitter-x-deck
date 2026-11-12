@@ -818,9 +818,8 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
 
       {lightbox && (
         <Lightbox
-          media={lightbox.media}
+          groups={[{ media: lightbox.media, sourceUrl: lightbox.sourceUrl }]}
           startIndex={lightbox.index}
-          sourceUrl={lightbox.sourceUrl}
           onClose={() => setLightbox(null)}
         />
       )}

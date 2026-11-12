@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { loadTranslation, saveTranslation } from '@core/db'
 import type { ImageTranslation, TranslateEngineId } from '@core/messages'
 import { loadSettings, saveSettings, watchSettings } from '@core/settings'
-import type { TweetMedia } from '@core/types'
+import type { MediaGroup } from '@core/types'
 import {
   ENGINE_LABEL,
   fetchBridgeStatus,
@@ -10,23 +10,42 @@ import {
   translateImage,
 } from '../../content/imageTranslate'
 import { originalMediaUrl } from '../lib/format'
+import { type PhotoPosition, stepPhoto } from '../lib/lightboxNav'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { CloseIcon } from './icons'
 
 export interface LightboxProps {
-  media: TweetMedia[]
+  /** 글마다의 사진 묶음. 보통 하나이고, 타래면 글 순서대로 이어진다. */
+  groups: MediaGroup[]
+  /** 처음 펼칠 묶음. */
+  startGroup?: number
+  /** 그 묶음 안에서 처음 펼칠 사진. */
   startIndex: number
-  /** 원문으로 건너뛸 링크. */
-  sourceUrl: string
   onClose: () => void
 }
 
-/** 이미지 원본 보기. 화살표·Esc 로 조작하고, 배경을 누르면 닫힌다. */
-export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProps) {
-  const [index, setIndex] = useState(startIndex)
+/**
+ * 이미지 원본 보기. 화살표·Esc 로 조작하고, 배경을 누르면 닫힌다.
+ *
+ * 끝에 닿으면 멈춘다 — 처음으로 되감지 않는다. 타래면 글의 끝에서 다음 글로 넘어간다.
+ */
+export function Lightbox({ groups, startGroup = 0, startIndex, onClose }: LightboxProps) {
+  const [position, setPosition] = useState<PhotoPosition>({ group: startGroup, index: startIndex })
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const sizes = useMemo(() => groups.map((group) => group.media.length), [groups])
+  const shown = groups[position.group]
+  const media = shown?.media ?? []
+  const sourceUrl = shown?.sourceUrl ?? ''
   const total = media.length
-  const current = media[Math.min(index, total - 1)]
+  const index = Math.min(position.index, total - 1)
+  const current = media[index]
+  /** 넘길 사진이 있는지. 있으면 단추 자리를 늘 비워 둔다 — 넘길 때마다 사진이 출렁이지 않게. */
+  const navigable = sizes.reduce((sum, size) => sum + size, 0) > 1
+  const canPrev = stepPhoto(sizes, position, -1) !== null
+  const canNext = stepPhoto(sizes, position, 1) !== null
+  /** 사진이 든 글만 센다. 타래일 때 지금 몇 번째 글인지 알려준다. */
+  const threadGroups = sizes.filter((size) => size > 0).length
+  const threadAt = sizes.slice(0, position.group + 1).filter((size) => size > 0).length
 
   /**
    * 번역에 쓸 명령. null 이면 단추를 달지 않는다.
@@ -63,10 +82,10 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
   const [showTranslated, setShowTranslated] = useState(true)
 
   const move = useCallback(
-    (delta: number) => {
-      setIndex((prev) => (prev + delta + total) % total)
+    (delta: 1 | -1) => {
+      setPosition((prev) => stepPhoto(sizes, prev, delta) ?? prev)
     },
-    [total],
+    [sizes],
   )
 
   /**
@@ -200,6 +219,11 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         className="flex h-14 shrink-0 items-center gap-3 px-4 text-white"
         onClick={(event) => event.stopPropagation()}
       >
+        {threadGroups > 1 && (
+          <span className="rounded-full bg-white/10 px-2.5 py-1 text-[12.5px] tabular-nums">
+            타래 {threadAt} / {threadGroups}
+          </span>
+        )}
         {total > 1 && (
           <span className="rounded-full bg-white/10 px-2.5 py-1 text-[12.5px] tabular-nums">
             {index + 1} / {total}
@@ -377,7 +401,7 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         됐다 하는 것처럼 보였다.
       */}
       <div
-        className={`flex min-h-0 flex-1 items-center justify-center pb-6 ${total > 1 ? 'px-16' : 'px-4'}`}
+        className={`flex min-h-0 flex-1 items-center justify-center pb-6 ${navigable ? 'px-16' : 'px-4'}`}
       >
         {current.playbackUrl ? (
           <video
@@ -460,12 +484,9 @@ export function Lightbox({ media, startIndex, sourceUrl, onClose }: LightboxProp
         </div>
       )}
 
-      {total > 1 && (
-        <>
-          <NavButton side="left" onClick={() => move(-1)} />
-          <NavButton side="right" onClick={() => move(1)} />
-        </>
-      )}
+      {/* 더 갈 곳이 없는 쪽은 단추를 거둔다. 눌러도 아무 일 없는 단추는 고장으로 읽힌다. */}
+      {canPrev && <NavButton side="left" onClick={() => move(-1)} />}
+      {canNext && <NavButton side="right" onClick={() => move(1)} />}
     </div>
   )
 }

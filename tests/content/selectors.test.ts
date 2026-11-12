@@ -598,15 +598,22 @@ describe('findPhotoTarget — 상세 창에서 누른 사진', () => {
     return findPhotoTarget(document.querySelector(selector))
   }
 
+  /** 라이트박스가 처음 펼칠 묶음. */
+  function opened(selector: string) {
+    const hit = click(selector)
+    return hit ? hit.groups[hit.group] : undefined
+  }
+
   it('그 글의 사진을 모아 누른 자리부터 연다', () => {
     render(`<article>${photos('/alice/status/1', [A, B])}</article>`)
 
     const hit = click('a[href$="/photo/2"] img')
+    const group = hit?.groups[hit.group]
 
-    expect(hit?.media.map((item) => item.previewUrl)).toEqual([A, B])
+    expect(group?.media.map((item) => item.previewUrl)).toEqual([A, B])
     expect(hit?.index).toBe(1)
-    expect(hit?.sourceUrl).toBe('https://x.com/alice/status/1')
-    expect(hit?.media[0]?.altText).toBe('사진 1')
+    expect(group?.sourceUrl).toBe('https://x.com/alice/status/1')
+    expect(group?.media[0]?.altText).toBe('사진 1')
   })
 
   it('인용글 사진이 원글 묶음에 섞이지 않는다', () => {
@@ -619,10 +626,9 @@ describe('findPhotoTarget — 상세 창에서 누른 사진', () => {
       </article>
     `)
 
-    const origin = click('a[href="/alice/status/1/photo/1"] img')
-    expect(origin?.media).toHaveLength(2)
+    expect(opened('a[href="/alice/status/1/photo/1"] img')?.media).toHaveLength(2)
 
-    const quoted = click('a[href="/bob/status/9/photo/1"] img')
+    const quoted = opened('a[href="/bob/status/9/photo/1"] img')
     expect(quoted?.media.map((item) => item.previewUrl)).toEqual([C])
     expect(quoted?.sourceUrl).toBe('https://x.com/bob/status/9')
   })
@@ -635,7 +641,7 @@ describe('findPhotoTarget — 상세 창에서 누른 사진', () => {
       </article>
     `)
 
-    expect(click('a img')?.media).toHaveLength(1)
+    expect(opened('a img')?.media).toHaveLength(1)
   })
 
   it('사진 링크가 아니면 손대지 않는다 — 답글도 프로필도 저쪽 화면이 맡는다', () => {
@@ -657,5 +663,127 @@ describe('findPhotoTarget — 상세 창에서 누른 사진', () => {
     render(`<article><a href="/alice/status/1/photo/1"><div data-testid="tweetPhoto"></div></a></article>`)
 
     expect(click('a')).toBeNull()
+  })
+})
+
+/**
+ * 타래로 이어진 사진.
+ *
+ * 한 글의 마지막 사진에서 '다음' 을 누르면 같은 사람이 이어 쓴 다음 글의 사진으로
+ * 넘어가야 한다 — x.com 의 사진 보기가 그렇게 한다. 상세 페이지에서 주인공 글은 시각이
+ * 링크가 아니고(페이지 주소가 곧 그 글), 위아래 글은 시각이 자기 글로 가는 링크다.
+ */
+describe('findPhotoTarget — 타래', () => {
+  function photos(status: string, srcs: string[]): string {
+    return srcs
+      .map((src, at) => `<a href="${status}/photo/${at + 1}"><img src="${src}"></a>`)
+      .join('')
+  }
+
+  /** 위아래 글. 시각이 자기 글로 가는 링크다. */
+  function reply(status: string, body = ''): string {
+    return `<article><a href="${status}"><time>1시간</time></a>${body}</article>`
+  }
+
+  /** 주인공 글. 시각이 링크가 아니다. */
+  function focal(body = ''): string {
+    return `<article><time>오후 3:00</time>${body}</article>`
+  }
+
+  const A = 'https://pbs.twimg.com/media/a.jpg?name=small'
+  const B = 'https://pbs.twimg.com/media/b.jpg?name=small'
+  const C = 'https://pbs.twimg.com/media/c.jpg?name=small'
+  const D = 'https://pbs.twimg.com/media/d.jpg?name=small'
+
+  function click(selector: string) {
+    return findPhotoTarget(document.querySelector(selector))
+  }
+
+  /** 묶음마다 사진 주소와 원문 주소. */
+  function shape(hit: ReturnType<typeof click>) {
+    return hit?.groups.map((group) => [group.sourceUrl, group.media.map((item) => item.previewUrl)])
+  }
+
+  beforeEach(() => setPath('/alice/status/1'))
+
+  it('주인공 글 아래 같은 사람이 이어 쓴 글의 사진까지 묶는다', () => {
+    render(
+      focal(photos('/alice/status/1', [A, B])) +
+        reply('/alice/status/2', photos('/alice/status/2', [C])) +
+        reply('/alice/status/3', photos('/alice/status/3', [D])),
+    )
+
+    const hit = click('a[href="/alice/status/1/photo/2"] img')
+
+    expect(shape(hit)).toEqual([
+      ['https://x.com/alice/status/1', [A, B]],
+      ['https://x.com/alice/status/2', [C]],
+      ['https://x.com/alice/status/3', [D]],
+    ])
+    expect(hit?.group).toBe(0)
+    expect(hit?.index).toBe(1)
+  })
+
+  it('다른 사람의 글이 끼어들면 거기서 타래가 끝난다', () => {
+    render(
+      focal(photos('/alice/status/1', [A])) +
+        reply('/bob/status/5', photos('/bob/status/5', [B])) +
+        reply('/alice/status/6', photos('/alice/status/6', [C])),
+    )
+
+    expect(shape(click('a[href="/alice/status/1/photo/1"] img'))).toEqual([
+      ['https://x.com/alice/status/1', [A]],
+    ])
+  })
+
+  it('사진 없는 글은 건너뛰되 타래는 이어간다', () => {
+    render(
+      focal(photos('/alice/status/1', [A])) +
+        reply('/alice/status/2', '<p>글만 있다</p>') +
+        reply('/alice/status/3', photos('/alice/status/3', [C])),
+    )
+
+    expect(shape(click('a[href="/alice/status/1/photo/1"] img'))).toEqual([
+      ['https://x.com/alice/status/1', [A]],
+      ['https://x.com/alice/status/3', [C]],
+    ])
+  })
+
+  it('가운데 글에서 열면 앞 글도 묶고 그 자리부터 연다', () => {
+    render(
+      focal(photos('/alice/status/1', [A])) +
+        reply('/alice/status/2', photos('/alice/status/2', [B, C])) +
+        reply('/alice/status/3', photos('/alice/status/3', [D])),
+    )
+
+    const hit = click('a[href="/alice/status/2/photo/2"] img')
+
+    expect(hit?.groups).toHaveLength(3)
+    expect(hit?.group).toBe(1)
+    expect(hit?.index).toBe(1)
+  })
+
+  it('인용글 사진을 누르면 타래로 잇지 않는다', () => {
+    // 인용글은 그 글의 일부일 뿐, 이어 쓴 글이 아니다.
+    render(
+      focal(photos('/alice/status/1', [A]) + `<div>${photos('/bob/status/9', [B])}</div>`) +
+        reply('/alice/status/2', photos('/alice/status/2', [C])),
+    )
+
+    expect(shape(click('a[href="/bob/status/9/photo/1"] img'))).toEqual([
+      ['https://x.com/bob/status/9', [B]],
+    ])
+  })
+
+  it('이어 쓴 글 안의 인용글 사진은 타래에 섞이지 않는다', () => {
+    render(
+      focal(photos('/alice/status/1', [A])) +
+        reply('/alice/status/2', photos('/alice/status/2', [B]) + `<div>${photos('/bob/status/9', [C])}</div>`),
+    )
+
+    expect(shape(click('a[href="/alice/status/1/photo/1"] img'))).toEqual([
+      ['https://x.com/alice/status/1', [A]],
+      ['https://x.com/alice/status/2', [B]],
+    ])
   })
 })

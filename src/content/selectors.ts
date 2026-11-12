@@ -5,7 +5,13 @@
  * 수리할 때 다른 파일을 건드릴 일이 없도록 전부 이 모듈에만 둔다.
  * 각 함수는 선택자 여러 개를 순서대로 시도하고, 마지막에는 텍스트 기반으로 찾아낸다.
  */
-import { isNotificationKind, type TimelineKind, type TweetMedia, type ViewerInfo } from '@core/types'
+import {
+  isNotificationKind,
+  type MediaGroup,
+  type TimelineKind,
+  type TweetMedia,
+  type ViewerInfo,
+} from '@core/types'
 
 /** 탭 라벨 후보. 언어 설정이 무엇이든 걸리도록 주요 로케일을 넣어둔다. */
 const TAB_LABELS: Record<TimelineKind, string[]> = {
@@ -319,16 +325,22 @@ header[role="banner"],
 
 /** 덱 안 상세 창에서 사진을 눌렀을 때 라이트박스에 넘길 것. */
 export interface PhotoHit {
-  /** 그 게시물의 사진 묶음. 화살표로 넘길 수 있게 한 글의 것을 전부 모은다. */
-  media: TweetMedia[]
-  /** 그중 방금 누른 사진의 자리. */
+  /**
+   * 글마다의 사진 묶음. 화살표로 넘길 수 있게 한 글의 것을 전부 모은다.
+   * 같은 사람이 이어 쓴 타래면 그 글들의 묶음이 글 순서대로 이어진다.
+   */
+  groups: MediaGroup[]
+  /** 방금 누른 사진이 든 묶음. */
+  group: number
+  /** 그 묶음 안에서 방금 누른 사진의 자리. */
   index: number
-  /** 그 사진이 실린 게시물 주소. */
-  sourceUrl: string
 }
 
 /** `/handle/status/123/photo/2` 에서 글 주소와 사진 번호를 가른다. */
 const PHOTO_HREF_RE = /^(\/[^/]+\/status\/\d+)\/photo\/(\d+)$/
+
+/** 글 주소. 첫 칸이 쓴 사람의 핸들이다. */
+const STATUS_PATH_RE = /^\/([^/]+)\/status\/\d+$/
 
 /**
  * 이벤트가 가리킨 것을 요소로 받는다.
@@ -373,15 +385,105 @@ function readPhotoMedia(link: HTMLAnchorElement): TweetMedia | null {
 }
 
 /**
+ * 한 글의 사진 묶음과, 그 안에서 `pick` 번 사진의 자리.
+ *
+ * 인용글의 사진은 같은 article 안에 있어도 다른 글의 것이라, 주소의 글 부분이 같은
+ * 것만 담는다 — 안 그러면 원글을 보다 화살표를 눌렀을 때 인용글 사진이 딸려 나온다.
+ */
+function collectPhotos(
+  scope: Element,
+  status: string,
+  pick?: number,
+): { media: TweetMedia[]; index: number } {
+  const media: TweetMedia[] = []
+  // 같은 사진에 링크가 둘씩 붙는 판이 있다. 번호로 한 번씩만 담는다.
+  const seen = new Set<number>()
+  let index = 0
+
+  for (const candidate of scope.querySelectorAll<HTMLAnchorElement>('a[href*="/photo/"]')) {
+    const ref = readPhotoRef(candidate)
+    if (!ref || ref.status !== status || seen.has(ref.index)) continue
+    const photo = readPhotoMedia(candidate)
+    if (!photo) continue
+    if (ref.index === pick) index = media.length
+    seen.add(ref.index)
+    media.push(photo)
+  }
+  return { media, index }
+}
+
+/**
+ * 이 article 이 어느 글인지 (`/handle/status/123`). 못 읽으면 null.
+ *
+ * 첫 시각 표시로 가린다 — {@link findFocalArticle} 와 같은 짜임이다. 위아래 글은 시각이
+ * 자기 글로 가는 링크이고, 주인공 글은 링크가 아니라 페이지 주소가 곧 그 글이다.
+ */
+function readArticleStatus(article: Element): string | null {
+  const time = article.querySelector('time')
+  if (!time) return null
+  const link = time.closest<HTMLAnchorElement>('a')
+  const path = link ? link.pathname : (article.ownerDocument.location?.pathname ?? '')
+  return STATUS_PATH_RE.test(path) ? path : null
+}
+
+/** 글 주소의 핸들. 대소문자는 x.com 이 가리지 않으므로 맞춰서 비교한다. */
+function authorOf(status: string): string {
+  return STATUS_PATH_RE.exec(status)?.[1]?.toLowerCase() ?? ''
+}
+
+/**
+ * 누른 글을 가운데 두고, 같은 사람이 이어 쓴 글들의 사진 묶음.
+ *
+ * 상세 페이지는 글을 대화 순서대로 위에서 아래로 늘어놓는다. 같은 사람의 글이 연달아
+ * 놓인 데까지가 타래다 — 다른 사람의 글이 끼어들면 거기서 끊는다. 사진 없는 글은
+ * 묶음을 만들지 않을 뿐 타래는 이어간다. 지금 그려져 있는 글까지만 본다.
+ */
+function readThread(article: Element, status: string, pick: number): PhotoHit | null {
+  const articles = [...article.ownerDocument.querySelectorAll('article')]
+  const at = articles.indexOf(article as HTMLElement)
+  const author = authorOf(status)
+  if (at < 0 || !author) return null
+
+  /** 타래에 드는 글이면 그 글 주소. */
+  const member = (candidate: Element | undefined): string | null => {
+    const found = candidate ? readArticleStatus(candidate) : null
+    return found && authorOf(found) === author ? found : null
+  }
+
+  let first = at
+  while (member(articles[first - 1])) first -= 1
+  let last = at
+  while (member(articles[last + 1])) last += 1
+
+  const groups: MediaGroup[] = []
+  let group = 0
+  let index = 0
+  for (let position = first; position <= last; position += 1) {
+    const scope = articles[position]
+    const own = position === at ? status : member(scope)
+    if (!scope || !own) continue
+    const found = collectPhotos(scope, own, position === at ? pick : undefined)
+    if (found.media.length === 0) continue
+    if (position === at) {
+      group = groups.length
+      index = found.index
+    }
+    groups.push({ media: found.media, sourceUrl: `https://x.com${own}` })
+  }
+  return groups.length > 0 ? { groups, group, index } : null
+}
+
+/**
  * 상세 창 안에서 누른 사진이 무엇인지 가려낸다.
  *
  * x.com 에 그대로 맡기면 사진은 그 창 크기 안에서만 커진다 — 창은 게시물 칸에 맞춰
  * 좁게 잡아둔 것이라, 정작 사진을 크게 볼 수도 사진 번역을 걸 수도 없다. 그래서
  * 사진만은 이쪽이 가로채 덱의 라이트박스로 띄운다.
  *
- * 묶음은 **한 글 단위**로 모은다. 인용글의 사진은 같은 article 안에 있어도 다른 글의
- * 것이라, 주소의 글 부분이 같은 것만 담는다 — 안 그러면 원글을 보다 화살표를 눌렀을 때
- * 인용글 사진이 딸려 나온다.
+ * 묶음은 **한 글 단위**로 모은다. 그 글이 타래의 한 토막이면 같은 사람이 이어 쓴 글의
+ * 묶음까지 이어 붙인다 — 글의 마지막 사진에서 다음으로 가면 다음 글로 넘어가는 것이
+ * x.com 의 사진 보기와 같다. 인용글의 사진을 눌렀을 때는 잇지 않는다. 인용글은 그 글의
+ * 일부일 뿐 이어 쓴 글이 아니다.
  *
  * 동영상·GIF 는 걸리지 않는다. 저쪽에 사진 주소가 붙지 않아 자연히 빠지고, 그편이
  * 맞다 — 재생은 x.com 이 그 자리에서 하는 편이 낫다.
@@ -391,24 +493,19 @@ export function findPhotoTarget(node: EventTarget | null): PhotoHit | null {
   const clicked = link ? readPhotoRef(link) : null
   if (!link || !clicked) return null
 
-  const scope = link.closest('article') ?? link.ownerDocument.body
-  const media: TweetMedia[] = []
-  // 같은 사진에 링크가 둘씩 붙는 판이 있다. 번호로 한 번씩만 담는다.
-  const seen = new Set<number>()
-  let index = 0
-
-  for (const candidate of scope.querySelectorAll<HTMLAnchorElement>('a[href*="/photo/"]')) {
-    const ref = readPhotoRef(candidate)
-    if (!ref || ref.status !== clicked.status || seen.has(ref.index)) continue
-    const photo = readPhotoMedia(candidate)
-    if (!photo) continue
-    if (ref.index === clicked.index) index = media.length
-    seen.add(ref.index)
-    media.push(photo)
+  const article = link.closest('article')
+  if (article && readArticleStatus(article) === clicked.status) {
+    const thread = readThread(article, clicked.status, clicked.index)
+    if (thread) return thread
   }
 
-  if (media.length === 0) return null
-  return { media, index, sourceUrl: `https://x.com${clicked.status}` }
+  const own = collectPhotos(article ?? link.ownerDocument.body, clicked.status, clicked.index)
+  if (own.media.length === 0) return null
+  return {
+    groups: [{ media: own.media, sourceUrl: `https://x.com${clicked.status}` }],
+    group: 0,
+    index: own.index,
+  }
 }
 
 /**

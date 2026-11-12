@@ -155,10 +155,46 @@ describe.skipIf(!has('status.html'))('status.html — 게시물 상세', () => {
     if (!link) return
 
     const hit = findPhotoTarget(link.querySelector('img') ?? link)
+    const group = hit ? hit.groups[hit.group] : undefined
     expect(hit).not.toBeNull()
-    expect(hit?.media.length).toBeGreaterThan(0)
-    expect(hit?.media[0]?.previewUrl).toContain('http')
-    expect(hit?.sourceUrl).toMatch(/^https:\/\/x\.com\/[^/]+\/status\/\d+$/)
+    expect(group?.media.length).toBeGreaterThan(0)
+    expect(group?.media[0]?.previewUrl).toContain('http')
+    expect(group?.sourceUrl).toMatch(/^https:\/\/x\.com\/[^/]+\/status\/\d+$/)
+  })
+})
+
+/**
+ * 타래의 첫 글 상세. 같은 사람이 이어 쓴 글들의 사진이 한 라이트박스로 이어지는지 본다.
+ *
+ * 주인공 글은 페이지 주소로 자기 글을 가린다. 떠 온 파일에는 주소가 없으므로 주인공 글의
+ * 사진 링크에서 글 주소를 읽어 그 자리에 앉힌다.
+ */
+describe.skipIf(!has('thread.html'))('thread.html — 사진이 이어지는 타래', () => {
+  let focalLink: HTMLAnchorElement | null = null
+
+  beforeAll(() => {
+    load('thread.html')
+    const focal = findFocalArticle(document)
+    focalLink = focal?.querySelector<HTMLAnchorElement>('a[href*="/photo/"]') ?? null
+    const status = focalLink?.pathname.replace(/\/photo\/\d+$/, '')
+    if (status) window.history.pushState({}, '', status)
+  })
+
+  it('주인공 글에 사진이 있다 — 없으면 타래의 첫 글로 다시 떠야 한다', () => {
+    expect(focalLink).not.toBeNull()
+  })
+
+  it('주인공 글의 사진을 누르면 이어 쓴 글의 사진까지 묶는다', () => {
+    if (!focalLink) return
+    const hit = findPhotoTarget(focalLink.querySelector('img') ?? focalLink)
+    const urls = hit?.groups.map((group) => group.sourceUrl) ?? []
+    const authors = new Set(urls.map((url) => new URL(url).pathname.split('/')[1]?.toLowerCase()))
+
+    expect(urls.length).toBeGreaterThan(1)
+    expect(new Set(urls).size).toBe(urls.length)
+    // 한 사람의 글만 이어진다. 남의 답글 사진이 끼면 타래를 잘못 끊은 것이다.
+    expect(authors.size).toBe(1)
+    expect(hit?.groups[hit.group]?.sourceUrl).toBe(`https://x.com${window.location.pathname}`)
   })
 })
 

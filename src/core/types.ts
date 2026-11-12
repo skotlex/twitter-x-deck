@@ -70,6 +70,17 @@ export interface TweetMedia {
   altText?: string
 }
 
+/**
+ * 라이트박스가 넘겨 볼 한 글의 사진 묶음.
+ *
+ * 보통은 하나뿐이고, 같은 사람이 이어 쓴 타래면 글 순서대로 여러 개가 이어진다.
+ */
+export interface MediaGroup {
+  media: TweetMedia[]
+  /** 그 사진이 실린 게시물 주소. */
+  sourceUrl: string
+}
+
 export interface TweetAuthor {
   id: string
   handle: string
