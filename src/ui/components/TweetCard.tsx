@@ -449,6 +449,11 @@ const ENGINE_LABEL: Record<TranslateEngine, string> = {
  */
 const GROK_PREFETCH_MARGIN = '400px 0px 1500px 0px'
 
+/** 번역 없이 돌아온 카드가 다시 부탁하기까지 최소한 기다리는 시간. */
+const GROK_RETRY_MS = 30_000
+/** 한 카드가 부탁하는 횟수 상한. 계속 실패하는 글이 요청 한도를 갉아먹지 않게. */
+const GROK_RETRY_LIMIT = 4
+
 /**
  * x.com 이 붙여주는 Grok 번역을 받아온다.
  *
@@ -458,6 +463,10 @@ const GROK_PREFETCH_MARGIN = '400px 0px 1500px 0px'
  * 끝까지 '안 보임' 이라 미리 부탁하지 못한다.
  *
  * 받은 번역은 저장소에 쟁여 두므로 새로고침 뒤에도 다시 묻지 않는다.
+ *
+ * 번역 없이 돌아와도 판정이 나지 않았으면(막혔거나 지나가는 실패) 잠시 뒤 다시 부탁한다.
+ * 예전에는 한 번 빈손으로 돌아온 카드가 다시 묻지 않아, 막혔던 동안 들어온 글은
+ * 탭을 닫을 때까지 원문으로 남았다. 다시 부탁할 때도 곧 보일 카드만 묻는다.
  */
 function useGrokTranslation(tweetId: string) {
   const ref = useRef<HTMLDivElement>(null)
@@ -471,13 +480,28 @@ function useGrokTranslation(tweetId: string) {
 
     let request: ReturnType<typeof grok.request> | null = null
     let alive = true
+    let attempts = 0
+    let retry = 0
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return
         observer.disconnect()
+        attempts += 1
         request = grok.request(tweetId, READING_LANG)
         void request.promise.then((translated) => {
-          if (alive && translated) setText(translated)
+          if (!alive) return
+          if (translated) {
+            setText(translated)
+            return
+          }
+          // 판정이 났으면(이 글은 못 옮긴다) 그만. 아니면 풀릴 즈음 다시 지켜본다.
+          if (grok.cached(tweetId, READING_LANG) !== undefined) return
+          if (attempts >= GROK_RETRY_LIMIT) return
+          retry = window.setTimeout(
+            () => observer.observe(element),
+            Math.max(grok.nextAttemptIn(), GROK_RETRY_MS),
+          )
         })
       },
       { root: scrollRoot?.current ?? null, rootMargin: GROK_PREFETCH_MARGIN },
@@ -486,6 +510,7 @@ function useGrokTranslation(tweetId: string) {
 
     return () => {
       alive = false
+      window.clearTimeout(retry)
       observer.disconnect()
       request?.cancel()
     }

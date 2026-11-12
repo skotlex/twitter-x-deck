@@ -36,6 +36,8 @@ export type GrokReply =
       reason: string
       limited?: boolean
       retryAt?: number
+      /** x.com 이 돌려준 HTTP 상태. 요청이 나가지도 못했으면 없다. */
+      status?: number
     }
 
 function tagged(value: unknown): value is { type: string; id: string } {

@@ -377,7 +377,11 @@ function installGrokTranslator(): void {
         return
       }
       if (!response.ok) {
-        reply({ type: 'grok-failed', reason: `Grok 번역이 거절됐습니다 (HTTP ${response.status})` })
+        reply({
+          type: 'grok-failed',
+          reason: `Grok 번역이 거절됐습니다 (HTTP ${response.status})`,
+          status: response.status,
+        })
         return
       }
 

@@ -10,7 +10,10 @@
  *   - 같은 글은 한 번만 묻는다. 받은 번역은 저장소에 쟁여 새로고침 뒤에도 다시 묻지 않는다
  *   - 차례가 오기 전에 카드가 사라졌으면 묻지 않는다
  *   - 요청 과다로 막히면 풀릴 때까지 묻지 않는다. 그동안 카드는 원문만 보여준다
- *   - 이유 없이 연달아 실패하면 이 탭에서는 더 묻지 않는다 — x.com 이 길을 바꿨다는 뜻이다
+ *   - 연달아 실패하면 5분 쉬었다가 다시 묻는다 — 영영 그만두면 지나가는 장애 뒤로 들어온
+ *     글이 전부 원문으로 남는다
+ *   - x.com 이 거절한 글(4xx)만 '못 옮긴다' 로 기억한다. 시간 초과 · 서버 오류는 다시 묻는다
+ *   - 실패 이유는 개발자 도구 콘솔에 `[X Deck] Grok 번역 실패` 로 남긴다
  *
  * Grok 번역은 덤이다. 못 받으면 조용히 비켜서고, 사용자는 Papago 로 옮기면 된다.
  */
@@ -26,14 +29,29 @@ const PER_MINUTE = 20
 const REPLY_TIMEOUT_MS = 15_000
 /** 막혔는데 언제 풀리는지 모를 때 쉬는 시간. */
 const DEFAULT_PAUSE_MS = 60_000
-/** 이만큼 연달아 실패하면 이 탭에서는 그만 묻는다. */
-const GIVE_UP_AFTER = 5
+/** 이만큼 연달아 실패하면 잠시 쉰다. x.com 쪽에 장애가 있다는 뜻이다. */
+const FAIL_STREAK = 5
+/** 연달아 실패했을 때 쉬는 시간. 영영 그만두지는 않는다 — 지나가는 장애일 수 있다. */
+const FAILURE_PAUSE_MS = 5 * 60_000
 /** 기억해 두는 번역 수. 넘으면 오래된 것부터 잊는다. */
 const CACHE_LIMIT = 2000
 
 export type GrokOutcome =
   | { ok: true; text: string }
-  | { ok: false; reason: string; limited?: boolean; retryAt?: number }
+  | { ok: false; reason: string; limited?: boolean; retryAt?: number; status?: number }
+
+/**
+ * 이 실패가 그 글에 대한 최종 판정인지.
+ *
+ * x.com 이 그 요청을 거절한 것(4xx, 요청 과다 제외)만 그렇다. 시간 초과 · 서버 오류 ·
+ * 빈 응답은 그때 사정이라 나중에 다시 물으면 받을 수 있다.
+ */
+const isFinal = (outcome: Extract<GrokOutcome, { ok: false }>): boolean =>
+  !outcome.limited &&
+  outcome.status !== undefined &&
+  outcome.status >= 400 &&
+  outcome.status < 500 &&
+  outcome.status !== 429
 
 /** 인터셉터에 한 번 묻는 길. 시험에서는 가짜로 바꿔 끼운다. */
 export type GrokTransport = (tweetId: string, lang: string) => Promise<GrokOutcome>
@@ -101,7 +119,6 @@ export function createGrokClient(options: GrokClientOptions) {
     }
   }
 
-  const givenUp = () => failures >= GIVE_UP_AFTER
   const paused = () => now() < pausedUntil
 
   /** 줄에 선 것을 다 돌려보낸다. 막혔을 때 카드가 마냥 기다리지 않게. */
@@ -126,7 +143,7 @@ export function createGrokClient(options: GrokClientOptions) {
     pumping = true
     try {
       while (line.length > 0) {
-        if (paused() || givenUp()) {
+        if (paused()) {
           releaseAll()
           break
         }
@@ -149,13 +166,21 @@ export function createGrokClient(options: GrokClientOptions) {
           remember(id, outcome.text)
           options.store?.save(id, outcome.text).catch(() => {})
           job.resolve(outcome.text)
-        } else if (outcome.limited) {
-          // 막힌 것이지 이 글이 못 옮겨지는 게 아니다. 기억하지 않고 풀리면 다시 묻는다.
-          pausedUntil = Math.max(outcome.retryAt ?? 0, now() + DEFAULT_PAUSE_MS)
-          job.resolve(null)
         } else {
-          failures += 1
-          remember(id, null)
+          // 원인은 화면에 띄우지 않는다 — 번역은 덤이다. 대신 개발자 도구에서 찾을 수 있게 남긴다.
+          console.info(`[X Deck] Grok 번역 실패 (${job.tweetId}): ${outcome.reason}`)
+
+          if (outcome.limited) {
+            // 막힌 것이지 이 글이 못 옮겨지는 게 아니다. 기억하지 않고 풀리면 다시 묻는다.
+            pausedUntil = Math.max(outcome.retryAt ?? 0, now() + DEFAULT_PAUSE_MS)
+          } else {
+            if (isFinal(outcome)) remember(id, null)
+            failures += 1
+            if (failures >= FAIL_STREAK) {
+              failures = 0
+              pausedUntil = Math.max(pausedUntil, now() + FAILURE_PAUSE_MS)
+            }
+          }
           job.resolve(null)
         }
 
@@ -187,7 +212,7 @@ export function createGrokClient(options: GrokClientOptions) {
         return
       }
     }
-    if (paused() || givenUp()) {
+    if (paused()) {
       pending.delete(id)
       job.resolve(null)
       return
@@ -197,6 +222,16 @@ export function createGrokClient(options: GrokClientOptions) {
   }
 
   return {
+    /**
+     * 몇 ms 뒤에 다시 물어야 받아줄지. 막혀 있지 않으면 0.
+     *
+     * 번역 없이 돌아간 카드가 언제 다시 부탁할지 정하는 데 쓴다. 결과가 null 인데
+     * `cached` 도 undefined 면, 그 글은 아직 판정이 나지 않은 것이다.
+     */
+    nextAttemptIn(): number {
+      return Math.max(0, pausedUntil - now())
+    },
+
     /** 이미 받은 번역. 아직 묻지 않았으면 undefined. */
     cached(tweetId: string, lang: string): string | null | undefined {
       return cache.get(key(tweetId, lang))
@@ -259,6 +294,7 @@ const askInterceptor: GrokTransport = (tweetId, lang) =>
           ok: false,
           reason: reply.reason,
           ...(reply.limited ? { limited: true } : {}),
+          ...(reply.status ? { status: reply.status } : {}),
           ...(reply.retryAt ? { retryAt: reply.retryAt } : {}),
         })
       }

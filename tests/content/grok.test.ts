@@ -101,8 +101,8 @@ describe('createGrokClient', () => {
     expect(asked).toEqual(['1'])
   })
 
-  it('못 옮기는 글은 다시 묻지 않는다', async () => {
-    const { asked, transport } = fakeTransport(() => ({ ok: false, reason: 'HTTP 400' }))
+  it('x.com 이 거절한 글(4xx)은 다시 묻지 않는다', async () => {
+    const { asked, transport } = fakeTransport(() => ({ ok: false, reason: 'HTTP 400', status: 400 }))
     const grok = client(transport)
 
     await grok.request('1', 'ko').promise
@@ -111,13 +111,47 @@ describe('createGrokClient', () => {
     expect(asked).toEqual(['1'])
   })
 
-  it('연달아 실패하면 이 탭에서는 그만 묻는다', async () => {
-    const { asked, transport } = fakeTransport(() => ({ ok: false, reason: 'HTTP 404' }))
+  /*
+   * 시간 초과 · 서버 오류 · 빈 응답은 그때 사정이다. 그 글을 못 옮기는 것으로 기억하면
+   * 탭을 닫을 때까지 그 글은 원문으로 남았다.
+   */
+  it('일시적인 실패는 그 글을 못 옮기는 것으로 기억하지 않는다', async () => {
+    let fail = true
+    const { asked, transport } = fakeTransport(() =>
+      fail ? { ok: false, reason: '응답하지 않았습니다' } : { ok: true, text: '번역' },
+    )
     const grok = client(transport)
+
+    await expect(grok.request('1', 'ko').promise).resolves.toBeNull()
+    expect(grok.cached('1', 'ko')).toBeUndefined()
+
+    fail = false
+    await expect(grok.request('1', 'ko').promise).resolves.toBe('번역')
+    expect(asked).toEqual(['1', '1'])
+  })
+
+  /*
+   * 예전에는 연달아 다섯 번 실패하면 탭을 닫을 때까지 묻지 않았다. 지나가는 장애에도
+   * 그 뒤로 들어온 글이 전부 원문으로 남았다.
+   */
+  it('연달아 실패하면 잠시 쉬었다가 다시 묻는다', async () => {
+    let clock = 0
+    const { asked, transport } = fakeTransport(() => ({ ok: false, reason: 'HTTP 503', status: 503 }))
+    const grok = client(transport, () => clock)
 
     for (const id of ['1', '2', '3', '4', '5']) await grok.request(id, 'ko').promise
     await expect(grok.request('6', 'ko').promise).resolves.toBeNull()
     expect(asked).toEqual(['1', '2', '3', '4', '5'])
+    expect(grok.nextAttemptIn()).toBeGreaterThan(0)
+
+    clock += grok.nextAttemptIn()
+    await grok.request('6', 'ko').promise
+    expect(asked).toContain('6')
+  })
+
+  it('막혀 있지 않으면 바로 다시 물어도 된다고 알린다', () => {
+    const { transport } = fakeTransport(() => ({ ok: true, text: '번역' }))
+    expect(client(transport).nextAttemptIn()).toBe(0)
   })
 
   it('한 번이라도 받으면 실패 횟수를 다시 센다', async () => {
