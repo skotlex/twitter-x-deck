@@ -104,3 +104,33 @@ export function aspectRatio(width: number, height: number): number {
   if (!width || !height) return 16 / 9
   return Math.min(Math.max(width / height, 0.6), 2.2)
 }
+
+/** 사람이 읽는 언어 이름을 만드는 도구. 한 번 만들어 둔다. */
+let languageNames: Intl.DisplayNames | null | undefined
+
+/**
+ * x.com 이 붙인 언어 코드를 한국어 이름으로 옮긴다 (`en` → `영어`). 모르면 null.
+ *
+ * x.com 은 언어가 아닌 표시도 언어 자리에 싣는다 — `und`(판정 못 함), `zxx`(글자 없음),
+ * `qme`·`qht` 같은 `q` 로 시작하는 자체 코드(미디어만 · 해시태그만). 그런 것에는 이름을
+ * 붙이지 않는다. 이름을 못 찾으면 브라우저가 코드를 그대로 돌려주므로 그것도 거른다.
+ */
+export function languageName(code: string | undefined): string | null {
+  const lang = code?.trim().toLowerCase() ?? ''
+  if (!/^[a-z]{2,3}(-[a-z0-9]+)*$/.test(lang)) return null
+  if (lang === 'und' || lang === 'zxx' || /^q[a-t][a-z]$/.test(lang)) return null
+
+  if (languageNames === undefined) {
+    try {
+      languageNames = new Intl.DisplayNames(['ko'], { type: 'language' })
+    } catch {
+      languageNames = null
+    }
+  }
+  try {
+    const name = languageNames?.of(lang)
+    return name && name.toLowerCase() !== lang ? name : null
+  } catch {
+    return null
+  }
+}

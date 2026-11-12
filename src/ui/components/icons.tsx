@@ -174,3 +174,10 @@ export const VerifiedIcon = (props: IconProps) => (
     <path d="M12 1.6 14.2 4l3.2-.4 1 3.1 3 1.3-1.2 3 1.2 3-3 1.3-1 3.1-3.2-.4L12 22.4 9.8 20l-3.2.4-1-3.1-3-1.3 1.2-3-1.2-3 3-1.3 1-3.1L9.8 4 12 1.6Zm-1.1 13.7 5.3-5.3-1.4-1.4-3.9 3.9-1.8-1.8-1.4 1.4 3.2 3.2Z" />
   </svg>
 )
+
+/** 번역. 설정의 번역 탭과 카드의 원문 언어 표시가 함께 쓴다. */
+export const TranslateIcon = (props: IconProps) => (
+  <Icon strokeWidth={2} {...props}>
+    <path d="M4 5h10M9 3v2m0 0c0 4-2 7-5 9m3-4c0 2 3 4 6 4m1 6 4-10 4 10m-7-3h6" />
+  </Icon>
+)

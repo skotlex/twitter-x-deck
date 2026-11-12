@@ -6,7 +6,14 @@
  * 대신 **어느 갈래로 갔는지** 와 경계값을 잰다.
  */
 import { describe, expect, it } from 'vitest'
-import { aspectRatio, formatCount, formatRelative, originalMediaUrl, sizedMediaUrl } from '@ui/lib/format'
+import {
+  aspectRatio,
+  formatCount,
+  formatRelative,
+  languageName,
+  originalMediaUrl,
+  sizedMediaUrl,
+} from '@ui/lib/format'
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
@@ -165,5 +172,22 @@ describe('aspectRatio', () => {
   it('너무 길쭉하거나 납작한 것은 잘라낸다 — 한 장이 화면을 다 먹으면 안 된다', () => {
     expect(aspectRatio(100, 1000)).toBe(0.6)
     expect(aspectRatio(1000, 100)).toBe(2.2)
+  })
+})
+
+describe('languageName', () => {
+  it('언어 코드를 한국어 이름으로 옮긴다', () => {
+    expect(languageName('en')).toBe('영어')
+    expect(languageName('PT')).toBe('포르투갈어')
+  })
+
+  it('x.com 이 언어 자리에 싣는 언어 아닌 표시에는 이름을 붙이지 않는다', () => {
+    for (const code of ['und', 'zxx', 'qme', 'qht', 'qam']) expect(languageName(code)).toBeNull()
+  })
+
+  it('비었거나 모양이 틀린 코드는 모른다', () => {
+    expect(languageName(undefined)).toBeNull()
+    expect(languageName('')).toBeNull()
+    expect(languageName('not a code')).toBeNull()
   })
 })

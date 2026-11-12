@@ -18,7 +18,7 @@ import {
 } from '../../content/translate'
 import { useColumnActivity } from '../columnActivity'
 import { opensCardDetail } from '../lib/cardClick'
-import { formatCount, formatRelative, formatStamp } from '../lib/format'
+import { formatCount, formatRelative, formatStamp, languageName } from '../lib/format'
 import { Lightbox } from './Lightbox'
 import { MEDIA_REGION_MARK, MediaSlot } from './MediaGrid'
 import { PostComposer } from './PostComposer'
@@ -30,6 +30,7 @@ import {
   QuoteIcon,
   ReplyIcon,
   RepostIcon,
+  TranslateIcon,
   VerifiedIcon,
   ViewsIcon,
 } from './icons'
@@ -175,7 +176,8 @@ function QuotedTweet({
       */}
       <TweetBody
         tweet={tweet}
-        className="mt-1.5 text-muted"
+        spacing="mt-1.5"
+        tone="text-muted"
         textClass={textClass}
         clampClass="line-clamp-6"
       />
@@ -477,8 +479,10 @@ function useGrokTranslation(tweetId: string) {
 
 interface BodyProps {
   tweet: Tweet
-  /** 본문 상자에 붙는 여백 · 색. */
-  className: string
+  /** 위쪽 여백. 원문 언어 표시가 붙으면 그 위에 걸린다. */
+  spacing: string
+  /** 본문 글자색. 인용글은 한 톤 낮춘다. 원문 언어 표시와 Papago 번역에는 걸지 않는다. */
+  tone?: string
   textClass: string
   /** 원문을 몇 줄에서 자를지. 번역문은 자르지 않는다 — 잘린 뒤를 읽으러 원문으로 나가게 두지 않는다. */
   clampClass: string
@@ -488,7 +492,7 @@ interface BodyProps {
 function TweetBody(props: BodyProps) {
   if (translatable(props.tweet)) return <TranslatedBody {...props} />
   return (
-    <div className={props.className}>
+    <div className={`${props.spacing} ${props.tone ?? ''}`}>
       <RichText text={props.tweet.text} className={`${props.textClass} ${props.clampClass}`} />
     </div>
   )
@@ -497,39 +501,50 @@ function TweetBody(props: BodyProps) {
 /**
  * 외국어 글의 본문.
  *
- * x.com 처럼 **원문 자리에 Grok 번역을** 그리고, `원문 보기` 로 원문과 오간다.
+ * x.com 처럼 **원문 자리에 Grok 번역을** 그리고, 그 위에 원문 언어를 밝힌다.
+ * `원문 보기` 로 원문과 오간다.
  * Grok 번역이 마음에 안 들면 `Papago 번역` 로 원문을 Papago 에 맡기는데, 그 번역은
  * 본문 아래 따로 붙는다 — 본문 자리의 Grok 번역은 그대로 두어 둘을 견줘 볼 수 있다.
  */
-function TranslatedBody({ tweet, className, textClass, clampClass }: BodyProps) {
+function TranslatedBody({ tweet, spacing, tone = '', textClass, clampClass }: BodyProps) {
   const { ref, text: grokText } = useGrokTranslation(tweet.id)
   const [original, setOriginal] = useState(false)
   const translated = grokText !== null && !original
 
-  return (
-    <div ref={ref}>
-      <div className={className}>
-        <RichText
-          text={translated ? grokText : tweet.text}
-          className={translated ? textClass : `${textClass} ${clampClass}`}
-        />
-      </div>
+  // x.com 처럼 본문 **위에** 원문 언어를 밝힌다. 읽기 전에 번역문인지 알아야 한다.
+  // 언어 이름을 모르면(x.com 이 언어가 아닌 표시를 붙여 온 글) 누가 옮겼는지만 적는다.
+  const language = languageName(tweet.lang)
 
+  return (
+    <div ref={ref} className={spacing}>
       {grokText !== null && (
-        <p className="mt-0.5 text-[12px] text-faint">
-          {translated && <span>Grok 번역 · </span>}
+        <p
+          className="flex items-center gap-1 text-[12.5px] text-faint"
+          title="x.com 의 Grok 번역"
+        >
+          <TranslateIcon className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">
+            {language ? `원문 언어 ${language}` : 'Grok 번역'}
+          </span>
           <button
             type="button"
             onClick={(event) => {
               event.stopPropagation()
               setOriginal(!original)
             }}
-            className="font-medium text-accent hover:underline"
+            className="shrink-0 font-medium text-accent hover:underline"
           >
             {translated ? '원문 보기' : 'Grok 번역'}
           </button>
         </p>
       )}
+
+      <div className={`${tone} ${grokText !== null ? 'mt-0.5' : ''}`}>
+        <RichText
+          text={translated ? grokText : tweet.text}
+          className={translated ? textClass : `${textClass} ${clampClass}`}
+        />
+      </div>
 
       <PapagoBlock tweet={tweet} textClass={textClass} />
     </div>
@@ -811,7 +826,7 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
 
           <TweetBody
             tweet={tweet}
-            className="mt-1"
+            spacing="mt-1"
             textClass={metrics.text}
             clampClass={metrics.clamp}
           />

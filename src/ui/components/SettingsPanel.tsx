@@ -11,19 +11,7 @@ import {
   requestLogin,
 } from '../../content/imageTranslate'
 import { COMMON_FONTS, fontStack, loadLocalFontFamilies } from '../lib/fonts'
-import { ArchiveIcon, CloseIcon, EyeIcon, RefreshIcon, SettingsIcon } from './icons'
-
-function TranslateIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
-      <path
-        d="M4 5h10M9 3v2m0 0c0 4-2 7-5 9m3-4c0 2 3 4 6 4m1 6 4-10 4 10m-7-3h6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
+import { ArchiveIcon, CloseIcon, EyeIcon, RefreshIcon, SettingsIcon, TranslateIcon } from './icons'
 
 const FIELD =
   'rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 text-[13px] text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent'
