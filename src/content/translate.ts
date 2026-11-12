@@ -50,6 +50,44 @@ export function papagoTarget(lang: string): string {
 }
 
 /**
+ * Papago 에 적어 보낼 출발 언어. 모르거나 Papago 가 못 받는 언어면 `auto`.
+ *
+ * `auto` 로 두면 Papago 가 도착 언어를 영어로 바꿔 써서, 영어 글은 원문이 그대로
+ * 돌아왔다. 도착 언어와 같은 언어도 적지 않는다 — 그때도 Papago 가 도착 언어를 바꾼다.
+ */
+export function papagoSource(lang: string): string {
+  const lower = lang.toLowerCase()
+  const base = lower.split('-')[0] ?? ''
+  if (base === 'zh') return lower.includes('tw') ? 'zh-TW' : 'zh-CN'
+  return PAPAGO_TARGETS.has(base) && base !== READING_LANG ? base : 'auto'
+}
+
+/** 번역문을 견줄 때 공백 · 대소문자는 따지지 않는다. */
+const normalize = (text: string): string => text.replace(/\s+/g, ' ').trim().toLowerCase()
+
+/**
+ * 번역기가 원문을 그대로 돌려줬는지.
+ *
+ * Papago 는 도착 언어를 제멋대로 바꾸면 '번역문' 칸에 원문을 그대로 채운다. 그걸
+ * 번역으로 받으면 외국어가 번역문 자리에 붙는다.
+ */
+export function untranslated(source: string, result: string): boolean {
+  return normalize(source) === normalize(result)
+}
+
+/**
+ * 번역문이 부탁한 언어가 아닌지.
+ *
+ * Papago 는 도착 언어를 제멋대로 영어로 바꾼다 — 포르투갈어 글을 한국어로 부탁했는데
+ * 영어 번역문이 돌아왔다. 원문과 다른 글이라 `untranslated` 로는 못 거른다.
+ * 한국어 번역문에는 이름 · 해시태그가 섞여도 한글이 한 글자는 있으므로, 한 글자도
+ * 없으면 다른 언어로 옮긴 것이다. 한국어가 아닌 도착 언어는 따지지 않는다.
+ */
+export function wrongLanguage(result: string, target: string): boolean {
+  return target.toLowerCase().split('-')[0] === READING_LANG && !HANGUL.test(result)
+}
+
+/**
  * 이미 한국어로 쓰인 글인지 본다.
  *
  * x.com 이 붙이는 언어 코드는 자주 틀린다 — 한국어 글에 `ja`·`en` 이 붙는 일이 흔하다.
@@ -89,12 +127,13 @@ function createFrame(url: string): HTMLIFrameElement {
  * 밖에서 조작하는 것보다 훨씬 튼튼하다. 주소에 담기엔 긴 글만 프레임 안에서 직접
  * 넣는데, 그쪽도 같은 글월을 메시지로 받아두므로 판단은 프레임이 한다.
  *
- * 출발 언어는 늘 `auto` 다. x.com 이 붙여준 언어 코드보다 Papago 자신의 판정이 낫고,
- * 지원하지 않는 코드를 넘겨 통째로 실패할 일도 없다.
+ * 출발 언어는 x.com 이 붙인 언어를 적는다 (`papagoSource`). `auto` 로 두면 Papago 가
+ * 도착 언어를 영어로 바꿔 써서 영어 글은 원문이 그대로 돌아왔다. Papago 가 못 받는
+ * 언어만 `auto` 로 둔다.
  */
-async function translateWithPapago(text: string, target: string): Promise<string> {
+async function translateWithPapago(text: string, source: string, target: string): Promise<string> {
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  const frame = createFrame(papagoUrl(text, papagoTarget(target), id))
+  const frame = createFrame(papagoUrl(text, papagoTarget(target), id, papagoSource(source)))
 
   try {
     return await new Promise<string>((resolve, reject) => {
@@ -215,15 +254,24 @@ export async function translateText(
   let reason = 'Papago 를 띄우지 못했습니다'
 
   try {
-    const translated = await enqueue(() => translateWithPapago(text, targetLang))
-    if (translated.length > 0) return { text: translated, engine: 'papago' }
-    reason = '번역문이 비어 있습니다'
+    const translated = await enqueue(() => translateWithPapago(text, sourceLang, targetLang))
+    if (translated.length === 0) reason = '번역문이 비어 있습니다'
+    else if (untranslated(text, translated)) reason = 'Papago 가 원문을 그대로 돌려줬습니다'
+    else if (wrongLanguage(translated, targetLang)) reason = 'Papago 가 다른 언어로 옮겼습니다'
+    else return { text: translated, engine: 'papago' }
   } catch (cause) {
     reason = cause instanceof Error ? cause.message : reason
   }
 
   const fallback = await translateWithBrowser(text, sourceLang, targetLang)
-  if (fallback !== null && fallback.length > 0) return { text: fallback, engine: 'browser' }
+  if (
+    fallback !== null &&
+    fallback.length > 0 &&
+    !untranslated(text, fallback) &&
+    !wrongLanguage(fallback, targetLang)
+  ) {
+    return { text: fallback, engine: 'browser' }
+  }
 
   throw new TranslateError(`${reason} · 브라우저 번역기도 쓸 수 없습니다`)
 }

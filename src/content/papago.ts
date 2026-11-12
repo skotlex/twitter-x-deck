@@ -203,6 +203,9 @@ async function handle(text: string, target: string): Promise<void> {
   if (!arrived) typeInto(box, text)
 
   const result = await waitForResult()
+  // 주소를 고쳐 쓰는 것이 글월이 들어온 뒤에 올 때도 있다. 끝난 상태로 한 번 더 본다 —
+  // 도착 언어가 바뀌어 있으면 이 번역문은 부탁한 언어가 아니다.
+  if (retarget(target)) return
   if (result.length === 0) {
     fail('번역문이 뜨지 않았습니다')
     return

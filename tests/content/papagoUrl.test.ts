@@ -25,6 +25,16 @@ describe('papagoUrl', () => {
     for (const legacy of ['sk', 'tk', 'st']) expect(params.has(legacy)).toBe(false)
   })
 
+  /*
+   * `sl=auto` 로 보내면 Papago 가 도착 언어를 영어로 바꿔 쓴다. 원문이 영어면 영어 → 영어가
+   * 되어 원문이 그대로 돌아왔다. 출발 언어를 적으면 `tl` 을 따르는 것은 확인된 사실이다.
+   */
+  it('출발 언어를 알면 적어 보낸다 — auto 면 Papago 가 도착 언어를 영어로 바꾼다', () => {
+    const known = new URL(papagoUrl('a woman who', 'ko', 'abc', 'en')).searchParams
+    expect(known.get('sl')).toBe('en')
+    expect(known.get('tl')).toBe('ko')
+  })
+
   it('주소에 담기엔 긴 글은 싣지 않는다 — 프레임이 직접 넣는다', () => {
     const long = new URL(papagoUrl('가'.repeat(URL_TEXT_LIMIT), 'ko', 'abc'))
     expect(long.searchParams.has('text')).toBe(false)

@@ -498,7 +498,7 @@ function TweetBody(props: BodyProps) {
  * 외국어 글의 본문.
  *
  * x.com 처럼 **원문 자리에 Grok 번역을** 그리고, `원문 보기` 로 원문과 오간다.
- * Grok 번역이 마음에 안 들면 `Papago 번역하기` 로 원문을 Papago 에 맡기는데, 그 번역은
+ * Grok 번역이 마음에 안 들면 `Papago 번역` 로 원문을 Papago 에 맡기는데, 그 번역은
  * 본문 아래 따로 붙는다 — 본문 자리의 Grok 번역은 그대로 두어 둘을 견줘 볼 수 있다.
  */
 function TranslatedBody({ tweet, className, textClass, clampClass }: BodyProps) {
@@ -526,7 +526,7 @@ function TranslatedBody({ tweet, className, textClass, clampClass }: BodyProps) 
             }}
             className="font-medium text-accent hover:underline"
           >
-            {translated ? '원문 보기' : 'Grok 번역 보기'}
+            {translated ? '원문 보기' : 'Grok 번역'}
           </button>
         </p>
       )}
@@ -574,7 +574,7 @@ function PapagoBlock({ tweet, textClass }: { tweet: Tweet; textClass: string }) 
       ? shown
         ? '번역 숨기기'
         : '번역 보기'
-      : 'Papago 번역하기'
+      : 'Papago 번역'
 
   return (
     <div className="mt-1">

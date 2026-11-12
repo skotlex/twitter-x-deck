@@ -9,7 +9,14 @@
  * 프레임을 띄우는 쪽(실제 번역)은 여기서 잴 수 없다 — 남의 사이트가 필요하다.
  */
 import { describe, expect, it } from 'vitest'
-import { looksKorean, papagoTarget, READING_LANG } from '../../src/content/translate'
+import {
+  looksKorean,
+  papagoSource,
+  papagoTarget,
+  READING_LANG,
+  untranslated,
+  wrongLanguage,
+} from '../../src/content/translate'
 
 describe('READING_LANG', () => {
   it('브라우저 언어와 무관하게 한국어다', () => {
@@ -56,5 +63,62 @@ describe('looksKorean', () => {
   it('글자가 없으면 판단하지 않는다', () => {
     expect(looksKorean('')).toBe(false)
     expect(looksKorean('123 !!! 🙂')).toBe(false)
+  })
+})
+
+describe('papagoSource', () => {
+  it('x.com 이 붙인 언어를 Papago 가 받는 이름으로 옮긴다', () => {
+    expect(papagoSource('en')).toBe('en')
+    expect(papagoSource('JA')).toBe('ja')
+    expect(papagoSource('zh')).toBe('zh-CN')
+    expect(papagoSource('zh-TW')).toBe('zh-TW')
+  })
+
+  it('모르거나 Papago 가 못 받는 언어는 auto 로 둔다', () => {
+    expect(papagoSource('auto')).toBe('auto')
+    expect(papagoSource('')).toBe('auto')
+    expect(papagoSource('sw')).toBe('auto')
+    expect(papagoSource('qme')).toBe('auto')
+  })
+
+  it('도착 언어와 같은 출발 언어는 적지 않는다 — Papago 가 도착 언어를 바꿔버린다', () => {
+    expect(papagoSource('ko')).toBe('auto')
+  })
+})
+
+describe('untranslated', () => {
+  /*
+   * Papago 가 도착 언어를 영어로 바꿔 쓰면 영어 글은 원문이 그대로 돌아온다.
+   * 그건 번역문이 아니다 — 받으면 영어 '번역' 이 카드에 붙는다.
+   */
+  it('원문이 그대로 돌아오면 번역되지 않은 것이다', () => {
+    const source = "a woman who can't sustain a nipple piercing is just a girl"
+    expect(untranslated(source, source)).toBe(true)
+  })
+
+  it('공백 · 줄바꿈 · 대소문자 차이는 같은 글로 본다', () => {
+    expect(untranslated('Hello  world\nagain', 'hello world again')).toBe(true)
+  })
+
+  it('옮겨진 글은 번역이다', () => {
+    expect(untranslated('Hello world', '안녕 세상')).toBe(false)
+  })
+})
+
+describe('wrongLanguage', () => {
+  /*
+   * 포르투갈어 글을 한국어로 부탁했는데 Papago 가 도착 언어를 영어로 바꿔 영어 번역문을
+   * 돌려줬다. 원문과 다른 글이라 `untranslated` 로는 못 거른다.
+   */
+  it('한국어를 부탁했는데 한글이 한 글자도 없으면 다른 언어로 옮긴 것이다', () => {
+    expect(wrongLanguage("a woman who can't sustain a nipple piercing is just a girl", 'ko')).toBe(true)
+  })
+
+  it('한글이 있으면 한국어 번역으로 본다 — 이름 · 해시태그가 섞여도 된다', () => {
+    expect(wrongLanguage('#NewJeans 의 신곡 by @ADOR 를 확인하세요', 'ko')).toBe(false)
+  })
+
+  it('한국어가 아닌 도착 언어는 따지지 않는다', () => {
+    expect(wrongLanguage('a woman who', 'en')).toBe(false)
   })
 })

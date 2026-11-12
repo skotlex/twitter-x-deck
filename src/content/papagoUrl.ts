@@ -6,7 +6,7 @@
  *
  * Papago 는 주소 형식을 `sk`·`tk`·`st` 에서 `sl`·`tl`·`text` 로 바꿨다. 옛 이름으로
  * 보내면 글월은 옮겨 받으면서 도착 언어는 버리고 제 기본값(영어)을 쓴다.
- * 출발 언어는 늘 `auto` 다 — x.com 이 붙인 언어 코드보다 Papago 의 판정이 낫다.
+ * 출발 언어는 x.com 이 붙인 언어를 적고, 모를 때만 `auto` 로 둔다 (`papagoUrl` 참고).
  */
 import { PAPAGO_ORIGIN, PAPAGO_PARAM } from '@core/messages'
 
@@ -17,9 +17,15 @@ import { PAPAGO_ORIGIN, PAPAGO_PARAM } from '@core/messages'
  */
 export const URL_TEXT_LIMIT = 6_000
 
-/** 번역 프레임에 띄울 주소. `id` 는 프레임 안 스크립트가 자기 일인지 알아보는 표시다. */
-export function papagoUrl(text: string, target: string, id: string): string {
-  const params = new URLSearchParams({ sl: 'auto', tl: target, [PAPAGO_PARAM]: id })
+/**
+ * 번역 프레임에 띄울 주소. `id` 는 프레임 안 스크립트가 자기 일인지 알아보는 표시다.
+ *
+ * 출발 언어를 알면 적는다. `auto` 로 보내면 Papago 가 도착 언어를 영어로 다시 쓰는데,
+ * 원문이 영어면 영어 → 영어가 되어 원문이 그대로 돌아온다. 출발 언어가 적혀 있으면
+ * Papago 는 `tl` 을 따른다.
+ */
+export function papagoUrl(text: string, target: string, id: string, source = 'auto'): string {
+  const params = new URLSearchParams({ sl: source, tl: target, [PAPAGO_PARAM]: id })
   if (encodeURIComponent(text).length <= URL_TEXT_LIMIT) params.set('text', text)
   return `${PAPAGO_ORIGIN}/?${params.toString()}`
 }
