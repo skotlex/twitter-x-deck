@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useContext, useEffect, useRef, useState } from 'react'
 import type { Tweet, TweetMedia } from '@core/types'
 import {
   MEDIA_MAX_HEIGHT,
@@ -17,6 +17,7 @@ import {
   type TranslateEngine,
 } from '../../content/translate'
 import { useColumnActivity } from '../columnActivity'
+import { ColumnScrollContext } from '../columnScroll'
 import { opensCardDetail } from '../lib/cardClick'
 import { formatCount, formatRelative, formatStamp, languageName } from '../lib/format'
 import { Lightbox } from './Lightbox'
@@ -440,14 +441,27 @@ const ENGINE_LABEL: Record<TranslateEngine, string> = {
 }
 
 /**
+ * 카드가 보이기 전 얼마나 앞서 Grok 번역을 부탁할지.
+ *
+ * 아래쪽을 넉넉히 둔다 — 내려 읽는 방향이라 거기서 올 카드가 곧 보인다. 보통 속도로
+ * 내리면 카드가 보일 때쯤 번역이 와 있다. 위쪽은 되짚어 올라갈 때를 위해 조금만 둔다.
+ * 더 늘리면 끝내 안 볼 글까지 물어 요청 한도를 쓴다.
+ */
+const GROK_PREFETCH_MARGIN = '400px 0px 1500px 0px'
+
+/**
  * x.com 이 붙여주는 Grok 번역을 받아온다.
  *
- * 카드가 **화면에 들어올 때** 부탁한다. 컬럼은 글을 수백 개씩 쌓아두는데 그걸 다
+ * 카드가 **곧 보이게 될 때** 부탁한다. 컬럼은 글을 수백 개씩 쌓아두는데 그걸 다
  * 물으면 x.com 이 요청 과다로 막는다. 화면을 지나쳐 사라진 카드의 몫은 묻지 않는다.
- * 이미 받은 번역은 카드가 다시 그려져도 곧바로 나온다.
+ * 기준은 컬럼의 스크롤 상자다 — 화면 기준으로 여유를 두면 상자 밖으로 잘린 카드는
+ * 끝까지 '안 보임' 이라 미리 부탁하지 못한다.
+ *
+ * 받은 번역은 저장소에 쟁여 두므로 새로고침 뒤에도 다시 묻지 않는다.
  */
 function useGrokTranslation(tweetId: string) {
   const ref = useRef<HTMLDivElement>(null)
+  const scrollRoot = useContext(ColumnScrollContext)
   const [text, setText] = useState<string | null>(() => grok.cached(tweetId, READING_LANG) ?? null)
 
   useEffect(() => {
@@ -457,14 +471,17 @@ function useGrokTranslation(tweetId: string) {
 
     let request: ReturnType<typeof grok.request> | null = null
     let alive = true
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return
-      observer.disconnect()
-      request = grok.request(tweetId, READING_LANG)
-      void request.promise.then((translated) => {
-        if (alive && translated) setText(translated)
-      })
-    })
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        observer.disconnect()
+        request = grok.request(tweetId, READING_LANG)
+        void request.promise.then((translated) => {
+          if (alive && translated) setText(translated)
+        })
+      },
+      { root: scrollRoot?.current ?? null, rootMargin: GROK_PREFETCH_MARGIN },
+    )
     observer.observe(element)
 
     return () => {
@@ -472,7 +489,7 @@ function useGrokTranslation(tweetId: string) {
       observer.disconnect()
       request?.cancel()
     }
-  }, [tweetId])
+  }, [tweetId, scrollRoot])
 
   return { ref, text }
 }

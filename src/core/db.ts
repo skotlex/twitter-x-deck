@@ -15,7 +15,7 @@ import {
 } from './types'
 
 const DB_NAME = 'x-deck'
-const DB_VERSION = 3
+const DB_VERSION = 4
 const STORE = 'tweets'
 
 /**
@@ -34,6 +34,20 @@ const TRANSLATION_STORE = 'imageTranslations'
  * 코드가 `oldVersion === 3` 을 보고 만들기를 건너뛴 채 없는 스토어를 연다.
  */
 const META_STORE = 'metadata'
+
+/**
+ * x.com 의 Grok 번역을 쟁여두는 자리.
+ *
+ * 글마다 따로 물어 받는데 요청 수에 한도가 있다. 새로고침할 때마다 화면의 글을 다시
+ * 물으면 그 한도를 같은 번역에 써버린다. 열쇠는 `${도착 언어}:${게시물 id}` 다.
+ */
+const GROK_STORE = 'grokTranslations'
+
+export interface StoredGrokTranslation {
+  key: string
+  text: string
+  at: number
+}
 
 export interface StoredTranslation {
   /** 원본 이미지 주소. 그대로 열쇠로 쓴다. */
@@ -73,6 +87,11 @@ interface DeckSchema extends DBSchema {
     key: string
     value: { key: string; done: boolean }
   }
+  [GROK_STORE]: {
+    key: string
+    value: StoredGrokTranslation
+    indexes: { 'by-at': number }
+  }
 }
 
 let dbPromise: Promise<IDBPDatabase<DeckSchema>> | null = null
@@ -92,6 +111,9 @@ function open(): Promise<IDBPDatabase<DeckSchema>> {
       }
       if (oldVersion < 3) {
         db.createObjectStore(META_STORE, { keyPath: 'key' })
+      }
+      if (oldVersion < 4) {
+        db.createObjectStore(GROK_STORE, { keyPath: 'key' }).createIndex('by-at', 'at')
       }
     },
   })
@@ -132,6 +154,37 @@ export async function saveTranslation(
 ): Promise<void> {
   const db = await getDb()
   await db.put(TRANSLATION_STORE, { url, engine, translation, at: Date.now() })
+}
+
+/** 쟁여둔 Grok 번역. 없으면 null. */
+export async function loadGrokTranslation(key: string): Promise<string | null> {
+  const db = await getDb()
+  return (await db.get(GROK_STORE, key))?.text ?? null
+}
+
+export async function saveGrokTranslation(key: string, text: string): Promise<void> {
+  const db = await getDb()
+  await db.put(GROK_STORE, { key, text, at: Date.now() })
+}
+
+/**
+ * 오래된 Grok 번역을 걷어낸다. 게시물과 같은 보관 기간을 쓴다 — 글이 지워진 뒤에
+ * 그 번역만 남아 있을 이유가 없다.
+ * @returns 삭제한 건수
+ */
+export async function pruneGrokTranslations(retentionDays: number): Promise<number> {
+  const db = await getDb()
+  const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000
+  const tx = db.transaction(GROK_STORE, 'readwrite')
+  let removed = 0
+  let cursor = await tx.store.index('by-at').openCursor(IDBKeyRange.upperBound(cutoff, true))
+  while (cursor) {
+    await cursor.delete()
+    removed += 1
+    cursor = await cursor.continue()
+  }
+  await tx.done
+  return removed
 }
 
 export const storageKey = (source: TimelineKind, id: string): string => `${source}:${id}`
@@ -281,4 +334,5 @@ export async function clearAll(): Promise<void> {
   await db.clear(STORE)
   // 번역본은 원본 게시물에 딸린 것이라 함께 비운다.
   await db.clear(TRANSLATION_STORE)
+  await db.clear(GROK_STORE)
 }

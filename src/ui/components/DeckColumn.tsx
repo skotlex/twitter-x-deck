@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isPowerSaving, type Settings } from '@core/settings'
 import { isNotification, TIMELINE_LABEL, type CollectorState, type TimelineKind } from '@core/types'
 import { ColumnActivityContext, type ColumnActivity } from '../columnActivity'
+import { ColumnScrollContext } from '../columnScroll'
 import { ColumnPixelsContext, useMeasuredColumnPixels } from '../columnWidth'
 import type { ColumnState } from '../hooks/useCollector'
 import { formatClock } from '../lib/format'
@@ -351,6 +352,7 @@ export function DeckColumn({
           {/* 사진을 어느 크기로 받을지도 이 안에서 갈린다 — 기준은 이 칸의 실제 폭이다. */}
           <ColumnPixelsContext.Provider value={columnPixels}>
             <ColumnActivityContext.Provider value={activity}>
+              <ColumnScrollContext.Provider value={scrollRef}>
               {column.tweets.length === 0 ? (
                 <EmptyState state={state} />
               ) : (
@@ -373,6 +375,7 @@ export function DeckColumn({
                   ),
                 )
               )}
+              </ColumnScrollContext.Provider>
             </ColumnActivityContext.Provider>
           </ColumnPixelsContext.Provider>
 

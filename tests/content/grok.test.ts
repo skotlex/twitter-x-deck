@@ -5,7 +5,12 @@
  * 사라진 카드의 몫을 묻지 않는지, 막혔을 때 물러서는지다.
  */
 import { describe, expect, it } from 'vitest'
-import { createGrokClient, type GrokOutcome, type GrokTransport } from '../../src/content/grok'
+import {
+  createGrokClient,
+  type GrokOutcome,
+  type GrokStore,
+  type GrokTransport,
+} from '../../src/content/grok'
 
 function fakeTransport(answer: (tweetId: string) => GrokOutcome) {
   const asked: string[] = []
@@ -146,5 +151,72 @@ describe('createGrokClient', () => {
     await Promise.all(['1', '2', '3'].map((id) => grok.request(id, 'ko').promise))
     expect(asked).toEqual(['1', '2', '3'])
     expect(waits).toEqual([60_000])
+  })
+})
+
+describe('쟁여둔 번역', () => {
+  function memoryStore(initial: Record<string, string> = {}) {
+    const kept = new Map(Object.entries(initial))
+    const store: GrokStore = {
+      load: async (key) => kept.get(key) ?? null,
+      save: async (key, text) => {
+        kept.set(key, text)
+      },
+    }
+    return { kept, store }
+  }
+
+  it('쟁여둔 번역이 있으면 묻지 않는다 — 새로고침 뒤에도 다시 묻지 않게', async () => {
+    const { asked, transport } = fakeTransport(() => ({ ok: true, text: '새 번역' }))
+    const { store } = memoryStore({ 'ko:1': '쟁여둔 번역' })
+    const grok = createGrokClient({ transport, store, spacingMs: 0, sleep: async () => {} })
+
+    await expect(grok.request('1', 'ko').promise).resolves.toBe('쟁여둔 번역')
+    expect(asked).toEqual([])
+    expect(grok.cached('1', 'ko')).toBe('쟁여둔 번역')
+  })
+
+  it('받은 번역을 쟁여둔다', async () => {
+    const { transport } = fakeTransport(() => ({ ok: true, text: '번역' }))
+    const { kept, store } = memoryStore()
+    const grok = createGrokClient({ transport, store, spacingMs: 0, sleep: async () => {} })
+
+    await grok.request('1', 'ko').promise
+    expect(kept.get('ko:1')).toBe('번역')
+  })
+
+  it('못 옮긴다는 판정은 쟁여두지 않는다 — 그때 사정일 수 있다', async () => {
+    const { transport } = fakeTransport(() => ({ ok: false, reason: 'HTTP 500' }))
+    const { kept, store } = memoryStore()
+    const grok = createGrokClient({ transport, store, spacingMs: 0, sleep: async () => {} })
+
+    await grok.request('1', 'ko').promise
+    expect(kept.size).toBe(0)
+  })
+
+  it('막혀 있는 동안에도 쟁여둔 것은 꺼내 준다', async () => {
+    const { asked, transport } = fakeTransport(() => ({ ok: false, reason: '많음', limited: true }))
+    const { store } = memoryStore({ 'ko:2': '쟁여둔 번역' })
+    const grok = createGrokClient({ transport, store, spacingMs: 0, now: () => 0, sleep: async () => {} })
+
+    await grok.request('1', 'ko').promise
+    await expect(grok.request('2', 'ko').promise).resolves.toBe('쟁여둔 번역')
+    expect(asked).toEqual(['1'])
+  })
+
+  it('저장소를 못 열면 그냥 묻는다', async () => {
+    const { asked, transport } = fakeTransport(() => ({ ok: true, text: '번역' }))
+    const store: GrokStore = {
+      load: async () => {
+        throw new Error('blocked')
+      },
+      save: async () => {
+        throw new Error('blocked')
+      },
+    }
+    const grok = createGrokClient({ transport, store, spacingMs: 0, sleep: async () => {} })
+
+    await expect(grok.request('1', 'ko').promise).resolves.toBe('번역')
+    expect(asked).toEqual(['1'])
   })
 })

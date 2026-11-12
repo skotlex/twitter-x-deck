@@ -7,13 +7,14 @@
  * 보내면 x.com 이 요청 과다로 막는다.
  *
  *   - 한 번에 하나씩, 사이를 띄워 보낸다. 1분에 보내는 수에도 상한을 둔다
- *   - 같은 글은 한 번만 묻는다. 받은 번역은 이 탭이 살아 있는 동안 기억한다
+ *   - 같은 글은 한 번만 묻는다. 받은 번역은 저장소에 쟁여 새로고침 뒤에도 다시 묻지 않는다
  *   - 차례가 오기 전에 카드가 사라졌으면 묻지 않는다
  *   - 요청 과다로 막히면 풀릴 때까지 묻지 않는다. 그동안 카드는 원문만 보여준다
  *   - 이유 없이 연달아 실패하면 이 탭에서는 더 묻지 않는다 — x.com 이 길을 바꿨다는 뜻이다
  *
  * Grok 번역은 덤이다. 못 받으면 조용히 비켜서고, 사용자는 Papago 로 옮기면 된다.
  */
+import { loadGrokTranslation, saveGrokTranslation } from '@core/db'
 import { CHANNEL } from '@core/messages'
 import { isGrokReply, type GrokReply } from '@core/grok'
 
@@ -37,8 +38,21 @@ export type GrokOutcome =
 /** 인터셉터에 한 번 묻는 길. 시험에서는 가짜로 바꿔 끼운다. */
 export type GrokTransport = (tweetId: string, lang: string) => Promise<GrokOutcome>
 
+/**
+ * 받은 번역을 쟁여두는 자리. 새로고침해도 다시 묻지 않게 한다.
+ *
+ * 메모리에 없을 때만 들여다보며, 여기서 찾으면 줄을 서지 않는다 — 요청이 아니라서
+ * 간격도 상한도 들지 않는다. 받아낸 번역만 넣는다. 못 옮긴다는 판정은 넣지 않는다 —
+ * 그건 그때 사정일 수 있다.
+ */
+export interface GrokStore {
+  load(key: string): Promise<string | null>
+  save(key: string, text: string): Promise<void>
+}
+
 export interface GrokClientOptions {
   transport: GrokTransport
+  store?: GrokStore
   spacingMs?: number
   perMinute?: number
   now?: () => number
@@ -133,6 +147,7 @@ export function createGrokClient(options: GrokClientOptions) {
         if (outcome.ok) {
           failures = 0
           remember(id, outcome.text)
+          options.store?.save(id, outcome.text).catch(() => {})
           job.resolve(outcome.text)
         } else if (outcome.limited) {
           // 막힌 것이지 이 글이 못 옮겨지는 게 아니다. 기억하지 않고 풀리면 다시 묻는다.
@@ -151,6 +166,36 @@ export function createGrokClient(options: GrokClientOptions) {
     }
   }
 
+  /**
+   * 새 부탁을 받는다. 쟁여둔 것이 있으면 그걸로 끝내고, 없을 때만 줄에 세운다.
+   *
+   * 막혀 있는 동안에도 쟁여둔 것은 꺼내 준다 — 묻는 게 아니니 막힐 이유가 없다.
+   */
+  async function enter(job: Pending): Promise<void> {
+    const id = key(job.tweetId, job.lang)
+    if (options.store) {
+      let kept: string | null = null
+      try {
+        kept = await options.store.load(id)
+      } catch {
+        // 저장소를 못 열면 그냥 묻는다.
+      }
+      if (kept) {
+        pending.delete(id)
+        remember(id, kept)
+        job.resolve(kept)
+        return
+      }
+    }
+    if (paused() || givenUp()) {
+      pending.delete(id)
+      job.resolve(null)
+      return
+    }
+    line.push(job)
+    void pump()
+  }
+
   return {
     /** 이미 받은 번역. 아직 묻지 않았으면 undefined. */
     cached(tweetId: string, lang: string): string | null | undefined {
@@ -162,9 +207,9 @@ export function createGrokClient(options: GrokClientOptions) {
       if (cache.has(id)) {
         return { promise: Promise.resolve(cache.get(id) ?? null), cancel: () => {} }
       }
-      if (paused() || givenUp()) return { promise: Promise.resolve(null), cancel: () => {} }
 
       let job = pending.get(id)
+      const fresh = !job
       if (!job) {
         let resolve!: (text: string | null) => void
         const promise = new Promise<string | null>((done) => {
@@ -172,12 +217,11 @@ export function createGrokClient(options: GrokClientOptions) {
         })
         job = { tweetId, lang, waiters: 0, promise, resolve }
         pending.set(id, job)
-        line.push(job)
       }
-      // 줄을 돌리기 전에 센다. 돌리는 쪽이 첫 차례를 그 자리에서 집어 가는데, 그때
+      // 줄에 세우기 전에 센다. 돌리는 쪽이 첫 차례를 그 자리에서 집어 가는데, 그때
       // 기다리는 카드가 0 이면 사라진 카드의 몫으로 보고 버린다.
       job.waiters += 1
-      void pump()
+      if (fresh) void enter(job)
 
       const current = job
       let cancelled = false
@@ -229,4 +273,7 @@ const askInterceptor: GrokTransport = (tweetId, lang) =>
     window.postMessage({ channel: CHANNEL, type: 'grok-ask', id, tweetId, lang }, origin)
   })
 
-export const grok = createGrokClient({ transport: askInterceptor })
+export const grok = createGrokClient({
+  transport: askInterceptor,
+  store: { load: loadGrokTranslation, save: saveGrokTranslation },
+})

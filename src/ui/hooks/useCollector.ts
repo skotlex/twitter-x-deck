@@ -6,7 +6,14 @@
  * x.com DOM 을 아는 코드는 여기에 한 줄도 없다 — 전부 content script 쪽에 있다.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { deleteTweet, loadRecent, pruneTweets, saveTweets, type StoredItem } from '@core/db'
+import {
+  deleteTweet,
+  loadRecent,
+  pruneGrokTranslations,
+  pruneTweets,
+  saveTweets,
+  type StoredItem,
+} from '@core/db'
 import {
   CHANNEL,
   isComposedMessage,
@@ -561,6 +568,7 @@ export function useCollector(settings: Settings, hostKind: TimelineKind): Collec
   useEffect(() => {
     const prune = () => {
       void pruneTweets(settingsRef.current.retentionDays, settingsRef.current.maxPerColumn, TIMELINE_KINDS)
+      void pruneGrokTranslations(settingsRef.current.retentionDays).catch(() => {})
     }
     prune()
     const timer = window.setInterval(prune, PRUNE_INTERVAL_MS)
