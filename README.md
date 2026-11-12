@@ -108,8 +108,8 @@ Claude 는 이미지를 만들지 못해 글자로만 답합니다. Codex 가 �
 
 ```bash
 npm install
-npm run build          # dist/ 에 확장 번들을 생성합니다 (크로미움 계열)
-npm run build:firefox  # dist-firefox/ 에 Firefox 용 번들을 생성합니다
+npm run build     # dist/ 에 확장 번들을 생성합니다 (크로미움 계열)
+npm run build:ff  # dist-firefox/ 에 Firefox 용 번들을 생성합니다
 ```
 
 두 빌드는 같은 소스를 굽습니다. Firefox 용은 매니페스트의 몇 줄(백그라운드 실행 방식 · 확장 ID · 최소 버전)과 번들의 문법 수준만 다르며, 결과를 놓는 자리도 따로라 서로를 덮지 않습니다.
@@ -137,7 +137,7 @@ npm run build:firefox  # dist-firefox/ 에 Firefox 용 번들을 생성합니다
 
 Firefox 지원은 빌드까지만 갖춰 둔 상태이며, 실제 x.com 에서 수집이 끝까지 도는지는 아직 확인하지 않았습니다.
 
-1. `npm run build:firefox` 로 `dist-firefox/` 를 굽습니다
+1. `npm run build:ff` 로 `dist-firefox/` 를 굽습니다
 2. 주소창에 `about:debugging#/runtime/this-firefox` 를 입력합니다
 3. **임시 부가 기능 로드** 를 누른 뒤 `dist-firefox/manifest.json` 을 선택합니다
 4. `about:addons` 에서 X Deck 의 **권한** 탭을 열어 `x.com` · `papago.naver.com` 사이트 접근이 켜져 있는지 확인합니다. Firefox 는 이 권한을 사용자가 끌 수 있으며, 꺼져 있으면 수집과 번역이 돌지 않습니다
@@ -188,8 +188,8 @@ Firefox 지원은 빌드까지만 갖춰 둔 상태이며, 실제 x.com 에서 �
 | --- | --- |
 | `npm run build` | 확장 번들을 `dist/` 에 생성합니다. `-- --out <폴더>` 또는 환경 변수 `XDECK_OUT` 으로 자리를 옮길 수 있습니다 |
 | `npm run dev` | 감시(watch) 모드로 빌드합니다. 코드를 고치면 다시 굽고, 확장 페이지에서 새로고침하면 반영됩니다. 출력 자리는 `build` 와 같은 방법으로 옮깁니다 |
-| `npm run build:firefox` | Firefox 용 번들을 `dist-firefox/` 에 생성합니다. 자리는 `-- --out <폴더>` 또는 환경 변수 `XDECK_OUT_FIREFOX` 로 옮깁니다 |
-| `npm run dev:firefox` | Firefox 용 감시 모드입니다 |
+| `npm run build:ff` | Firefox 용 번들을 `dist-firefox/` 에 생성합니다. 자리는 `-- --out <폴더>` 또는 환경 변수 `XDECK_OUT_FIREFOX` 로 옮깁니다 |
+| `npm run dev:ff` | Firefox 용 감시 모드입니다 |
 | `npm run typecheck` | 타입 검사만 수행합니다 (`tsc --noEmit`) |
 | `npm test` | 테스트를 한 번 실행합니다 |
 | `npm run test:watch` | 감시 모드로 테스트를 실행합니다 |
