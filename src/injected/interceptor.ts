@@ -5,6 +5,15 @@
  * 기존 요청을 바꾸지도 않는다 — 화면에 뜨는 것과 우리가 받는 게 항상 같도록 하기 위해서다.
  * 페이지 컨텍스트라 chrome API 를 못 쓰므로 결과는 postMessage 로 브리지에 넘긴다.
  */
+import {
+  decodeEntities,
+  GROK_RATE_LIMIT_CODE,
+  GROK_TRANSLATE_URL,
+  isGrokAsk,
+  readGrokStream,
+  type GrokAsk,
+  type GrokReply,
+} from '@core/grok'
 import { CHANNEL, type CapturedPayload } from '@core/messages'
 import { blocksPlayback, createStopLedger, isDeckMedia } from '@core/playback'
 import {
@@ -292,7 +301,105 @@ function stopUnseenPlayback(role: TimelineKind | null): void {
   }
 }
 
+/**
+ * x.com 웹 앱이 API 를 부를 때 싣는 공개 클라이언트 토큰.
+ *
+ * 계정 비밀이 아니다 — x.com 의 자바스크립트 번들에 그대로 박혀 누구에게나 내려가는
+ * 값이다. 누가 묻는지는 이것이 아니라 함께 실리는 로그인 쿠키와 `ct0` 가 가른다.
+ */
+const WEB_BEARER =
+  'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA'
+
+const GROK_GUARD = '__xDeckGrokInstalled'
+
+/** 대답에서 짝짓는 값을 뺀 알맹이. 유니언 갈래마다 따로 뺀다. */
+type GrokReplyBody<R = GrokReply> = R extends GrokReply ? Omit<R, 'channel' | 'id'> : never
+
+function readCookie(name: string): string {
+  const match = new RegExp(`(?:^|;\\s*)${name}=([^;]*)`).exec(document.cookie)
+  return match ? decodeURIComponent(match[1] ?? '') : ''
+}
+
+/**
+ * 덱이 부탁한 Grok 번역을 x.com 자신처럼 묻는다.
+ *
+ * 왜 여기(MAIN world)인가 — 덱(ISOLATED world)에서 보내면 브라우저마다 출처가 달라진다.
+ * Firefox 는 확장의 출처로 내보내 호스트 권한이 따로 필요하고 x.com 이 받아줄지도 모른다.
+ * 페이지 문맥에서 보내면 x.com 이 보내는 요청과 출처·쿠키가 같다.
+ *
+ * 사용자가 보는 평범한 x.com 에도 깔리지만, 덱의 부탁이 오기 전엔 아무 일도 하지 않는다.
+ */
+function installGrokTranslator(): void {
+  const globals = window as unknown as Record<string, unknown>
+  if (globals[GROK_GUARD]) return
+  globals[GROK_GUARD] = true
+
+  // 우리 fetch 후킹이 걸리기 전의 원본을 잡아 둔다. 거쳐도 문제는 없지만 엿볼 이유가 없다.
+  const send = window.fetch.bind(window)
+  const origin = window.location.origin
+
+  window.addEventListener('message', (event: MessageEvent) => {
+    if (event.source !== window || !isGrokAsk(event.data)) return
+    void ask(event.data)
+  })
+
+  async function ask({ id, tweetId, lang }: GrokAsk): Promise<void> {
+    const reply = (message: GrokReplyBody): void => {
+      window.postMessage({ channel: CHANNEL, id, ...message }, origin)
+    }
+
+    try {
+      // 본문 형식을 `text/plain` 으로 적는 것은 x.com 웹 앱이 그렇게 보내기 때문이다.
+      const response = await send(GROK_TRANSLATE_URL, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          authorization: WEB_BEARER,
+          'content-type': 'text/plain;charset=UTF-8',
+          'x-csrf-token': readCookie('ct0'),
+          'x-twitter-active-user': 'yes',
+          'x-twitter-auth-type': 'OAuth2Session',
+          'x-twitter-client-language': lang,
+        },
+        body: JSON.stringify({ content_type: 'POST', dst_lang: lang, id: tweetId }),
+      })
+      const raw = await response.text()
+      const stream = readGrokStream(raw)
+
+      if (response.status === 429 || stream.errorCodes.includes(GROK_RATE_LIMIT_CODE)) {
+        const reset = Number(response.headers.get('x-rate-limit-reset')) || 0
+        reply({
+          type: 'grok-failed',
+          reason: 'Grok 번역 요청이 너무 많습니다',
+          limited: true,
+          ...(reset > 0 ? { retryAt: reset * 1000 } : {}),
+        })
+        return
+      }
+      if (!response.ok) {
+        reply({ type: 'grok-failed', reason: `Grok 번역이 거절됐습니다 (HTTP ${response.status})` })
+        return
+      }
+
+      const text = decodeEntities(stream.text).trim()
+      if (text.length === 0) {
+        reply({ type: 'grok-failed', reason: 'Grok 번역문이 비어 있습니다' })
+        return
+      }
+      reply({ type: 'grok-result', text })
+    } catch (cause) {
+      reply({
+        type: 'grok-failed',
+        reason: cause instanceof Error ? cause.message : 'Grok 번역을 받지 못했습니다',
+      })
+    }
+  }
+}
+
 function main(): void {
+  // 덱은 최상위 문서에만 얹힌다. 거기서 오는 번역 부탁만 받는다.
+  if (window.top === window.self) installGrokTranslator()
+
   const role = readFrameRole()
   const panel = isDeckPanelFrame()
   if (role !== null || panel) {

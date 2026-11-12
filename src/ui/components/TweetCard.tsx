@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { Tweet, TweetMedia } from '@core/types'
 import {
   MEDIA_MAX_HEIGHT,
@@ -8,6 +8,7 @@ import {
   type Settings,
 } from '@core/settings'
 import { runTweetAction, type ComposeMode, type TweetAction } from '../../content/actions'
+import { grok } from '../../content/grok'
 import {
   looksKorean,
   READING_LANG,
@@ -429,26 +430,75 @@ const translatable = (tweet: Tweet): boolean =>
   !looksKorean(tweet.text)
 
 /** 번역기 이름. 무엇이 옮긴 글인지 밝혀야 사용자가 곧이곧대로 믿지 않는다. */
-const ENGINE_LABEL: Record<TranslateEngine, string> = {
+const ENGINE_LABEL: Record<TranslateEngine | 'grok', string> = {
+  grok: 'Grok 번역',
   papago: 'Papago 번역',
   browser: '브라우저 번역',
 }
 
 /**
+ * x.com 이 붙여주는 Grok 번역을 받아온다.
+ *
+ * 카드가 **화면에 들어올 때** 부탁한다. 컬럼은 글을 수백 개씩 쌓아두는데 그걸 다
+ * 물으면 x.com 이 요청 과다로 막는다. 화면을 지나쳐 사라진 카드의 몫은 묻지 않는다.
+ * 이미 받은 번역은 카드가 다시 그려져도 곧바로 나온다.
+ */
+function useGrokTranslation(tweetId: string) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [text, setText] = useState<string | null>(() => grok.cached(tweetId, READING_LANG) ?? null)
+
+  useEffect(() => {
+    const element = ref.current
+    if (!element || grok.cached(tweetId, READING_LANG) !== undefined) return
+    if (typeof IntersectionObserver === 'undefined') return
+
+    let request: ReturnType<typeof grok.request> | null = null
+    let alive = true
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return
+      observer.disconnect()
+      request = grok.request(tweetId, READING_LANG)
+      void request.promise.then((translated) => {
+        if (alive && translated) setText(translated)
+      })
+    })
+    observer.observe(element)
+
+    return () => {
+      alive = false
+      observer.disconnect()
+      request?.cancel()
+    }
+  }, [tweetId])
+
+  return { ref, text }
+}
+
+/**
  * 번역문을 원문 아래에 붙인다.
  *
- * 번역은 Papago 화면을 빌려 하고, 막히면 브라우저 내장 번역기로 물러선다
- * (`translateText`). 어느 쪽이 옮겼는지는 아래에 적는다.
+ * 기본으로는 x.com 처럼 Grok 번역을 보여준다. 마음에 안 들면 `한글로 번역하기` 로
+ * 원문을 Papago 에 다시 맡긴다 — Papago 화면을 빌려 하고, 막히면 브라우저 내장
+ * 번역기로 물러선다 (`translateText`). 어느 쪽이 옮겼는지는 아래에 적는다.
  *
  * 원문을 지우지 않고 아래에 덧붙인다. 좁은 컬럼에서는 원문과 번역을 나란히 볼 수
  * 없으니, 무엇을 읽고 있는지가 늘 분명해야 한다.
  */
 function TranslateBlock({ tweet, textClass }: { tweet: Tweet; textClass: string }) {
+  const { ref, text: grokText } = useGrokTranslation(tweet.id)
   const [result, setResult] = useState<Translation | null>(null)
   const [shown, setShown] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const text = result?.text ?? null
+  // Papago 로 다시 옮긴 뒤로는 그것만 보여준다. 둘을 겹쳐 두면 무엇을 읽는지 헷갈린다.
+  const showing: { text: string; engine: TranslateEngine | 'grok' } | null = result
+    ? shown
+      ? result
+      : null
+    : grokText
+      ? { text: grokText, engine: 'grok' }
+      : null
 
   // 번역을 기다리는 동안에는 새 글을 목록에 끼워 넣지 않는다 — 결과가 붙을 카드가
   // 그 사이 아래로 밀려나면 어디에 떴는지 찾게 된다. 그동안 온 글은 알약으로 세워둔다.
@@ -468,14 +518,20 @@ function TranslateBlock({ tweet, textClass }: { tweet: Tweet; textClass: string 
     }
   }
 
-  const label = busy ? '번역하는 중…' : text ? (shown ? '번역 숨기기' : '번역 보기') : '번역하기'
+  const label = busy
+    ? '번역하는 중…'
+    : text
+      ? shown
+        ? '번역 숨기기'
+        : '번역 보기'
+      : '한글로 번역하기'
 
   return (
-    <div className="mt-1">
-      {result && shown && (
+    <div ref={ref} className="mt-1">
+      {showing && (
         <div className="mb-1 border-l-2 border-line-strong pl-2.5">
-          <RichText text={result.text} className={textClass} />
-          <p className="mt-0.5 text-[11.5px] text-faint">{ENGINE_LABEL[result.engine]}</p>
+          <RichText text={showing.text} className={textClass} />
+          <p className="mt-0.5 text-[11.5px] text-faint">{ENGINE_LABEL[showing.engine]}</p>
         </div>
       )}
 
