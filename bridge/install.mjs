@@ -19,31 +19,21 @@ import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, writeFileSync, unlinkSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-
-/** 확장 ID. `manifest.json` 의 `key` 가 정하는 값이라 모든 사용자에게 동일하다. */
-const EXTENSION_ID = 'jihknelglpffneboofhddbohkjnlodne'
-
-const HOST_NAME = 'com.xdeck.bridge'
+import {
+  CHROMIUM_EXTENSION_ID,
+  FAMILIES,
+  GECKO_ID,
+  REGISTRATIONS,
+  hostManifest,
+  manifestFileName,
+  registryPath,
+} from './hosts.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const manifestPath = join(here, `${HOST_NAME}.json`)
 const launcherPath = join(here, 'host.bat')
 
-/**
- * 크로미움 계열은 저마다 자기 자리를 본다. 깔려 있지 않은 브라우저에 써도 해가 없다 —
- * 그 브라우저를 나중에 깔면 그대로 동작한다.
- */
-const BROWSER_KEYS = [
-  ['Chrome', 'Software\\Google\\Chrome'],
-  ['Edge', 'Software\\Microsoft\\Edge'],
-  ['Chromium', 'Software\\Chromium'],
-  ['Brave', 'Software\\BraveSoftware\\Brave-Browser'],
-  ['Whale', 'Software\\Naver\\Whale'],
-]
-
-function registryPath(base) {
-  return `HKCU\\${base}\\NativeMessagingHosts\\${HOST_NAME}`
-}
+/** 그 계열의 호스트 매니페스트가 놓일 자리. 레지스트리 값이 이 경로를 가리킨다. */
+const manifestPath = (family) => join(here, manifestFileName(family))
 
 /**
  * 브리지가 부르는 두 명령.
@@ -142,27 +132,19 @@ function install() {
   // node 를 부르는 한 줄짜리 배치를 끼운다.
   writeFileSync(launcherPath, ['@echo off', `node "%~dp0host.mjs" %*`, ''].join('\r\n'), 'utf8')
 
-  writeFileSync(
-    manifestPath,
-    `${JSON.stringify(
-      {
-        name: HOST_NAME,
-        description: 'X Deck 사진 번역 브리지',
-        path: launcherPath,
-        type: 'stdio',
-        allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
-      },
-      null,
-      2,
-    )}\n`,
-    'utf8',
-  )
+  for (const family of FAMILIES) {
+    writeFileSync(
+      manifestPath(family),
+      `${JSON.stringify(hostManifest(family, launcherPath), null, 2)}\n`,
+      'utf8',
+    )
+  }
 
-  for (const [label, base] of BROWSER_KEYS) {
+  for (const { label, base, family } of REGISTRATIONS) {
     try {
       execFileSync(
         'reg',
-        ['add', registryPath(base), '/ve', '/t', 'REG_SZ', '/d', manifestPath, '/f'],
+        ['add', registryPath(base), '/ve', '/t', 'REG_SZ', '/d', manifestPath(family), '/f'],
         { stdio: 'ignore' },
       )
       console.log(`  등록  ${label}`)
@@ -173,7 +155,7 @@ function install() {
 
   console.log('')
   console.log('  브리지를 등록했습니다.')
-  console.log(`  확장 ID  ${EXTENSION_ID}`)
+  console.log(`  확장 ID  ${CHROMIUM_EXTENSION_ID} (크로미움 계열) · ${GECKO_ID} (Firefox)`)
 
   // 등록이 먼저다. 내려받기는 오래 걸리고 망을 타므로, 여기서 무엇이 어긋나도
   // 브리지는 이미 쓸 수 있는 상태여야 한다.
@@ -186,7 +168,7 @@ function install() {
 }
 
 function uninstall() {
-  for (const [label, base] of BROWSER_KEYS) {
+  for (const { label, base } of REGISTRATIONS) {
     try {
       execFileSync('reg', ['delete', registryPath(base), '/f'], { stdio: 'ignore' })
       console.log(`  해제  ${label}`)
@@ -194,7 +176,7 @@ function uninstall() {
       // 애초에 없던 것. 지울 것이 없으면 그것으로 됐다.
     }
   }
-  for (const path of [manifestPath, launcherPath]) {
+  for (const path of [...FAMILIES.map(manifestPath), launcherPath]) {
     try {
       unlinkSync(path)
     } catch {

@@ -159,8 +159,10 @@ function callBridge(type: string, payload: object, timeoutMs: number): Promise<u
       }
     })
 
-    port.onDisconnect.addListener(() => {
-      const reason = chrome.runtime.lastError?.message ?? ''
+    port.onDisconnect.addListener((gone) => {
+      // 크로미움은 끊긴 까닭을 runtime.lastError 에, Firefox 는 port.error 에 싣는다.
+      const firefoxError = (gone as chrome.runtime.Port & { error?: { message?: string } }).error
+      const reason = chrome.runtime.lastError?.message ?? firefoxError?.message ?? ''
       finish({
         reachable: false,
         error: notInstalled(reason)

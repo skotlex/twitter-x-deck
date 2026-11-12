@@ -42,9 +42,10 @@ install-bridge.bat    ← 더블클릭
 
 | 만들거나 건드리는 것 | 자리 |
 | --- | --- |
-| `com.xdeck.bridge.json` | 이 폴더. 무엇을 실행할지 적은 매니페스트 |
+| `com.xdeck.bridge.json` | 이 폴더. 무엇을 실행할지 적은 매니페스트 (크로미움 계열용) |
+| `com.xdeck.bridge.firefox.json` | 이 폴더. 같은 내용의 Firefox 용 매니페스트. Firefox 는 허락할 확장을 다른 키(`allowed_extensions`)로 읽어 파일을 따로 둡니다 |
 | `host.bat` | 이 폴더. 윈도우는 네이티브 호스트로 실행 파일만 받아, `node` 를 부르는 한 줄이 필요합니다 |
-| 레지스트리 값 | `HKCU\...\NativeMessagingHosts\com.xdeck.bridge` (Chrome · Edge · Chromium · Brave · Whale) |
+| 레지스트리 값 | `HKCU\...\NativeMessagingHosts\com.xdeck.bridge` (Chrome · Edge · Chromium · Brave · Whale), `HKCU\Software\Mozilla\NativeMessagingHosts\com.xdeck.bridge` (Firefox) |
 | `codex` · `claude` 최신 판 | npm 전역(`npm i -g`). 이미 깔린 것만 갱신하고, 둘 다 없을 때만 새로 깝니다 |
 
 깔려 있지 않은 브라우저에 등록해도 해가 없습니다 — 나중에 깔면 그대로 동작합니다.
