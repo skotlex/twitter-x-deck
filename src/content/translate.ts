@@ -11,8 +11,9 @@
  * x.com 자신의 번역은 쓰지 않는다. 글마다 번역을 주기도 안 주기도 하는 데다,
  * 한 번 번역할 때마다 x.com 앱을 통째로 부팅해야 해서 가장 비쌌다.
  */
-import { CHANNEL, isPapagoMessage, PAPAGO_ORIGIN, PAPAGO_PARAM } from '@core/messages'
+import { CHANNEL, isPapagoMessage, PAPAGO_ORIGIN } from '@core/messages'
 import { enqueue } from './frameQueue'
+import { papagoUrl } from './papagoUrl'
 
 /** Papago 프레임이 뜨고 결과까지 돌아오기를 기다리는 한계. */
 const PAPAGO_TIMEOUT_MS = 20_000
@@ -35,13 +36,6 @@ export interface Translation {
   text: string
   engine: TranslateEngine
 }
-
-/**
- * 주소에 글월을 실을 수 있는 길이의 한계.
- *
- * 넘으면 프레임 안에서 직접 입력란에 넣는다 — 그쪽이 덜 튼튼하므로 되도록 주소로 보낸다.
- */
-const URL_TEXT_LIMIT = 6_000
 
 /** Papago 가 받는 도착 언어. 모르는 코드면 읽는 언어로 간다 — 영어로 새지 않게. */
 const PAPAGO_TARGETS = new Set([
@@ -91,7 +85,7 @@ function createFrame(url: string): HTMLIFrameElement {
 /**
  * Papago 화면을 빌려 번역한다.
  *
- * 글월은 주소의 `st` 에 실어 보낸다 — Papago 가 공유 링크로 쓰는 방식이라, 편집기를
+ * 글월은 주소의 `text` 에 실어 보낸다 — Papago 가 공유 링크로 쓰는 방식이라, 편집기를
  * 밖에서 조작하는 것보다 훨씬 튼튼하다. 주소에 담기엔 긴 글만 프레임 안에서 직접
  * 넣는데, 그쪽도 같은 글월을 메시지로 받아두므로 판단은 프레임이 한다.
  *
@@ -100,12 +94,7 @@ function createFrame(url: string): HTMLIFrameElement {
  */
 async function translateWithPapago(text: string, target: string): Promise<string> {
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  const source = encodeURIComponent(text)
-  const params = new URLSearchParams({ sk: 'auto', tk: papagoTarget(target), [PAPAGO_PARAM]: id })
-  const url =
-    `${PAPAGO_ORIGIN}/?${params.toString()}` +
-    (source.length <= URL_TEXT_LIMIT ? `&st=${source}` : '')
-  const frame = createFrame(url)
+  const frame = createFrame(papagoUrl(text, papagoTarget(target), id))
 
   try {
     return await new Promise<string>((resolve, reject) => {

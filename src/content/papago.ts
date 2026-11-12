@@ -5,7 +5,7 @@
  * 결과를 여기서 읽어 메시지로 돌려준다. 무엇을 번역할지, 실패하면 어디로 물러설지는
  * 전부 부모(`translate.ts`)가 정한다.
  *
- * 번역할 글월은 주소(`st`)에 실려 온다 — Papago 가 공유 링크로 쓰는 방식이라 우리가
+ * 번역할 글월은 주소(`text`)에 실려 온다 — Papago 가 공유 링크로 쓰는 방식이라 우리가
  * 입력란을 건드릴 일이 없다. 주소에 담기엔 너무 긴 글만 여기서 직접 넣는다.
  *
  * **덱이 띄운 프레임에서만 돈다.** 사람이 직접 연 Papago 탭에는 표시가 없다.
@@ -17,6 +17,7 @@ import {
   X_ORIGIN,
   type PapagoMessage,
 } from '@core/messages'
+import { retargetSearch } from './papagoUrl'
 
 /** 입력·출력 칸이 그려질 때까지 기다리는 한계. */
 const EDITOR_TIMEOUT_MS = 8_000
@@ -163,22 +164,18 @@ function alreadyRetargeted(): boolean {
  * Papago 가 도착 언어를 제 것으로 바꿔놓았으면 주소를 다시 잡아 띄운다.
  *
  * Papago 는 자기 SPA 를 띄우면서 주소를 제 상태로 다시 쓴다. 그 상태가 우리가 실어
- * 보낸 `tk` 를 덮으면, 한국어를 부탁했는데 영어 번역문이 돌아온다. 주소가 부탁과
+ * 보낸 `tl` 을 덮으면, 한국어를 부탁했는데 영어 번역문이 돌아온다. 주소가 부탁과
  * 어긋날 때만, 그것도 한 번만 다시 띄운다. 우리 표시는 그 재작성에 지워지므로
  * 직접 다시 넣는다.
  *
  * @returns 다시 띄웠으면 true — 이 문서는 곧 사라지므로 부르는 쪽은 손을 뗀다.
  */
 function retarget(target: string): boolean {
-  const params = new URLSearchParams(window.location.search)
-  const now = params.get('tk')
-  if (!now || now === target || target.length === 0) return false
+  const next = retargetSearch(window.location.search, target, id ?? '')
+  if (next === null) return false
   if (alreadyRetargeted()) return false
 
-  params.set('sk', 'auto')
-  params.set('tk', target)
-  params.set(PAPAGO_PARAM, id ?? '')
-  window.location.replace(`${window.location.pathname}?${params.toString()}`)
+  window.location.replace(`${window.location.pathname}${next}`)
   return true
 }
 
