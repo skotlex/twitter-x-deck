@@ -329,6 +329,61 @@ describe('미디어', () => {
   })
 })
 
+describe('링크 카드', () => {
+  /** card.legacy.binding_values 를 실제 응답 모양으로 만든다. */
+  function card(name: string, values: Record<string, Raw>): Raw {
+    return {
+      legacy: {
+        name,
+        url: 'https://t.co/card',
+        binding_values: Object.entries(values).map(([key, value]) => ({ key, value })),
+      },
+    }
+  }
+  const image = (url: string) => ({ type: 'IMAGE', image_value: { url, width: 1280, height: 720 } })
+  const text = (value: string) => ({ type: 'STRING', string_value: value })
+
+  function cardOf(raw: Raw) {
+    return tweetsOf(parseTimelinePayload(timeline(raw), 'foryou', CAPTURED_AT).items)[0]?.card
+  }
+
+  it('기사 카드의 사진을 읽는다', () => {
+    const raw = tweet('1', 'alice')
+    raw.card = card('summary_large_image', {
+      title: text('속보'),
+      domain: text('www.yna.co.kr'),
+      photo_image_full_size_large: image('https://pbs.twimg.com/card_img/news.jpg'),
+    })
+    expect(cardOf(raw)?.imageUrl).toBe('https://pbs.twimg.com/card_img/news.jpg')
+  })
+
+  /*
+   * 유튜브 같은 플레이어 카드는 썸네일을 `player_image_*` 에 싣는다. 기사 카드의 이름만
+   * 보면 사진 없는 카드가 되어 글자만 남았다.
+   */
+  it('플레이어 카드(유튜브)의 썸네일을 읽는다', () => {
+    const raw = tweet('1', 'alice')
+    raw.card = card('player', {
+      title: text('[단독] "브레이크 안 들었다"'),
+      domain: text('www.youtube.com'),
+      player_url: text('https://www.youtube.com/embed/abc'),
+      player_image: image('https://pbs.twimg.com/card_img/small.jpg'),
+      player_image_large: image('https://pbs.twimg.com/card_img/yt.jpg'),
+    })
+    expect(cardOf(raw)?.imageUrl).toBe('https://pbs.twimg.com/card_img/yt.jpg')
+  })
+
+  it('큰 썸네일이 없으면 있는 것 중 큰 것부터 쓴다', () => {
+    const raw = tweet('1', 'alice')
+    raw.card = card('player', {
+      title: text('영상'),
+      player_image_small: image('https://pbs.twimg.com/card_img/s.jpg'),
+      player_image: image('https://pbs.twimg.com/card_img/m.jpg'),
+    })
+    expect(cardOf(raw)?.imageUrl).toBe('https://pbs.twimg.com/card_img/m.jpg')
+  })
+})
+
 describe('통계', () => {
   it('legacy 아래 값을 읽는다', () => {
     const raw = tweet('1', 'alice', {

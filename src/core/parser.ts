@@ -98,6 +98,24 @@ function parseMedia(legacy: Raw): TweetMedia[] {
   })
 }
 
+/**
+ * 카드 사진을 찾아볼 자리. 앞에 있는 것부터 쓴다.
+ *
+ * 기사 카드는 `photo_image_*` · `thumbnail_image_*` · `summary_photo_image_*` 에,
+ * 유튜브 같은 플레이어 카드는 `player_image_*` 에 싣는다. 플레이어 쪽을 빠뜨리면
+ * 영상 링크가 사진 없이 글자만 남는다. 어느 쪽이든 x.com 이 자기 서버(`pbs.twimg.com`)에
+ * 옮겨 둔 사본이라, 덱이 얹힌 x.com 문서의 이미지 정책에 걸리지 않는다.
+ */
+const CARD_IMAGE_KEYS = [
+  'photo_image_full_size_large',
+  'thumbnail_image_large',
+  'summary_photo_image_large',
+  'player_image_large',
+  'player_image',
+  'player_image_original',
+  'player_image_small',
+]
+
 function parseCard(tweet: Raw): TweetCard | undefined {
   const card = tweet?.card
   const bindings: Raw[] = card?.legacy?.binding_values ?? []
@@ -108,10 +126,9 @@ function parseCard(tweet: Raw): TweetCard | undefined {
   const title = pick('title')?.string_value
   if (!title) return undefined
 
-  const image =
-    pick('photo_image_full_size_large')?.image_value?.url ??
-    pick('thumbnail_image_large')?.image_value?.url ??
-    pick('summary_photo_image_large')?.image_value?.url
+  const image = CARD_IMAGE_KEYS.map((key) => pick(key)?.image_value?.url).find(
+    (url): url is string => typeof url === 'string' && url.length > 0,
+  )
 
   // 카드가 가리키는 실제 주소. 카드 자체에는 t.co 만 있으므로 entity 에서 원래 주소를 찾는다.
   const entityUrls: Raw[] = tweet?.legacy?.entities?.urls ?? []
