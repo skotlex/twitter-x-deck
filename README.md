@@ -100,6 +100,7 @@ Claude 는 이미지를 만들지 못해 글자로만 답합니다. Codex 가 �
 
 - **Node.js 20.19 이상** (또는 22.12 이상) — Vite 7 의 요구 사항입니다
 - **Chrome 120 이상** 또는 동등한 크로미움 계열 브라우저
+- Firefox 용 빌드는 **Firefox 128 이상** 을 대상으로 합니다 (시험 단계 — [Firefox 에 로드](#firefox-에-로드-시험-단계))
 
 사진 번역(선택 기능)만은 준비물이 더 있습니다 — [사진 번역 준비](#사진-번역-준비-선택) 를 보세요.
 
@@ -107,8 +108,11 @@ Claude 는 이미지를 만들지 못해 글자로만 답합니다. Codex 가 �
 
 ```bash
 npm install
-npm run build      # dist/ 에 확장 번들을 생성합니다
+npm run build          # dist/ 에 확장 번들을 생성합니다 (크로미움 계열)
+npm run build:firefox  # dist-firefox/ 에 Firefox 용 번들을 생성합니다
 ```
+
+두 빌드는 같은 소스를 굽습니다. Firefox 용은 매니페스트의 몇 줄(백그라운드 실행 방식 · 확장 ID · 최소 버전)과 번들의 문법 수준만 다르며, 결과를 놓는 자리도 따로라 서로를 덮지 않습니다.
 
 ### 브라우저에 로드
 
@@ -129,6 +133,17 @@ npm run build      # dist/ 에 확장 번들을 생성합니다
 
 같은 폴더를 두 번 로드해 두지 마세요. 항목이 둘 남으면 브라우저가 시작할 때 같은 폴더를 두 번 읽어 확장이 사라질 수 있습니다. `chrome://extensions` 에서 그 폴더를 가리키는 항목을 **오류 항목까지 모두** 지운 뒤 한 번만 다시 로드하면 정리됩니다.
 
+### Firefox 에 로드 (시험 단계)
+
+Firefox 지원은 빌드까지만 갖춰 둔 상태이며, 실제 x.com 에서 수집이 끝까지 도는지는 아직 확인하지 않았습니다.
+
+1. `npm run build:firefox` 로 `dist-firefox/` 를 굽습니다
+2. 주소창에 `about:debugging#/runtime/this-firefox` 를 입력합니다
+3. **임시 부가 기능 로드** 를 누른 뒤 `dist-firefox/manifest.json` 을 선택합니다
+4. `about:addons` 에서 X Deck 의 **권한** 탭을 열어 `x.com` · `papago.naver.com` 사이트 접근이 켜져 있는지 확인합니다. Firefox 는 이 권한을 사용자가 끌 수 있으며, 꺼져 있으면 수집과 번역이 돌지 않습니다
+
+임시로 로드한 부가 기능은 Firefox 를 다시 켜면 사라집니다. 일반 Firefox 에 계속 두려면 Mozilla 의 서명이 필요합니다. 동기화 폴더 밖에 굽는 방법은 크로미움과 같고, 정해두는 환경 변수만 `XDECK_OUT_FIREFOX` 로 따로입니다.
+
 ### 사진 번역 준비 (선택)
 
 사진 속 글자를 옮기는 일은 이 PC 에 깔린 `codex` · `claude` 명령과 그 **구독 계정** 이 대신합니다. 그래서 이 기능만 브라우저 밖의 준비가 필요하며, 브리지를 **한 번** 등록해야 합니다. 쓰지 않을 기능이면 이 절을 통째로 건너뛰어도 나머지 동작에는 아무 영향이 없습니다.
@@ -143,7 +158,7 @@ npm run build      # dist/ 에 확장 번들을 생성합니다
 | **각 CLI 의 구독 로그인** | `codex login` · `claude /login` 으로 마칩니다. 이미 내고 있는 요금제를 그대로 빌려 쓰므로 **별도 API 키는 필요하지 않습니다** |
 | **`dist/` 폴더로 로드한 확장** | 브리지는 확장 ID 하나만 받아들입니다. 그 ID 는 `manifest.json` 의 `key` 가 정하므로 빌드 결과를 그대로 로드해야 값이 맞습니다 |
 
-등록은 크로미움 계열 다섯(Chrome · Edge · Chromium · Brave · Whale)에 한꺼번에 씁니다. 깔려 있지 않은 브라우저에 등록해도 해가 없으며, 나중에 깔면 그대로 동작합니다.
+등록은 크로미움 계열 다섯(Chrome · Edge · Chromium · Brave · Whale)에 한꺼번에 씁니다. 깔려 있지 않은 브라우저에 등록해도 해가 없으며, 나중에 깔면 그대로 동작합니다. Firefox 에는 아직 등록하지 않으므로 Firefox 용 빌드에서는 사진 번역을 쓸 수 없습니다.
 
 **등록과 확인**
 
@@ -173,6 +188,8 @@ npm run build      # dist/ 에 확장 번들을 생성합니다
 | --- | --- |
 | `npm run build` | 확장 번들을 `dist/` 에 생성합니다. `-- --out <폴더>` 또는 환경 변수 `XDECK_OUT` 으로 자리를 옮길 수 있습니다 |
 | `npm run dev` | 감시(watch) 모드로 빌드합니다. 코드를 고치면 다시 굽고, 확장 페이지에서 새로고침하면 반영됩니다. 출력 자리는 `build` 와 같은 방법으로 옮깁니다 |
+| `npm run build:firefox` | Firefox 용 번들을 `dist-firefox/` 에 생성합니다. 자리는 `-- --out <폴더>` 또는 환경 변수 `XDECK_OUT_FIREFOX` 로 옮깁니다 |
+| `npm run dev:firefox` | Firefox 용 감시 모드입니다 |
 | `npm run typecheck` | 타입 검사만 수행합니다 (`tsc --noEmit`) |
 | `npm test` | 테스트를 한 번 실행합니다 |
 | `npm run test:watch` | 감시 모드로 테스트를 실행합니다 |
@@ -181,7 +198,7 @@ npm run build      # dist/ 에 확장 번들을 생성합니다
 | `npm run bridge:uninstall` | 브리지 등록을 해제합니다 |
 | `npm run icons` | `icons/` 의 아이콘 세트를 다시 생성합니다 |
 
-빌드는 [scripts/build.mjs](scripts/build.mjs) 가 지휘합니다. 덱 UI 는 Vite 가 단일 IIFE 로 굽고(그림자 DOM 에 넣어야 하므로 CSS 까지 인라인), 인터셉터 · 브리지 · 백그라운드는 esbuild 가 맡습니다. `manifest.json` 의 버전은 `package.json` 의 값을 빌드 시점에 주입합니다. 결과를 놓을 자리는 [scripts/out-dir.mjs](scripts/out-dir.mjs) 가 고릅니다 — 명령줄이 환경 변수를 이기고, 상대 경로는 명령을 친 자리 기준으로 풉니다.
+빌드는 [scripts/build.mjs](scripts/build.mjs) 가 지휘합니다. 덱 UI 는 Vite 가 단일 IIFE 로 굽고(그림자 DOM 에 넣어야 하므로 CSS 까지 인라인), 인터셉터 · 브리지 · 백그라운드는 esbuild 가 맡습니다. `manifest.json` 의 버전은 `package.json` 의 값을 빌드 시점에 주입합니다. 결과를 놓을 자리는 [scripts/out-dir.mjs](scripts/out-dir.mjs) 가 고릅니다 — 명령줄이 환경 변수를 이기고, 상대 경로는 명령을 친 자리 기준으로 풉니다. `--target firefox` 를 주면 [scripts/target.mjs](scripts/target.mjs) 가 저장소의 크로미움용 `manifest.json` 을 Firefox 가 읽는 모양으로 고쳐 씁니다.
 
 ### 테스트
 
@@ -200,6 +217,7 @@ npm run check      # 타입 검사 + 테스트
 - **브리지 문구** — 사진 번역이 실패했을 때 그 사정이 사용자에게까지 닿는지. `codex` 를 한 번도 띄우지 않고 잽니다
 - **번역 도착 언어** — 한국어로 못박혀 있는지, 언어 코드가 틀린 한국어 글을 글자로 가려내는지
 - **빌드 출력 자리** — `--out` · `XDECK_OUT` 을 어떻게 읽는지, 빌드 결과가 아닌 폴더를 지우지 않는지
+- **빌드 대상** — Firefox 용 매니페스트에 Firefox 가 모르는 키가 남지 않는지, 크로미움용은 버전 말고 아무것도 바뀌지 않는지
 
 셀렉터가 **실제 x.com 에 지금도 걸리는지** 는 손으로 만든 DOM 으로는 알 수 없습니다. 그건 진짜 화면을 떠 넣는 [tests/fixtures/](tests/fixtures/README.md) 쪽이 맡습니다. 픽스처에는 계정 정보가 들어 있어 저장소에 올리지 않으며, 없으면 해당 테스트만 건너뛰고 나머지는 그대로 돕니다. 뜨는 방법은 [tests/fixtures/README.md](tests/fixtures/README.md) 에 있습니다.
 
@@ -440,7 +458,7 @@ src/
 └─ ui/            덱 UI (React)
 
 bridge/          사진 번역용 네이티브 메시징 호스트 (선택 기능. 확장 번들에 들어가지 않습니다)
-scripts/         빌드 오케스트레이터와 그 곁가지 (출력 자리 결정 · 아이콘 · 확장 키 생성)
+scripts/         빌드 오케스트레이터와 그 곁가지 (빌드 대상 · 출력 자리 결정 · 아이콘 · 확장 키 생성)
 build.bat        두 번 눌러 굽는 길 (윈도우). 감시 모드는 dev.bat
 
 tests/
@@ -448,7 +466,7 @@ tests/
 ├─ content/       선택자 판단 규칙 · 강제 갱신 사다리 · 번역 도착 언어 테스트 (손으로 만든 DOM)
 ├─ ui/            표시 형식 · 안 본 수 세기 · 계정 읽기 · 카드 클릭 판정 테스트
 ├─ bridge/        사진 번역 브리지의 실패 문구 · codex 설정 자동 수리 테스트
-├─ scripts/       빌드 출력 자리 결정 테스트
+├─ scripts/       빌드 대상 · 출력 자리 결정 테스트
 ├─ fixtures/      실제 x.com 화면을 떠 온 파일 (커밋하지 않습니다)
 └─ setup/         happy-dom 보정
 ```
@@ -478,6 +496,7 @@ tests/
 | [src/core/playback.ts](src/core/playback.ts) | 어느 영상을 틀지 않을지의 판정. 인터셉터가 씁니다 |
 | [src/ui/](src/ui/) | 덱 UI. x.com DOM 을 아는 코드가 한 줄도 없습니다 |
 | [scripts/out-dir.mjs](scripts/out-dir.mjs) | 빌드 결과를 놓을 자리를 고릅니다. 남의 폴더를 지우지 않게 막고, 동기화 폴더면 알려줍니다 |
+| [scripts/target.mjs](scripts/target.mjs) | 크로미움 · Firefox 중 어느 쪽으로 구울지 정하고, 그에 맞춰 매니페스트를 고칩니다 |
 
 `@core` · `@ui` 경로 별칭을 사용하며, Vite 와 esbuild 양쪽에 같은 별칭을 등록해 두었습니다.
 
@@ -543,7 +562,7 @@ tests/
 
 - x.com 의 화면 구조나 응답 형식이 바뀌면 수집이 멈출 수 있습니다. 컬럼 머리글의 상태 배지(`준비 중` · `수신 중` · `폴백 파싱` · `교대 수집`)가 진단 지점이며, 배지에 마우스를 올리면 수집기가 마지막으로 시도한 일과 그 컬럼이 마지막으로 글을 받은 시각이 함께 표시됩니다
 - 띄우는 컬럼이 많을수록 x.com 화면을 그만큼 더 열어두게 되므로 메모리 사용량과 갱신 지연이 늘어납니다. 종으로 지켜보는 타임라인도 같은 값을 치릅니다 — 화면 자리만 아낄 뿐 수집은 컬럼과 똑같이 합니다
-- 크로미움 계열 브라우저를 대상으로 합니다. Firefox 는 지원하지 않습니다
+- 크로미움 계열 브라우저를 대상으로 합니다. Firefox 용 빌드는 시험 단계로, 실제 수집이 도는지 아직 확인하지 않았고 사진 번역을 쓸 수 없습니다
 - 아직 정식 릴리스 전이며, 스토어에 등록되어 있지 않습니다
 - 사진 번역은 브리지를 한 번 등록해야 쓸 수 있고, `Node.js` 와 `codex`/`claude` CLI 가 미리 깔려 있어야 합니다. Codex 로 사진을 다시 그리는 데는 한 장에 30초 ~ 1분 남짓 걸리므로, 눌러두고 나중에 확인하는 쪽에 가깝습니다
 - 사진 번역은 각 구독 요금제의 사용량을 씁니다. 같은 계정으로 다른 작업을 하고 있다면 한도를 나눠 쓰게 됩니다

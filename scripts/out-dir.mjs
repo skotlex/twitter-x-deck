@@ -43,10 +43,13 @@ function fromArgv(argv) {
  * 결과를 놓을 절대 경로.
  *
  * 상대 경로는 **명령을 친 자리**(`cwd`) 기준으로 푼다 — 사용자가 적은 그대로 읽히는 쪽이다.
+ *
+ * `dir` · `envKey` 는 빌드 대상마다 다르다 (scripts/target.mjs). 크로미움과 Firefox 가
+ * 같은 자리를 쓰면 한쪽 빌드가 다른 쪽 결과를 덮는다.
  */
-export function outDirFrom({ argv = [], env = {}, cwd, root }) {
-  const chosen = fromArgv(argv) ?? (env.XDECK_OUT ?? '').trim()
-  if (!chosen) return resolve(root, 'dist')
+export function outDirFrom({ argv = [], env = {}, cwd, root, dir = 'dist', envKey = 'XDECK_OUT' }) {
+  const chosen = fromArgv(argv) ?? (env[envKey] ?? '').trim()
+  if (!chosen) return resolve(root, dir)
   return resolve(cwd, chosen)
 }
 

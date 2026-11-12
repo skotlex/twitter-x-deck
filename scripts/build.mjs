@@ -6,6 +6,7 @@
 //
 // --watch 를 주면 감시 모드로 돈다.
 // --out <폴더> (또는 XDECK_OUT) 을 주면 그리로 굽는다 — scripts/out-dir.mjs 참고.
+// --target firefox 를 주면 Firefox 용으로 dist-firefox/ 에 굽는다 — scripts/target.mjs 참고.
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -13,6 +14,7 @@ import { dirname, relative, resolve } from 'node:path'
 import * as esbuild from 'esbuild'
 import { build as viteBuild } from 'vite'
 import { insideSyncedFolder, outDirFrom, reusableOutDir } from './out-dir.mjs'
+import { TARGETS, manifestFor, targetFrom } from './target.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const watch = process.argv.includes('--watch')
@@ -28,9 +30,25 @@ function fail(message) {
   process.exit(1)
 }
 
+const target = (() => {
+  try {
+    return targetFrom(process.argv.slice(2))
+  } catch (err) {
+    return fail(err.message)
+  }
+})()
+const spec = TARGETS[target]
+
 const dist = (() => {
   try {
-    return outDirFrom({ argv: process.argv.slice(2), env: process.env, cwd: process.cwd(), root })
+    return outDirFrom({
+      argv: process.argv.slice(2),
+      env: process.env,
+      cwd: process.cwd(),
+      root,
+      dir: spec.dir,
+      envKey: spec.envKey,
+    })
   } catch (err) {
     return fail(err.message)
   }
@@ -51,10 +69,11 @@ async function copyStatic() {
   await mkdir(dist, { recursive: true })
 
   // manifest 의 version 은 package.json 을 단일 출처로 삼아 빌드 시 주입한다.
+  // Firefox 용이면 그쪽이 읽는 모양으로 몇 줄을 고친다.
   const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
   const manifest = JSON.parse(await readFile(resolve(root, 'manifest.json'), 'utf8'))
-  manifest.version = pkg.version
-  await writeFile(resolve(dist, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
+  const out = manifestFor(manifest, target, pkg.version)
+  await writeFile(resolve(dist, 'manifest.json'), JSON.stringify(out, null, 2) + '\n')
 
   await cp(resolve(root, 'rules.json'), resolve(dist, 'rules.json'))
   if (existsSync(resolve(root, 'icons'))) {
@@ -70,7 +89,7 @@ const esbuildOptions = ({ entry, out }) => ({
   bundle: true,
   format: 'iife',
   platform: 'browser',
-  target: 'chrome120',
+  target: spec.syntax,
   sourcemap: true,
   legalComments: 'none',
   logLevel: 'warning',
@@ -99,7 +118,7 @@ function warnIfSynced() {
   console.log(
     `\n[x-deck] 경고: ${dist} 는 동기화 폴더 안이다.\n` +
       '         브라우저가 시작할 때 이 폴더를 못 읽어 확장을 버리는 일이 있다.\n' +
-      '         --out 또는 XDECK_OUT 으로 동기화 밖에 구워 그쪽을 로드해라.',
+      `         --out 또는 ${spec.envKey} 로 동기화 밖에 구워 그쪽을 로드해라.`,
   )
 }
 
@@ -107,19 +126,19 @@ async function main() {
   await cleanOut()
 
   if (watch) {
-    await viteBuild({ build: { outDir: dist, watch: {} } })
+    await viteBuild({ build: { outDir: dist, target: spec.syntax, watch: {} } })
     const contexts = await Promise.all(PLAIN_SCRIPTS.map((s) => esbuild.context(esbuildOptions(s))))
     await Promise.all(contexts.map((c) => c.watch()))
     await copyStatic()
-    console.log(`\n[x-deck] watch 모드로 실행 중. ${label} 를 chrome://extensions 에 로드해라.`)
+    console.log(`\n[x-deck] watch 모드로 실행 중 (${target}). ${label} 를 ${spec.loadAt} 에 로드해라.`)
     warnIfSynced()
     return
   }
 
-  await viteBuild({ build: { outDir: dist } })
+  await viteBuild({ build: { outDir: dist, target: spec.syntax } })
   await Promise.all(PLAIN_SCRIPTS.map((s) => esbuild.build(esbuildOptions(s))))
   await copyStatic()
-  console.log(`\n[x-deck] 빌드 완료 → ${label}`)
+  console.log(`\n[x-deck] 빌드 완료 (${target}) → ${label}`)
   warnIfSynced()
 }
 

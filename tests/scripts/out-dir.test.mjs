@@ -41,6 +41,15 @@ describe('outDirFrom', () => {
     expect(outDirFrom({ env: { XDECK_OUT: '   ' }, cwd, root })).toBe(resolve(root, 'dist'))
   })
 
+  it('대상마다 기본 자리와 환경 변수가 따로다 — 서로의 결과를 덮지 않는다', () => {
+    const firefox = { dir: 'dist-firefox', envKey: 'XDECK_OUT_FIREFOX' }
+    expect(outDirFrom({ cwd, root, ...firefox })).toBe(resolve(root, 'dist-firefox'))
+    expect(outDirFrom({ env: { XDECK_OUT: '/chromium' }, cwd, root, ...firefox })).toBe(
+      resolve(root, 'dist-firefox'),
+    )
+    expect(outDirFrom({ env: { XDECK_OUT_FIREFOX: '/ff' }, cwd, root, ...firefox })).toBe(resolve('/ff'))
+  })
+
   it('경로 없는 --out 은 조용히 넘어가지 않는다', () => {
     expect(() => outDirFrom({ argv: ['--out'], cwd, root })).toThrow()
     expect(() => outDirFrom({ argv: ['--out', '--watch'], cwd, root })).toThrow()
