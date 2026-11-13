@@ -629,7 +629,18 @@ export function startCollector(
 
     // 방금 준 것과 같은 목록인지 가린다. 같은 목록이면 두드림이 헛돈 것이다.
     const signature = timelineSignature(event.data.body)
-    const renewed = signature === null || signatures.get(role) !== signature
+    /*
+     * 아직 목록을 한 번도 못 받은 컬럼에 온 빈 응답.
+     *
+     * 첫 목록을 놓친 문서에는 x.com 의 폴링이 '새로 줄 것 없음' 만 돌려준다. 그걸
+     * 새 목록으로 세면 유휴 시계가 폴링마다 되감겨 사다리가 시작조차 못 하고, 문서도
+     * 살아 있는 것으로 읽혀 다시 띄우지 않는다 — 멘션 컬럼이 '수신 중' 인 채 텅
+     * 비어 있던 자리다. 목록을 한 번 받은 뒤의 빈 응답은 그대로 '새 글 없음' 이다.
+     * 항목 표시가 없는 옛 알림 경로(`globalObjects`)는 가려낼 수 없어 예전대로 둔다.
+     */
+    const empty =
+      signature === null && !signatures.has(role) && !/"globalObjects"/.test(event.data.body)
+    const renewed = !empty && (signature === null || signatures.get(role) !== signature)
     if (signature !== null) signatures.set(role, signature)
 
     // 유휴 시계는 **어느 컬럼이든** 자기 것이 새로 왔으면 되감는다. 담당이 아닌
@@ -646,7 +657,8 @@ export function startCollector(
      */
     if (role === home()) {
       // 응답이 왔다는 것만은 목록이 그대로여도 사실이다. 문서는 살아 있다.
-      answered = true
+      // 단, 목록을 한 번도 못 준 문서의 빈 응답은 근거가 못 된다 — 다시 띄워야 받는다.
+      if (!empty) answered = true
       // 되돌리는 근거는 **새 목록** 하나뿐이다. 같은 목록을 다시 받은 것으로
       // 되감으면 사다리가 첫 칸을 되풀이하며 뒷칸에 영영 닿지 못한다.
       if (renewed) {

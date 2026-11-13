@@ -274,6 +274,60 @@ describe('유휴 판정 — 응답이 아니라 새 목록', () => {
   })
 })
 
+/** 항목 없이 커서만 실린 응답. x.com 이 '새로 줄 것 없음' 으로 돌려주는 폴링 응답이 이렇다. */
+function emptyBody(): string {
+  const cursor = `{"entryId":"cursor-top-${Math.random()}"}`
+  return `{"data":{"home":{"home_timeline_urt":{"instructions":[{"entries":[${cursor}]}]}}}}`
+}
+
+/**
+ * **빈 응답만으로는 목록을 받은 것이 아니다.**
+ *
+ * 수집 문서가 첫 목록을 놓치면 그 뒤로 x.com 의 폴링은 '새로 줄 것 없음' 만 돌려준다.
+ * 그걸 새 목록으로 세면 유휴 시계가 폴링마다 되감겨 사다리가 시작조차 못 하고,
+ * 응답이 오고 있으니 문서도 살아 있는 것으로 읽혀 다시 띄우지도 않는다 — 멘션
+ * 컬럼이 '수신 중' 인 채 텅 비어 있던 자리다.
+ */
+describe('첫 목록을 못 받은 컬럼', () => {
+  let collector: CollectorHandle
+
+  beforeEach(async () => {
+    stubChrome()
+    vi.useFakeTimers()
+    window.history.pushState({}, '', '/home')
+    renderHome()
+    messages = []
+    collector = startCollector(['foryou'], (message) => messages.push(message))
+    await settle()
+  })
+
+  afterEach(() => {
+    collector.dispose()
+    vi.useRealTimers()
+  })
+
+  it('빈 응답만 계속 오면 사다리를 오르고 끝에서 다시 세운다', async () => {
+    // 10 분 동안 15 초마다 빈 응답이 들어온다.
+    for (let step = 0; step < 40; step += 1) {
+      await vi.advanceTimersByTimeAsync(15_000)
+      capture(emptyBody())
+    }
+
+    expect(rungs()).toContain('강제 갱신 4/4: 탭 튕기기')
+    expect(messages.some((m) => m.type === 'stalled')).toBe(true)
+  })
+
+  it('목록을 한 번 받은 뒤의 빈 응답은 그대로 살아 있다는 근거다', async () => {
+    capture(timelineBody(['1', '2', '3']))
+    for (let step = 0; step < 40; step += 1) {
+      await vi.advanceTimersByTimeAsync(15_000)
+      capture(emptyBody())
+    }
+
+    expect(rungs()).toEqual([])
+  })
+})
+
 /**
  * 대타 방문(`prime`)은 **담당 컬럼의 사다리를 건드리면 안 된다.**
  *
