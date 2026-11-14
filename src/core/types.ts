@@ -141,6 +141,11 @@ export interface Tweet {
   quoted?: Tweet
   /** 답글이면 대상 핸들. */
   replyToHandle?: string
+  /**
+   * 이 글이 든 대화의 첫 글 id. 대화를 연 글이면 자기 id 와 같다.
+   * 같은 사람이 이어 쓴 타래를 묶는 단서다. 이 값을 읽기 전에 저장된 글에는 없다.
+   */
+  conversationId?: string
   /** 내 반응 상태. 하트·리포스트 버튼의 초기값. */
   viewer?: ViewerState
   /** x.com 원문 링크. */

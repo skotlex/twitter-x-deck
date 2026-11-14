@@ -1,5 +1,5 @@
 import { memo, useContext, useEffect, useRef, useState } from 'react'
-import type { Tweet, TweetMedia } from '@core/types'
+import type { Tweet } from '@core/types'
 import {
   MEDIA_MAX_HEIGHT,
   smallerMediaSize,
@@ -18,8 +18,10 @@ import {
 } from '../../content/translate'
 import { useColumnActivity } from '../columnActivity'
 import { ColumnScrollContext } from '../columnScroll'
+import { ColumnTweetsContext } from '../columnTweets'
 import { opensCardDetail } from '../lib/cardClick'
 import { formatCount, formatRelative, formatStamp, languageName } from '../lib/format'
+import { threadMedia, type ThreadMedia } from '../lib/lightboxNav'
 import { Lightbox } from './Lightbox'
 import { MEDIA_REGION_MARK, MediaSlot } from './MediaGrid'
 import { PostComposer } from './PostComposer'
@@ -776,12 +778,11 @@ function RepostAction({
   )
 }
 
-/** 원본 보기로 띄울 대상. 원글과 인용글이 각자의 사진 묶음을 갖는다. */
-interface LightboxTarget {
-  media: TweetMedia[]
-  index: number
-  sourceUrl: string
-}
+/**
+ * 원본 보기로 띄울 대상. 원글은 같은 사람이 이어 쓴 글의 사진까지 함께 묶고,
+ * 인용글은 그 글의 사진만 담는다 — 인용글은 원글의 일부일 뿐 이어 쓴 글이 아니다.
+ */
+type LightboxTarget = ThreadMedia
 
 /** 덱 안 창으로 띄울 x.com 페이지. 어디를 눌렀는지가 게시물이냐 프로필이냐를 정한다. */
 interface DetailTarget {
@@ -803,6 +804,7 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
   const metrics = METRICS[settings.density]
   const mediaSize = metrics.shrinkMedia ? smallerMediaSize(settings.mediaSize) : settings.mediaSize
   const [lightbox, setLightbox] = useState<LightboxTarget | null>(null)
+  const readColumnTweets = useContext(ColumnTweetsContext)
   const [composer, setComposer] = useState<ComposeMode | null>(null)
   const [detail, setDetail] = useState<DetailTarget | null>(null)
   // 동작 실패 이유. 툴팁에만 두면 아무도 모른 채 숫자만 되돌아간다.
@@ -879,7 +881,7 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
             size={mediaSize}
             sourceUrl={tweet.url}
             hoverPlay={settings.hoverPlay}
-            onOpen={(index) => setLightbox({ media: tweet.media, index, sourceUrl: tweet.url })}
+            onOpen={(index) => setLightbox(threadMedia(readColumnTweets(), tweet, index))}
           />
           {tweet.card && !tweet.media.length && settings.mediaMode !== 'hide' && (
             <LinkCard card={tweet.card} mediaSize={mediaSize} />
@@ -891,7 +893,9 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
               hoverPlay={settings.hoverPlay}
               mediaSize={mediaSize}
               textClass={metrics.text}
-              onOpenMedia={(index) => setLightbox({ media: quoted.media, index, sourceUrl: quoted.url })}
+              onOpenMedia={(index) =>
+                setLightbox({ groups: [{ media: quoted.media, sourceUrl: quoted.url }], group: 0, index })
+              }
               onOpenDetail={() => setDetail({ url: quoted.url, handle: quoted.author.handle })}
             />
           )}
@@ -982,7 +986,8 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
 
       {lightbox && (
         <Lightbox
-          groups={[{ media: lightbox.media, sourceUrl: lightbox.sourceUrl }]}
+          groups={lightbox.groups}
+          startGroup={lightbox.group}
           startIndex={lightbox.index}
           onClose={() => setLightbox(null)}
         />

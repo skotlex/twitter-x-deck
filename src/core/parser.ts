@@ -237,6 +237,9 @@ function normalize(
   if (legacy.lang && legacy.lang !== 'und') result.lang = legacy.lang
   if (tweet.views?.count) result.stats.views = toNumber(tweet.views.count)
   if (legacy.in_reply_to_screen_name) result.replyToHandle = legacy.in_reply_to_screen_name
+  if (typeof legacy.conversation_id_str === 'string' && legacy.conversation_id_str) {
+    result.conversationId = legacy.conversation_id_str
+  }
 
   const card = parseCard(tweet)
   if (card) result.card = card

@@ -3,6 +3,7 @@ import { isPowerSaving, type Settings } from '@core/settings'
 import { isNotification, TIMELINE_LABEL, type CollectorState, type TimelineKind } from '@core/types'
 import { ColumnActivityContext, type ColumnActivity } from '../columnActivity'
 import { ColumnScrollContext } from '../columnScroll'
+import { ColumnTweetsContext } from '../columnTweets'
 import { ColumnPixelsContext, useMeasuredColumnPixels } from '../columnWidth'
 import type { ColumnState } from '../hooks/useCollector'
 import { formatClock } from '../lib/format'
@@ -84,6 +85,10 @@ export function DeckColumn({
   const [over, setOver] = useState(false)
   // 첫 렌더에 쌓여 있던 글까지 애니메이션이 터지지 않게 최초 목록은 제외한다.
   const settledRef = useRef(false)
+  // 카드가 사진을 열 때 꺼내 볼 지금 목록. 함수는 한 번만 만들어 카드가 다시 그려지지 않게 한다.
+  const tweetsRef = useRef(column.tweets)
+  tweetsRef.current = column.tweets
+  const readTweets = useCallback(() => tweetsRef.current, [])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -353,6 +358,7 @@ export function DeckColumn({
           <ColumnPixelsContext.Provider value={columnPixels}>
             <ColumnActivityContext.Provider value={activity}>
               <ColumnScrollContext.Provider value={scrollRef}>
+              <ColumnTweetsContext.Provider value={readTweets}>
               {column.tweets.length === 0 ? (
                 <EmptyState state={state} />
               ) : (
@@ -375,6 +381,7 @@ export function DeckColumn({
                   ),
                 )
               )}
+              </ColumnTweetsContext.Provider>
               </ColumnScrollContext.Provider>
             </ColumnActivityContext.Provider>
           </ColumnPixelsContext.Provider>

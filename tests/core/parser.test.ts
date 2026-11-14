@@ -134,6 +134,22 @@ describe('parseTimelinePayload — 정석 경로', () => {
     expect(tweetsOf(items).map((t) => t.id)).toEqual(['10', '11'])
   })
 
+  it('어느 대화에 속한 글인지 읽는다 — 타래를 묶는 단서다', () => {
+    const { items } = parseTimelinePayload(
+      timeline(
+        tweet('10', 'alice', { conversation_id_str: '10' }),
+        tweet('11', 'alice', { conversation_id_str: '10', in_reply_to_screen_name: 'alice' }),
+        tweet('12', 'bob'),
+      ),
+      'following',
+      CAPTURED_AT,
+    )
+    const [root, reply, plain] = tweetsOf(items)
+    expect(root?.conversationId).toBe('10')
+    expect(reply?.conversationId).toBe('10')
+    expect(plain?.conversationId).toBeUndefined()
+  })
+
   it('같은 게시물이 두 번 실려 와도 하나만 남긴다', () => {
     const { items } = parseTimelinePayload(
       timeline(tweet('1', 'alice'), tweet('1', 'alice')),
