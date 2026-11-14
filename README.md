@@ -142,7 +142,18 @@ Firefox 에서는 추천 · 팔로잉 · 알림 · 멘션 수집까지 확인했
 3. **임시 부가 기능 로드** 를 누른 뒤 `dist-firefox/manifest.json` 을 선택합니다
 4. `about:addons` 에서 X Deck 의 **권한** 탭을 열어 `x.com` · `papago.naver.com` 사이트 접근이 켜져 있는지 확인합니다. Firefox 는 이 권한을 사용자가 끌 수 있으며, 꺼져 있으면 수집과 번역이 돌지 않습니다
 
-임시로 로드한 부가 기능은 Firefox 를 다시 켜면 사라집니다. 일반 Firefox 에 계속 두려면 Mozilla 의 서명이 필요합니다. 동기화 폴더 밖에 굽는 방법은 크로미움과 같고, 정해두는 환경 변수만 `XDECK_OUT_FIREFOX` 로 따로입니다.
+임시로 로드한 부가 기능은 Firefox 를 다시 켜면 사라집니다. 동기화 폴더 밖에 굽는 방법은 크로미움과 같고, 정해두는 환경 변수만 `XDECK_OUT_FIREFOX` 로 따로입니다.
+
+#### 서명받아 계속 쓰기
+
+일반 Firefox(정식판 · 베타)는 Mozilla 의 서명이 없는 부가 기능을 영구 설치하지 않습니다. 공개 등록 없이 혼자 쓰려면 Mozilla 부가 기능 사이트(AMO)의 비공개(unlisted) 서명을 받습니다.
+
+1. [AMO 개발자 허브](https://addons.mozilla.org/developers/addon/api/key/) 에서 API 열쇠(JWT issuer · JWT secret)를 받습니다
+2. 환경 변수 `WEB_EXT_API_KEY` 에 issuer 를, `WEB_EXT_API_SECRET` 에 secret 을 넣습니다. 열쇠는 저장소에 두지 않습니다
+3. `npm run sign:ff` 를 실행합니다. Firefox 용으로 구운 뒤 AMO 에 맡기고, 서명된 `.xpi` 를 `dist-xpi/` 에 받습니다
+4. Firefox 의 `about:addons` → 톱니바퀴 → **파일에서 부가 기능 설치** 로 받은 `.xpi` 를 엽니다
+
+AMO 는 한 번 서명한 버전 번호를 다시 받지 않습니다. 그래서 이 프로젝트는 빌드 결과가 바뀌는 수정마다 버전을 올립니다. 구워 둔 빌드의 버전이 `package.json` 과 다르거나 열쇠가 비어 있으면, 번호를 헛되이 쓰지 않도록 `sign:ff` 가 맡기기 전에 멈춥니다.
 
 ### 사진 번역 준비 (선택)
 
@@ -190,6 +201,7 @@ Firefox 에서는 추천 · 팔로잉 · 알림 · 멘션 수집까지 확인했
 | `npm run dev` | 감시(watch) 모드로 빌드합니다. 코드를 고치면 다시 굽고, 확장 페이지에서 새로고침하면 반영됩니다. 출력 자리는 `build` 와 같은 방법으로 옮깁니다 |
 | `npm run build:ff` | Firefox 용 번들을 `dist-firefox/` 에 생성합니다. 자리는 `-- --out <폴더>` 또는 환경 변수 `XDECK_OUT_FIREFOX` 로 옮깁니다 |
 | `npm run dev:ff` | Firefox 용 감시 모드입니다 |
+| `npm run sign:ff` | Firefox 용으로 구운 뒤 AMO 비공개 서명을 받아 `dist-xpi/` 에 `.xpi` 를 내려받습니다. 열쇠는 환경 변수 `WEB_EXT_API_KEY` · `WEB_EXT_API_SECRET` 로 받습니다 ([서명받아 계속 쓰기](#서명받아-계속-쓰기)) |
 | `npm run typecheck` | 타입 검사만 수행합니다 (`tsc --noEmit`) |
 | `npm test` | 테스트를 한 번 실행합니다 |
 | `npm run test:watch` | 감시 모드로 테스트를 실행합니다 |
@@ -476,7 +488,7 @@ src/
 └─ ui/            덱 UI (React)
 
 bridge/          사진 번역용 네이티브 메시징 호스트 (선택 기능. 확장 번들에 들어가지 않습니다)
-scripts/         빌드 오케스트레이터와 그 곁가지 (빌드 대상 · 출력 자리 결정 · 아이콘 · 확장 키 생성)
+scripts/         빌드 오케스트레이터와 그 곁가지 (빌드 대상 · 출력 자리 결정 · Firefox 서명 · 아이콘 · 확장 키 생성)
 build.bat        두 번 눌러 굽는 길 (윈도우). 감시 모드는 dev.bat
 
 tests/
@@ -484,7 +496,7 @@ tests/
 ├─ content/       선택자 판단 규칙 · 강제 갱신 사다리 · 번역 도착 언어 · Papago 주소 · Grok 묻는 빈도 테스트 (손으로 만든 DOM)
 ├─ ui/            표시 형식 · 안 본 수 세기 · 계정 읽기 · 카드 클릭 판정 · 라이트박스 넘기기 테스트
 ├─ bridge/        사진 번역 브리지의 실패 문구 · codex 설정 자동 수리 · 등록 대상 테스트
-├─ scripts/       빌드 대상 · 출력 자리 결정 테스트
+├─ scripts/       빌드 대상 · 출력 자리 결정 · 서명 전 점검 테스트
 ├─ fixtures/      실제 x.com 화면을 떠 온 파일 (커밋하지 않습니다)
 └─ setup/         happy-dom 보정
 ```
@@ -518,6 +530,7 @@ tests/
 | [src/core/playback.ts](src/core/playback.ts) | 어느 영상을 틀지 않을지의 판정. 인터셉터가 씁니다 |
 | [src/ui/](src/ui/) | 덱 UI. x.com DOM 을 아는 코드가 한 줄도 없습니다 |
 | [scripts/out-dir.mjs](scripts/out-dir.mjs) | 빌드 결과를 놓을 자리를 고릅니다. 남의 폴더를 지우지 않게 막고, 동기화 폴더면 알려줍니다 |
+| [scripts/sign-firefox.mjs](scripts/sign-firefox.mjs) · [sign-check.mjs](scripts/sign-check.mjs) | Firefox 빌드를 AMO 에 맡겨 서명받습니다. 낡은 빌드나 빈 열쇠는 맡기기 전에 막습니다 |
 | [scripts/target.mjs](scripts/target.mjs) | 크로미움 · Firefox 중 어느 쪽으로 구울지 정하고, 그에 맞춰 매니페스트를 고칩니다 |
 
 `@core` · `@ui` 경로 별칭을 사용하며, Vite 와 esbuild 양쪽에 같은 별칭을 등록해 두었습니다.
