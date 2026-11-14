@@ -77,6 +77,15 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
   return stop
 }
 
+/**
+ * 마우스가 떠난 뒤 영상 요소를 남겨 두는 시간 (Firefox).
+ * 재생바의 전체화면 단추를 누른 뒤 화면 전환이 끝날 때까지 버틸 만큼이다.
+ */
+const FULLSCREEN_GRACE_MS = 1000
+
+/** 전체화면을 빠져나온 뒤 마우스 위치가 다시 계산되기를 기다리는 시간. */
+const POINTER_SETTLE_MS = 200
+
 /** 0~1 사이로. */
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
 
@@ -189,7 +198,38 @@ function MediaItem({
    *           한 영역에 영상이 여럿이면 맨 앞 하나만 돈다.
    *   그리고 한 번 소리를 켠 영상은 조건과 무관하게 계속 돈다.
    */
-  const showVideo = playable && !failed && (engaged || (hoverPlay && (hovered || regionLeads)))
+  const wanted = playable && !failed && (engaged || (hoverPlay && (hovered || regionLeads)))
+
+  /**
+   * Firefox 에서는 마우스가 떠나도 영상 요소를 잠깐 남겨 둔다.
+   *
+   * 재생바의 전체화면 단추를 누르면 Firefox 는 화면을 어둡게 바꾸는 **도중에** 마우스가
+   * 떠난 것으로 알려 온다. 그 자리에서 미리보기를 내리면 전환이 끝날 즈음엔 전체화면을
+   * 걸 요소가 문서에 없어 "요청한 요소가 더 이상 문서 내에 존재하지 않는다" 며 거절된다.
+   * 그 단추를 누른 것은 페이지에 알려 오지 않아(재생바 안은 브라우저가 쥐고 있다) 미리
+   * 붙들 수도 없다. 그래서 떠난 뒤 잠깐은 요소를 남기고, 그새 전체화면이 되면 붙든다.
+   * 남겨 두는 동안은 섬네일로 덮어 화면에서는 곧바로 내려간 것처럼 보인다.
+   */
+  const [lingering, setLingering] = useState(false)
+  const [wasWanted, setWasWanted] = useState(wanted)
+  if (wanted !== wasWanted) {
+    // 그리는 도중에 맞춰 둬야 요소가 한 번도 빠지지 않는다 — 효과로 하면 이미 빠진 뒤다.
+    setWasWanted(wanted)
+    setLingering(IS_FIREFOX && !wanted)
+  }
+  useEffect(() => {
+    if (!lingering) return
+    const timer = window.setTimeout(() => setLingering(false), FULLSCREEN_GRACE_MS)
+    return () => window.clearTimeout(timer)
+  }, [lingering])
+
+  const showVideo = wanted || lingering
+
+  /**
+   * 전체화면 때문에만 붙든 영상인지. 그렇다면 전체화면을 빠져나와 마우스가 떠날 때 놓는다.
+   * 눌러서 소리를 켠 영상은 여기에 들지 않는다 — 그건 마우스가 떠나도 계속 돈다.
+   */
+  const heldForFullscreen = useRef(false)
 
   /*
    * 영상이 **도는 동안에는** 새 글을 목록에 끼워 넣지 않는다 — 보고 있던 화면이
@@ -287,21 +327,62 @@ function MediaItem({
    * 영상이 그대로 내려지고 요소가 사라졌으니 전체화면도 곧바로 풀렸다.
    *
    * 전체화면에 들어간 순간 붙들어 두면, 마우스가 어디로 갔든 요소가 남고 소리도 켜진다.
-   * 전체화면을 빠져나온 뒤에도 그대로 돈다 — 보던 영상이 그 자리에서 끊기지 않게.
+   * (그 알림보다 마우스가 떠났다는 알림이 먼저 오기도 한다 — `lingering` 이 그 틈을 메운다.)
    */
   useEffect(() => {
     const video = videoRef.current
     if (!showVideo || engaged || !video) return
     const doc = video.ownerDocument
     const onChange = () => {
-      if (holdsFullscreen(video)) setEngaged(true)
+      if (!holdsFullscreen(video)) return
+      heldForFullscreen.current = true
+      setEngaged(true)
     }
     doc.addEventListener('fullscreenchange', onChange)
     return () => doc.removeEventListener('fullscreenchange', onChange)
   }, [showVideo, engaged])
 
-  /** 재생바를 띄우는지. 마우스를 올렸거나 이 영상을 보기로 했을 때만이다. */
-  const controlsOn = hovered || engaged
+  /**
+   * 전체화면 때문에만 붙든 영상은 빠져나온 뒤 마우스가 떠나면 놓는다.
+   *
+   * 전에는 빠져나온 뒤에도 계속 돌아, 마우스가 다른 곳으로 가도 소리를 내며 이어졌다.
+   * 빠져나온 순간 마우스가 이미 밖에 있으면 곧바로 놓는다. 마우스 위치는 화면이 원래
+   * 크기로 돌아와 다시 계산된 뒤에야 맞으므로 잠깐 기다렸다가 본다.
+   */
+  useEffect(() => {
+    const video = videoRef.current
+    const host = hostRef.current
+    if (!engaged || !video || !host) return
+    const doc = video.ownerDocument
+    let timer = 0
+    const letGo = () => {
+      heldForFullscreen.current = false
+      setEngaged(false)
+    }
+    const onChange = () => {
+      if (!heldForFullscreen.current || holdsFullscreen(video)) return
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        // 전체화면으로 넘어갈 때 떠났다고 알려 온 탓에 마우스 상태가 어긋나 있다. 바로잡는다.
+        const over = host.matches(':hover')
+        setHovered(over)
+        if (over) host.addEventListener('mouseleave', letGo, { once: true })
+        else letGo()
+      }, POINTER_SETTLE_MS)
+    }
+    doc.addEventListener('fullscreenchange', onChange)
+    return () => {
+      window.clearTimeout(timer)
+      doc.removeEventListener('fullscreenchange', onChange)
+      host.removeEventListener('mouseleave', letGo)
+    }
+  }, [engaged])
+
+  /**
+   * 재생바를 띄우는지. 마우스를 올렸거나 이 영상을 보기로 했을 때만이다.
+   * 남겨 두는 동안에도 켜 둔다 — 전체화면으로 넘어가는 도중에 재생바를 갈아 끼우지 않게.
+   */
+  const controlsOn = hovered || engaged || lingering
 
   // Firefox 재생바가 기본값 300px 이 아니라 실제 폭으로 부품을 늘어놓게 한다.
   useEffect(() => {
@@ -348,6 +429,8 @@ function MediaItem({
   const enterFullscreen = () => {
     const video = videoRef.current
     if (!video) return
+    // 이미 눌러서 보던 영상이면 빠져나온 뒤에도 그대로 돈다.
+    if (!engaged) heldForFullscreen.current = true
     setEngaged(true)
     // 막힌 환경(권한 정책 등)이면 그 자리에서 계속 볼 뿐이다.
     video.requestFullscreen?.().catch(() => {})
@@ -373,6 +456,8 @@ function MediaItem({
       onClick={(event) => {
         event.stopPropagation()
         const action = mediaClick({ playable, engaged })
+        // 눌러서 본 영상은 전체화면 때문에 붙든 것이 아니다 — 마우스가 떠나도 계속 돈다.
+        if (action !== 'open') heldForFullscreen.current = false
         // 소리를 켠 뒤로는 기본 동작을 막지 않는다. 눌러서 재생·정지하는 것은
         // 브라우저가 해주는 일인데, 여기서 막으면 재생 버튼 위에서만 세우게 된다.
         if (action === 'toggle') return
@@ -475,8 +560,19 @@ function MediaItem({
           <FullscreenIcon className="h-4 w-4" />
         </span>
       )}
-      {playable && !showVideo && (
-        <span className="absolute inset-0 grid place-items-center">
+      {/* 마우스가 떠난 뒤 잠깐 남겨 둔 영상은 섬네일로 덮는다. 화면에서는 곧바로 내려간 것과 같다. */}
+      {lingering && (
+        <img
+          src={previewUrl}
+          alt=""
+          aria-hidden
+          className={`pointer-events-none absolute inset-0 z-20 h-full w-full bg-surface-2 ${
+            fit === 'cover' ? 'object-cover' : 'object-contain'
+          }`}
+        />
+      )}
+      {playable && (!showVideo || lingering) && (
+        <span className="absolute inset-0 z-30 grid place-items-center">
           <span className="grid h-12 w-12 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm transition group-hover/media:bg-black/70">
             <PlayIcon className="h-5 w-5 translate-x-[1px]" />
           </span>
