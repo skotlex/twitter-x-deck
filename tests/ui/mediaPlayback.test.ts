@@ -4,8 +4,8 @@
  * 브라우저가 영상에 붙여 주는 기본 조작(눌러서 재생·정지, 재생바의 소리 단추)과
  * 맞물린 자리라 화면만 봐서는 어느 쪽이 한 일인지 가릴 수 없다. 규칙만 떼어 못을 박는다.
  */
-import { describe, expect, it } from 'vitest'
-import { isUserVolume, mediaClick, videoHoldsColumn } from '@ui/lib/mediaPlayback'
+import { afterEach, describe, expect, it } from 'vitest'
+import { holdsFullscreen, isUserVolume, mediaClick, videoHoldsColumn } from '@ui/lib/mediaPlayback'
 
 describe('mediaClick — 눌렀을 때 할 일', () => {
   it('사진은 원본 보기로 연다', () => {
@@ -63,5 +63,48 @@ describe('videoHoldsColumn — 영상이 컬럼을 붙드는지', () => {
 
   it('요소가 내려갔으면 붙들지 않는다', () => {
     expect(videoHoldsColumn({ mounted: false, playing: true })).toBe(false)
+  })
+})
+
+describe('holdsFullscreen — 이 영상이 지금 전체화면인지', () => {
+  /** 덱처럼 그림자 DOM 안에 영상을 둔다. */
+  function mountInShadow(): { host: HTMLElement; shadow: ShadowRoot; video: HTMLVideoElement } {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const shadow = host.attachShadow({ mode: 'open' })
+    const video = document.createElement('video')
+    shadow.append(video)
+    return { host, shadow, video }
+  }
+
+  function setFullscreen(root: Document | ShadowRoot, element: Element | null): void {
+    Object.defineProperty(root, 'fullscreenElement', { value: element, configurable: true })
+  }
+
+  afterEach(() => {
+    setFullscreen(document, null)
+    document.body.innerHTML = ''
+  })
+
+  it('그림자 DOM 안의 영상이 전체화면이면 알아본다', () => {
+    const { host, shadow, video } = mountInShadow()
+    // 문서는 그림자 안쪽을 감추고 그림자의 주인을 내놓는다. 영상 자신은 그림자 뿌리에서만 보인다.
+    setFullscreen(document, host)
+    setFullscreen(shadow, video)
+    expect(holdsFullscreen(video)).toBe(true)
+  })
+
+  it('다른 것이 전체화면이면 아니다', () => {
+    const { shadow, video } = mountInShadow()
+    const other = document.createElement('video')
+    shadow.append(other)
+    setFullscreen(shadow, other)
+    expect(holdsFullscreen(video)).toBe(false)
+  })
+
+  it('전체화면이 아니면 아니다', () => {
+    const { shadow, video } = mountInShadow()
+    setFullscreen(shadow, null)
+    expect(holdsFullscreen(video)).toBe(false)
   })
 })

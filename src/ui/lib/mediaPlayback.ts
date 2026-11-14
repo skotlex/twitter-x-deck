@@ -81,3 +81,15 @@ export function isUserVolume({
   if (silent) return false
   return engaged || !muted
 }
+
+/**
+ * 이 요소가 지금 전체화면인지.
+ *
+ * 문서에 물으면 안 된다. 덱은 그림자 DOM 안에 있어 `document.fullscreenElement` 는
+ * 영상이 아니라 그림자의 주인을 내놓는다. 요소가 든 뿌리에 물어야 영상 자신이 나온다.
+ */
+export function holdsFullscreen(element: Element): boolean {
+  const root = element.getRootNode() as Partial<DocumentOrShadowRoot>
+  const current = root.fullscreenElement ?? null
+  return current !== null && (current === element || element.contains(current))
+}

@@ -195,6 +195,8 @@ export function XPageModal({ url, handle, label = '님의 게시물', onClose }:
               src={url}
               title={`@${handle} ${label}`}
               onLoad={handleLoad}
+              // 같은 오리진이어도 Firefox 는 이 속성이 없으면 프레임 안 영상의 전체화면을 거절한다.
+              allowFullScreen
               className="min-h-0 flex-1 border-0 bg-canvas"
             />
           )}

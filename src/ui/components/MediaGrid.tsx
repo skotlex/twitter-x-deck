@@ -4,7 +4,7 @@ import type { TweetMedia } from '@core/types'
 import { useColumnActivity } from '../columnActivity'
 import { GRID_SHARE, useColumnPixels } from '../columnWidth'
 import { aspectRatio, sizedMediaUrl } from '../lib/format'
-import { isUserVolume, mediaClick, videoHoldsColumn } from '../lib/mediaPlayback'
+import { holdsFullscreen, isUserVolume, mediaClick, videoHoldsColumn } from '../lib/mediaPlayback'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { ImageIcon, PlayIcon } from './icons'
 
@@ -166,6 +166,28 @@ function MediaItem({
     if (!video) return
     applyVolume(video, !engaged || silent)
   }, [engaged, silent, showVideo])
+
+  /**
+   * 전체화면으로 띄운 영상은 보기로 한 것이다. 재생바를 잡아 옮긴 것과 똑같이 다룬다.
+   *
+   * 미리보기는 마우스가 떠나면 내린다. 그런데 재생바의 전체화면 단추는 클릭으로 알려
+   * 오지 않아(재생바 안은 브라우저가 쥐고 있다) 그 영상은 여전히 미리보기로 남는다.
+   * Firefox 는 전체화면으로 넘어간 뒤 마우스가 떠난 것으로 알려 와, 미리보기로 남은
+   * 영상이 그대로 내려지고 요소가 사라졌으니 전체화면도 곧바로 풀렸다.
+   *
+   * 전체화면에 들어간 순간 붙들어 두면, 마우스가 어디로 갔든 요소가 남고 소리도 켜진다.
+   * 전체화면을 빠져나온 뒤에도 그대로 돈다 — 보던 영상이 그 자리에서 끊기지 않게.
+   */
+  useEffect(() => {
+    const video = videoRef.current
+    if (!showVideo || engaged || !video) return
+    const doc = video.ownerDocument
+    const onChange = () => {
+      if (holdsFullscreen(video)) setEngaged(true)
+    }
+    doc.addEventListener('fullscreenchange', onChange)
+    return () => doc.removeEventListener('fullscreenchange', onChange)
+  }, [showVideo, engaged])
 
   if (failed) {
     return (
