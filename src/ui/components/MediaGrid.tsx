@@ -6,7 +6,7 @@ import { GRID_SHARE, useColumnPixels } from '../columnWidth'
 import { aspectRatio, sizedMediaUrl } from '../lib/format'
 import { holdsFullscreen, isUserVolume, mediaClick, videoHoldsColumn } from '../lib/mediaPlayback'
 import { applyVolume, rememberVolume } from '../lib/volume'
-import { ImageIcon, PlayIcon } from './icons'
+import { FullscreenIcon, ImageIcon, PlayIcon } from './icons'
 
 /** 장수별 격자 배치. x.com 과 같은 규칙을 따른다. */
 function layoutClass(count: number): string {
@@ -189,6 +189,15 @@ function MediaItem({
     return () => doc.removeEventListener('fullscreenchange', onChange)
   }, [showVideo, engaged])
 
+  /** 이 영상을 전체화면으로. 단추를 누른 것은 이 영상을 보기로 한 것이라 소리도 켠다. */
+  const enterFullscreen = () => {
+    const video = videoRef.current
+    if (!video) return
+    setEngaged(true)
+    // 막힌 환경(권한 정책 등)이면 그 자리에서 계속 볼 뿐이다.
+    video.requestFullscreen?.().catch(() => {})
+  }
+
   if (failed) {
     return (
       <a
@@ -276,6 +285,37 @@ function MediaItem({
           decoding="async"
           className={`h-full w-full ${fit === 'cover' ? 'object-cover' : 'object-contain'}`}
         />
+      )}
+      {/*
+        재생바와 따로 다는 전체화면 단추.
+
+        Firefox 는 영상 폭이 좁으면 재생바에서 재생·전체화면 단추를 아예 빼버린다
+        (크롬은 ⋮ 차림표에 넣어 둔다). 컬럼 안의 세로 영상은 늘 그만큼 좁아서, 그대로
+        두면 전체화면으로 볼 길이 없다. 재생바가 떠 있을 때 같이 띄운다.
+
+        버튼 안이라 <button> 을 다시 쓸 수 없다 — 버튼 안의 버튼은 HTML 이 허락하지 않는다.
+      */}
+      {showVideo && (hovered || engaged) && (
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label="전체화면으로 보기"
+          title="전체화면"
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            enterFullscreen()
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            event.stopPropagation()
+            enterFullscreen()
+          }}
+          className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
+        >
+          <FullscreenIcon className="h-4 w-4" />
+        </span>
       )}
       {playable && !showVideo && (
         <span className="absolute inset-0 grid place-items-center">

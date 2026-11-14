@@ -87,6 +87,12 @@ export const PlayIcon = (props: IconProps) => (
   </Icon>
 )
 
+export const FullscreenIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
+  </Icon>
+)
+
 export const ColumnsIcon = (props: IconProps) => (
   <Icon {...props}>
     <rect x="3" y="4" width="7.5" height="16" rx="1.5" />
