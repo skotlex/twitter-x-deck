@@ -75,6 +75,7 @@ function SeekBar({ video, time, duration }: { video: HTMLVideoElement; time: num
     if (rect.width <= 0) return
     video.currentTime = clamp01((event.clientX - rect.left) / rect.width) * duration
   }
+  const ratio = clamp01(duration > 0 ? time / duration : 0)
   const stop = (event: SyntheticEvent) => {
     event.preventDefault()
     event.stopPropagation()
@@ -98,10 +99,12 @@ function SeekBar({ video, time, duration }: { video: HTMLVideoElement; time: num
       }}
       className="group/seek absolute inset-x-2 bottom-10 z-10 flex h-4 cursor-pointer items-center"
     >
-      <span className="relative h-1 w-full overflow-hidden rounded-full bg-white/35 transition-[height] group-hover/seek:h-1.5">
+      {/* Firefox 재생바의 위치 막대와 같은 차림 — 어두운 바탕, 파란 진행분, 흰 손잡이. 밝은 화면 위에서도 보인다. */}
+      <span className="relative h-1 w-full rounded-full bg-black/55 shadow-[0_0_0_1px_rgba(255,255,255,0.15)] transition-[height] group-hover/seek:h-1.5">
+        <span className="absolute inset-y-0 left-0 rounded-full bg-[#00b6f0]" style={{ width: `${ratio * 100}%` }} />
         <span
-          className="absolute inset-y-0 left-0 bg-white"
-          style={{ width: `${clamp01(duration > 0 ? time / duration : 0) * 100}%` }}
+          className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow"
+          style={{ left: `${ratio * 100}%` }}
         />
       </span>
     </span>
