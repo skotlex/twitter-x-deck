@@ -41,9 +41,12 @@ const IS_FIREFOX = typeof navigator !== 'undefined' && /firefox/i.test(navigator
  * 줄였다가 되돌려 크기를 실제로 한 번 바꾼다. 재생바가 언제 다 만들어지는지 알 길이
  * 없어 한 번 더 늦춰서 되풀이한다.
  *
- * 사용자가 무언가를 누르기 시작하면 남은 조정은 거둔다. 전체화면으로 넘어가는 동안
- * 영상 크기를 건드리면 Firefox 가 화면을 어둡게 했다가 전체화면을 거두고 돌아온다 —
- * 재생바가 뜬 직후에 전체화면을 누르면 두세 번 눌러야 들어갔다.
+ * **줄인 폭으로 배치를 한 번 계산시켜야 한다.** 줄여 두기만 하면 다음 프레임에 되돌릴
+ * 때까지 배치가 한 번도 돌지 않는 일이 잦아, 크기가 바뀐 적이 없는 것이 된다. 그러면
+ * 알림도 오지 않아 재생바가 300px 그대로 남았다 — 간헐적으로만 고쳐졌던 까닭이다.
+ * (Firefox 160 에서 시점을 바꿔 가며 찍어 확인했다. 강제로 계산시키면 매번 맞는다.)
+ *
+ * 사용자가 영상 칸을 누르기 시작하면 남은 조정은 거둔다 — 누르는 도중에 크기를 건드리지 않게.
  */
 function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): () => void {
   const doc = video.ownerDocument
@@ -62,6 +65,8 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
   const nudge = () => {
     if (stopped || holdsFullscreen(video)) return
     video.style.width = 'calc(100% - 1px)'
+    // 줄인 폭으로 배치를 계산시킨다. 이게 없으면 되돌릴 때까지 크기가 바뀐 적이 없는 셈이 된다.
+    void video.offsetWidth
     frames.push(requestAnimationFrame(() => (video.style.width = '')))
   }
   // 재생바·전체화면 단추·위치 막대 어디를 누르든 영상 칸 안에서 시작한다.
