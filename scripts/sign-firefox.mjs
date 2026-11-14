@@ -3,14 +3,15 @@
 //   npm run sign:ff     굽고 나서 서명까지 한 번에
 //
 // 열쇠는 환경 변수 WEB_EXT_API_KEY · WEB_EXT_API_SECRET 로 받는다. 저장소에 두지 않는다.
-// 서명된 xpi 는 dist-xpi/ 에 떨어진다. 굽는 자리를 --out 이나 XDECK_OUT_FIREFOX 로
+// 서명된 xpi 는 dist-xpi/ 에 떨어지고, 받은 뒤에는 그 폴더의 예전 파일을 지워 새것만 남긴다.
+// 굽는 자리를 --out 이나 XDECK_OUT_FIREFOX 로
 // 옮겨 두었으면 그 자리의 빌드를 맡긴다 — build.mjs 와 같은 규칙으로 찾는다.
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { outDirFrom } from './out-dir.mjs'
-import { signProblems } from './sign-check.mjs'
+import { signProblems, staleArtifacts } from './sign-check.mjs'
 import { TARGETS } from './target.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -47,5 +48,21 @@ const command = [
   `--source-dir ${quote(source)}`,
   `--artifacts-dir ${quote(artifacts)}`,
 ].join(' ')
+// 파일 시각은 시스템 시계보다 조금 뒤처져 찍히기도 한다. 이번에 받은 파일을 예전 것으로
+// 잘못 세지 않게 시작 시각을 2초 앞당겨 잡는다.
+const startedAt = Date.now() - 2_000
 const result = spawnSync(command, { stdio: 'inherit', shell: true, cwd: root })
-process.exit(result.status ?? 1)
+if (result.status !== 0) process.exit(result.status ?? 1)
+
+// dist-xpi 에는 방금 받은 것만 남긴다. 새로 받은 파일이 없으면 아무것도 지우지 않는다.
+const entries = existsSync(artifacts)
+  ? readdirSync(artifacts, { withFileTypes: true }).map((entry) => ({
+      name: entry.name,
+      isFile: entry.isFile(),
+      mtimeMs: entry.isFile() ? statSync(resolve(artifacts, entry.name)).mtimeMs : 0,
+    }))
+  : []
+for (const name of staleArtifacts(entries, startedAt)) {
+  rmSync(resolve(artifacts, name))
+  console.log(`[x-deck] 예전 파일을 지웠다: ${name}`)
+}

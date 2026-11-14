@@ -31,3 +31,21 @@ export function signProblems({ manifestVersion, packageVersion, env = {} }) {
   }
   return problems
 }
+
+/**
+ * 서명을 받은 뒤 dist-xpi 에서 지울 파일 이름들.
+ *
+ * 그 폴더에는 늘 마지막으로 받은 것만 남긴다 — 버전마다 쌓이면 어느 것을 설치할지
+ * 헷갈린다. 이번 실행에서 새로 생긴 파일이 **하나라도 있을 때만** 나머지를 지운다.
+ * 서명이 실패했는데 예전 것까지 지우면 설치할 것이 하나도 남지 않는다.
+ * 폴더는 우리가 만든 것이 아니므로 건드리지 않는다.
+ *
+ * @param entries   폴더 안의 것들 (`isFile` 은 일반 파일인지)
+ * @param startedAt 서명을 시작한 시각 (epoch ms). 이 뒤에 쓰인 파일이 새로 받은 것이다
+ */
+export function staleArtifacts(entries, startedAt) {
+  const files = entries.filter((entry) => entry.isFile)
+  const fresh = (entry) => entry.mtimeMs >= startedAt
+  if (!files.some(fresh)) return []
+  return files.filter((entry) => !fresh(entry)).map((entry) => entry.name)
+}

@@ -150,7 +150,7 @@ Firefox 에서는 추천 · 팔로잉 · 알림 · 멘션 수집까지 확인했
 
 1. [AMO 개발자 허브](https://addons.mozilla.org/developers/addon/api/key/) 에서 API 열쇠(JWT issuer · JWT secret)를 받습니다
 2. 환경 변수 `WEB_EXT_API_KEY` 에 issuer 를, `WEB_EXT_API_SECRET` 에 secret 을 넣습니다. 열쇠는 저장소에 두지 않습니다
-3. `npm run sign:ff` 를 실행합니다. Firefox 용으로 구운 뒤 AMO 에 맡기고, 서명된 `.xpi` 를 `dist-xpi/` 에 받습니다
+3. `npm run sign:ff` 를 실행합니다. Firefox 용으로 구운 뒤 AMO 에 맡기고, 서명된 `.xpi` 를 `dist-xpi/` 에 받습니다. 받은 뒤에는 그 폴더의 예전 파일을 지워 새로 받은 것만 남깁니다. 서명이 실패하면 아무것도 지우지 않습니다
 4. Firefox 의 `about:addons` → 톱니바퀴 → **파일에서 부가 기능 설치** 로 받은 `.xpi` 를 엽니다
 
 AMO 는 한 번 서명한 버전 번호를 다시 받지 않습니다. 그래서 이 프로젝트는 빌드 결과가 바뀌는 수정마다 버전을 올립니다. 구워 둔 빌드의 버전이 `package.json` 과 다르거나 열쇠가 비어 있으면, 번호를 헛되이 쓰지 않도록 `sign:ff` 가 맡기기 전에 멈춥니다.
@@ -201,7 +201,7 @@ AMO 는 한 번 서명한 버전 번호를 다시 받지 않습니다. 그래서
 | `npm run dev` | 감시(watch) 모드로 빌드합니다. 코드를 고치면 다시 굽고, 확장 페이지에서 새로고침하면 반영됩니다. 출력 자리는 `build` 와 같은 방법으로 옮깁니다 |
 | `npm run build:ff` | Firefox 용 번들을 `dist-firefox/` 에 생성합니다. 자리는 `-- --out <폴더>` 또는 환경 변수 `XDECK_OUT_FIREFOX` 로 옮깁니다 |
 | `npm run dev:ff` | Firefox 용 감시 모드입니다 |
-| `npm run sign:ff` | Firefox 용으로 구운 뒤 AMO 비공개 서명을 받아 `dist-xpi/` 에 `.xpi` 를 내려받습니다. 열쇠는 환경 변수 `WEB_EXT_API_KEY` · `WEB_EXT_API_SECRET` 로 받습니다 ([서명받아 계속 쓰기](#서명받아-계속-쓰기)) |
+| `npm run sign:ff` | Firefox 용으로 구운 뒤 AMO 비공개 서명을 받아 `dist-xpi/` 에 `.xpi` 를 내려받고, 그 폴더의 예전 파일은 지웁니다. 열쇠는 환경 변수 `WEB_EXT_API_KEY` · `WEB_EXT_API_SECRET` 로 받습니다 ([서명받아 계속 쓰기](#서명받아-계속-쓰기)) |
 | `npm run typecheck` | 타입 검사만 수행합니다 (`tsc --noEmit`) |
 | `npm test` | 테스트를 한 번 실행합니다 |
 | `npm run test:watch` | 감시 모드로 테스트를 실행합니다 |
