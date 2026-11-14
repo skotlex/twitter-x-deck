@@ -26,7 +26,7 @@ export function signProblems({ manifestVersion, packageVersion, env = {} }) {
   const missing = [KEY_ENV, SECRET_ENV].filter((name) => !(env[name] ?? '').trim())
   if (missing.length > 0) {
     problems.push(
-      `${missing.join(' · ')} 가 비어 있다. AMO 개발자 허브의 API 열쇠(JWT issuer · secret)를 넣는다`,
+      `${missing.join(' · ')} 가 비어 있다. AMO 개발자 허브의 API 열쇠(JWT issuer · secret)를 .secrets/API_Info.txt 나 환경 변수에 넣는다`,
     )
   }
   return problems
@@ -48,4 +48,38 @@ export function staleArtifacts(entries, startedAt) {
   const fresh = (entry) => entry.mtimeMs >= startedAt
   if (!files.some(fresh)) return []
   return files.filter((entry) => !fresh(entry)).map((entry) => entry.name)
+}
+
+/** 열쇠 파일의 자리. 저장소 안이지만 .gitignore 로 막아 두었다. 빌드 출력 폴더는 굽을 때마다 지워지므로 쓰지 않는다. */
+export const KEY_FILE = '.secrets/API_Info.txt'
+
+/** `$env:NAME = 'value'` 또는 `NAME=value`. 값 뒤의 `# 설명` 은 버린다. */
+const KEY_LINE = /^\s*(?:\$env:)?([A-Z_]+)\s*=\s*(?:'([^']*)'|"([^"]*)"|([^\s#]*))/
+
+/**
+ * 열쇠 파일에서 서명에 쓸 두 값만 읽는다.
+ *
+ * PowerShell 에 그대로 붙여 넣을 수 있는 꼴로 적어 두었으므로 그 꼴을 읽는다.
+ * 다른 이름은 받지 않는다 — 파일에 무엇이 적혀 있든 서명 명령의 환경을 넘어서지 않게.
+ */
+export function readKeyFile(text) {
+  const keys = {}
+  for (const line of text.split(/\r?\n/)) {
+    const match = KEY_LINE.exec(line)
+    if (!match) continue
+    const [, name, single, double, bare] = match
+    if (name !== KEY_ENV && name !== SECRET_ENV) continue
+    const value = (single ?? double ?? bare ?? '').trim()
+    if (value) keys[name] = value
+  }
+  return keys
+}
+
+/** 서명 명령에 넘길 환경. 환경 변수에 열쇠가 있으면 그쪽을, 비어 있으면 파일의 것을 쓴다. */
+export function signingEnv(env, fileKeys) {
+  const merged = { ...env }
+  for (const name of [KEY_ENV, SECRET_ENV]) {
+    if (!(env[name] ?? '').trim() && fileKeys[name]) merged[name] = fileKeys[name]
+  }
+  return merged
 }

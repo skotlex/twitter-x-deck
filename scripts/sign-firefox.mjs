@@ -2,16 +2,18 @@
 //
 //   npm run sign:ff     굽고 나서 서명까지 한 번에
 //
-// 열쇠는 환경 변수 WEB_EXT_API_KEY · WEB_EXT_API_SECRET 로 받는다. 저장소에 두지 않는다.
+// 열쇠는 .secrets/API_Info.txt(.gitignore 로 막아 둠)에서 읽는다. 환경 변수
+// WEB_EXT_API_KEY · WEB_EXT_API_SECRET 가 있으면 그쪽이 이긴다. 열쇠는 명령줄이 아니라
+// 환경으로만 넘기고, 화면에 찍지 않는다.
 // 서명된 xpi 는 dist-xpi/ 에 떨어지고, 받은 뒤에는 그 폴더의 예전 파일을 지워 새것만 남긴다.
-// 굽는 자리를 --out 이나 XDECK_OUT_FIREFOX 로
-// 옮겨 두었으면 그 자리의 빌드를 맡긴다 — build.mjs 와 같은 규칙으로 찾는다.
+// 굽는 자리를 --out 이나 XDECK_OUT_FIREFOX 로 옮겨 두었으면 그 자리의 빌드를 맡긴다 —
+// build.mjs 와 같은 규칙으로 찾는다.
 import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { outDirFrom } from './out-dir.mjs'
-import { signProblems, staleArtifacts } from './sign-check.mjs'
+import { KEY_FILE, readKeyFile, signingEnv, signProblems, staleArtifacts } from './sign-check.mjs'
 import { TARGETS } from './target.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -29,10 +31,13 @@ const artifacts = resolve(root, 'dist-xpi')
 const readVersion = (file) =>
   existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).version ?? null : null
 
+const keyFile = resolve(root, KEY_FILE)
+const env = signingEnv(process.env, existsSync(keyFile) ? readKeyFile(readFileSync(keyFile, 'utf8')) : {})
+
 const problems = signProblems({
   manifestVersion: readVersion(resolve(source, 'manifest.json')),
   packageVersion: readVersion(resolve(root, 'package.json')),
-  env: process.env,
+  env,
 })
 if (problems.length > 0) {
   for (const problem of problems) console.error(`[x-deck] ${problem}`)
@@ -51,7 +56,7 @@ const command = [
 // 파일 시각은 시스템 시계보다 조금 뒤처져 찍히기도 한다. 이번에 받은 파일을 예전 것으로
 // 잘못 세지 않게 시작 시각을 2초 앞당겨 잡는다.
 const startedAt = Date.now() - 2_000
-const result = spawnSync(command, { stdio: 'inherit', shell: true, cwd: root })
+const result = spawnSync(command, { stdio: 'inherit', shell: true, cwd: root, env })
 if (result.status !== 0) process.exit(result.status ?? 1)
 
 // dist-xpi 에는 방금 받은 것만 남긴다. 새로 받은 파일이 없으면 아무것도 지우지 않는다.

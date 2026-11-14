@@ -18,3 +18,6 @@ Thumbs.db
 
 # Firefox 서명용으로 굽고 받은 xpi. 서명된 결과는 다시 받을 수 있다.
 dist-xpi/
+
+# AMO 서명 열쇠 등 계정에 닿는 값. 절대 커밋하지 않는다.
+.secrets/
