@@ -480,31 +480,62 @@ function useGrokTranslation(tweetId: string) {
     if (!element || grok.cached(tweetId, READING_LANG) !== undefined) return
     if (typeof IntersectionObserver === 'undefined') return
 
+    /** 지금 줄에 세워 둔 부탁. 거두면 null 로 돌린다. */
     let request: ReturnType<typeof grok.request> | null = null
     let alive = true
     let attempts = 0
     let retry = 0
+    /** 빈손으로 돌아와 다시 부탁하기 전 쉬는 중인지. */
+    let resting = false
+    /** 카드가 지금 미리 부탁할 범위 안에 있는지. */
+    let inside = false
 
+    const ask = () => {
+      const current = grok.request(tweetId, READING_LANG)
+      request = current
+      void current.promise.then((translated) => {
+        if (!alive) return
+        if (translated) {
+          setText(translated)
+          observer.disconnect()
+          return
+        }
+        // 지나가서 거둔 부탁이 빈손으로 돌아온 것이다. 다시 들어오면 그때 묻는다.
+        if (request !== current) return
+        request = null
+        attempts += 1
+        // 판정이 났으면(이 글은 못 옮긴다) 그만. 아니면 풀릴 즈음 다시 묻는다.
+        if (grok.cached(tweetId, READING_LANG) !== undefined || attempts >= GROK_RETRY_LIMIT) {
+          observer.disconnect()
+          return
+        }
+        resting = true
+        retry = window.setTimeout(
+          () => {
+            resting = false
+            if (inside) ask()
+          },
+          Math.max(grok.nextAttemptIn(), GROK_RETRY_MS),
+        )
+      })
+    }
+
+    /*
+     * 범위를 벗어나면 줄에 세워 둔 부탁을 거둔다. 내려 읽으며 지나친 카드의 몫이 줄에
+     * 남아 있으면, 새 글 알약을 눌러 맨 위로 돌아갔을 때 그 글들이 전부 그 뒤로 밀려
+     * 번역이 한참 늦었다. 이미 보낸 요청이면 거둬도 답은 와서 쟁여진다.
+     */
     const observer = new IntersectionObserver(
       (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return
-        observer.disconnect()
-        attempts += 1
-        request = grok.request(tweetId, READING_LANG)
-        void request.promise.then((translated) => {
-          if (!alive) return
-          if (translated) {
-            setText(translated)
-            return
-          }
-          // 판정이 났으면(이 글은 못 옮긴다) 그만. 아니면 풀릴 즈음 다시 지켜본다.
-          if (grok.cached(tweetId, READING_LANG) !== undefined) return
-          if (attempts >= GROK_RETRY_LIMIT) return
-          retry = window.setTimeout(
-            () => observer.observe(element),
-            Math.max(grok.nextAttemptIn(), GROK_RETRY_MS),
-          )
-        })
+        const latest = entries[entries.length - 1]
+        if (!latest) return
+        inside = latest.isIntersecting
+        if (inside) {
+          if (!request && !resting) ask()
+        } else if (request) {
+          request.cancel()
+          request = null
+        }
       },
       { root: scrollRoot?.current ?? null, rootMargin: GROK_PREFETCH_MARGIN },
     )

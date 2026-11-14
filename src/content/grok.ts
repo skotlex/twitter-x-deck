@@ -8,7 +8,7 @@
  *
  *   - 한 번에 하나씩, 사이를 띄워 보낸다. 1분에 보내는 수에도 상한을 둔다
  *   - 같은 글은 한 번만 묻는다. 받은 번역은 저장소에 쟁여 새로고침 뒤에도 다시 묻지 않는다
- *   - 차례가 오기 전에 카드가 사라졌으면 묻지 않는다
+ *   - 차례가 오기 전에 카드가 사라졌거나 화면을 지나쳐 갔으면 묻지 않는다
  *   - 요청 과다로 막히면 풀릴 때까지 묻지 않는다. 그동안 카드는 원문만 보여준다
  *   - 연달아 실패하면 5분 쉬었다가 다시 묻는다 — 영영 그만두면 지나가는 장애 뒤로 들어온
  *     글이 전부 원문으로 남는다
@@ -138,25 +138,35 @@ export function createGrokClient(options: GrokClientOptions) {
     }
   }
 
+  /** 기다리는 카드가 없는 몫을 줄에서 걷어낸다. 화면을 지나쳐 간 카드의 몫이다. */
+  function dropAbandoned(): void {
+    for (let i = line.length - 1; i >= 0; i -= 1) {
+      const job = line[i]
+      if (!job || job.waiters > 0) continue
+      line.splice(i, 1)
+      pending.delete(key(job.tweetId, job.lang))
+      job.resolve(null)
+    }
+  }
+
   async function pump(): Promise<void> {
     if (pumping) return
     pumping = true
     try {
-      while (line.length > 0) {
+      for (;;) {
+        dropAbandoned()
+        if (line.length === 0) break
         if (paused()) {
           releaseAll()
           break
         }
+        // 자리가 날 때까지 기다린 **뒤에** 누구를 물을지 고른다. 먼저 고르면 그사이
+        // 화면을 지나쳐 간 카드의 몫이 차례를 쥔 채 나가고, 지금 보이는 글은 그 뒤로 밀린다.
+        await waitForSlot()
+        dropAbandoned()
         const job = line.shift()
         if (!job) break
         const id = key(job.tweetId, job.lang)
-        if (job.waiters <= 0) {
-          pending.delete(id)
-          job.resolve(null)
-          continue
-        }
-
-        await waitForSlot()
         sent.push(now())
         const outcome = await options.transport(job.tweetId, job.lang)
         pending.delete(id)

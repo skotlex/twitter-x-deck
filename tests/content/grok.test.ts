@@ -254,3 +254,56 @@ describe('쟁여둔 번역', () => {
     expect(asked).toEqual(['1'])
   })
 })
+
+describe('지나간 카드의 몫', () => {
+  /** 기다리는 중인 sleep 을 손으로 깨운다. 깨우면 그만큼 시계가 간다. */
+  function manualClock() {
+    let clock = 0
+    let wake: () => void = () => {}
+    return {
+      now: () => clock,
+      sleep: (ms: number) =>
+        new Promise<void>((done) => {
+          wake = () => {
+            clock += ms
+            done()
+          }
+        }),
+      wake: () => wake(),
+    }
+  }
+  const settle = () => new Promise((done) => setTimeout(done, 0))
+
+  it('상한에 걸려 기다리는 동안 지나간 카드의 몫은 묻지 않고 지금 보이는 글을 묻는다', async () => {
+    // 내려 읽다 맨 위로 돌아간 경우. 지나간 카드가 줄 맨 앞에서 차례를 쥐고 있으면
+    // 새로 보이는 글이 그 뒤로 밀려 한참 늦는다.
+    const time = manualClock()
+    const { asked, transport } = fakeTransport(() => ({ ok: true, text: '번역' }))
+    const grok = createGrokClient({ transport, spacingMs: 0, perMinute: 1, ...time })
+
+    await grok.request('1', 'ko').promise
+    const passed = grok.request('2', 'ko')
+    await settle()
+    passed.cancel()
+    const seen = grok.request('3', 'ko')
+    await settle()
+    time.wake()
+
+    await expect(seen.promise).resolves.toBe('번역')
+    await expect(passed.promise).resolves.toBeNull()
+    expect(asked).toEqual(['1', '3'])
+  })
+
+  it('줄에 선 채 지나갔다가 다시 보이면 한 번만 묻는다', async () => {
+    const { asked, transport } = fakeTransport(() => ({ ok: true, text: '번역' }))
+    const grok = client(transport)
+
+    const first = grok.request('1', 'ko')
+    const left = grok.request('2', 'ko')
+    left.cancel()
+    const back = grok.request('2', 'ko')
+    await first.promise
+    await expect(back.promise).resolves.toBe('번역')
+    expect(asked).toEqual(['1', '2'])
+  })
+})
