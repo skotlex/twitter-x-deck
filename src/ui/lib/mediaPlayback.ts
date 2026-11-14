@@ -93,3 +93,31 @@ export function holdsFullscreen(element: Element): boolean {
   const current = root.fullscreenElement ?? null
   return current !== null && (current === element || element.contains(current))
 }
+
+/**
+ * Firefox 재생바가 이 폭에서 위치 막대를 띄우는지.
+ *
+ * Firefox 는 재생바의 각 부품에 최소 폭을 정해 두고, 정해진 순서(재생 → 소리 →
+ * 전체화면 → 시간 → 위치 막대 → 길이 → 음량)대로 채우다 자리가 모자라면 그 뒤를
+ * 전부 뺀다. 그 폭은 실제로 재지 않고 videocontrols.css 의 값을 그대로 쓴다.
+ * 컬럼 안 세로 영상은 210px 안팎이라 위치 막대 바로 앞에서 끊긴다.
+ */
+export function firefoxShowsScrubber({
+  width,
+  duration,
+  fullscreen,
+}: {
+  /** 영상 요소의 폭(clientWidth). */
+  width: number
+  /** 영상 길이(초). 한 시간을 넘기면 시간 표시가 길어진다. */
+  duration: number
+  /** 이 문서에서 전체화면을 쓸 수 있는지. 못 쓰면 그 단추가 빠진다. */
+  fullscreen: boolean
+}): boolean {
+  const padding = 18
+  const button = 30
+  const timer = duration >= 3600 ? 60 : 40
+  const scrubber = 64
+  const buttons = fullscreen ? 3 : 2
+  return width >= padding + button * buttons + timer + scrubber
+}

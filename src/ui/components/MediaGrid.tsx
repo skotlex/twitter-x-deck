@@ -1,10 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { type PointerEvent, type SyntheticEvent, useEffect, useRef, useState } from 'react'
 import { MEDIA_MAX_HEIGHT, type MediaMode, type MediaSize } from '@core/settings'
 import type { TweetMedia } from '@core/types'
 import { useColumnActivity } from '../columnActivity'
 import { GRID_SHARE, useColumnPixels } from '../columnWidth'
 import { aspectRatio, sizedMediaUrl } from '../lib/format'
-import { holdsFullscreen, isUserVolume, mediaClick, videoHoldsColumn } from '../lib/mediaPlayback'
+import {
+  firefoxShowsScrubber,
+  holdsFullscreen,
+  isUserVolume,
+  mediaClick,
+  videoHoldsColumn,
+} from '../lib/mediaPlayback'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { FullscreenIcon, ImageIcon, PlayIcon } from './icons'
 
@@ -18,6 +24,88 @@ function layoutClass(count: number): string {
 function itemClass(count: number, index: number): string {
   // 3장일 때 첫 장이 왼쪽 전체 높이를 차지한다.
   return count === 3 && index === 0 ? 'row-span-2' : ''
+}
+
+/** Firefox 재생바만의 버릇을 메우는 자리가 있어 가려 둔다. */
+const IS_FIREFOX = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent)
+
+/**
+ * Firefox 재생바가 영상 폭을 다시 재게 만든다.
+ *
+ * Firefox 는 `controls` 가 켜질 때마다 재생바를 새로 만드는데, 그때는 폭을 재지 않고
+ * 기본값 300px 로 부품을 늘어놓는다. 실제 폭은 영상 크기가 바뀌었다는 알림이 와야
+ * 다시 잰다. 컬럼 안 영상은 300px 보다 좁아 재생바가 양옆으로 잘려 나가고, 전체화면에
+ * 들어갔다 나와 크기가 한 번 바뀌어야 제 모양이 됐다.
+ *
+ * 그 알림은 화면 배치에서만 오고 스크립트로 흉내 낸 것은 버린다. 그래서 폭을 1px
+ * 줄였다가 되돌려 크기를 실제로 한 번 바꾼다. 재생바가 언제 다 만들어지는지 알 길이
+ * 없어 한 번 더 늦춰서 되풀이한다.
+ */
+function remeasureFirefoxControls(video: HTMLVideoElement): () => void {
+  const timers: number[] = []
+  const frames: number[] = []
+  const nudge = () => {
+    video.style.width = 'calc(100% - 1px)'
+    frames.push(requestAnimationFrame(() => (video.style.width = '')))
+  }
+  frames.push(requestAnimationFrame(() => timers.push(window.setTimeout(nudge, 0))))
+  timers.push(window.setTimeout(nudge, 250))
+  return () => {
+    timers.forEach((id) => clearTimeout(id))
+    frames.forEach((id) => cancelAnimationFrame(id))
+    video.style.width = ''
+  }
+}
+
+/** 0~1 사이로. */
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
+
+/**
+ * 재생바에서 위치 막대가 빠졌을 때 대신 다는 막대.
+ *
+ * Firefox 는 영상이 좁으면 재생바에서 위치 막대를 뺀다(`firefoxShowsScrubber`).
+ * 컬럼 안 세로 영상은 늘 그만큼 좁아서 어디쯤인지 볼 수도, 옮길 수도 없었다.
+ * 재생바(높이 40px) 바로 위에 붙인다.
+ *
+ * 버튼 안이라 `<input type="range">` 를 쓸 수 없다 — 버튼 안에 다른 조작 요소를 둘 수 없다.
+ */
+function SeekBar({ video, time, duration }: { video: HTMLVideoElement; time: number; duration: number }) {
+  const seekTo = (event: PointerEvent<HTMLSpanElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    if (rect.width <= 0) return
+    video.currentTime = clamp01((event.clientX - rect.left) / rect.width) * duration
+  }
+  const stop = (event: SyntheticEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  return (
+    <span
+      role="slider"
+      tabIndex={-1}
+      aria-label="재생 위치"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(duration)}
+      aria-valuenow={Math.round(time)}
+      onClick={stop}
+      onPointerDown={(event) => {
+        stop(event)
+        event.currentTarget.setPointerCapture(event.pointerId)
+        seekTo(event)
+      }}
+      onPointerMove={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) seekTo(event)
+      }}
+      className="group/seek absolute inset-x-2 bottom-10 z-10 flex h-4 cursor-pointer items-center"
+    >
+      <span className="relative h-1 w-full overflow-hidden rounded-full bg-white/35 transition-[height] group-hover/seek:h-1.5">
+        <span
+          className="absolute inset-y-0 left-0 bg-white"
+          style={{ width: `${clamp01(duration > 0 ? time / duration : 0) * 100}%` }}
+        />
+      </span>
+    </span>
+  )
 }
 
 /** 가리킨 영역에서 돌 영상을 고르는 표식. 영역 안에서 맨 앞에 달린 것 하나가 대표다. */
@@ -189,6 +277,49 @@ function MediaItem({
     return () => doc.removeEventListener('fullscreenchange', onChange)
   }, [showVideo, engaged])
 
+  /** 재생바를 띄우는지. 마우스를 올렸거나 이 영상을 보기로 했을 때만이다. */
+  const controlsOn = hovered || engaged
+
+  // Firefox 재생바가 기본값 300px 이 아니라 실제 폭으로 부품을 늘어놓게 한다.
+  useEffect(() => {
+    const video = videoRef.current
+    if (!IS_FIREFOX || !showVideo || !controlsOn || !video) return
+    return remeasureFirefoxControls(video)
+  }, [showVideo, controlsOn])
+
+  /** 대신 다는 위치 막대에 쓸 값. Firefox 에서 영상이 떠 있을 때만 지켜본다. */
+  const [track, setTrack] = useState({ width: 0, time: 0, duration: 0 })
+  useEffect(() => {
+    const video = videoRef.current
+    if (!IS_FIREFOX || !showVideo || !video) return
+    const read = () =>
+      setTrack({
+        width: video.clientWidth,
+        time: video.currentTime,
+        duration: Number.isFinite(video.duration) ? video.duration : 0,
+      })
+    read()
+    const events = ['timeupdate', 'durationchange', 'loadedmetadata', 'seeking'] as const
+    events.forEach((type) => video.addEventListener(type, read))
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(read)
+    observer?.observe(video)
+    return () => {
+      events.forEach((type) => video.removeEventListener(type, read))
+      observer?.disconnect()
+    }
+  }, [showVideo])
+
+  const needSeekBar =
+    IS_FIREFOX &&
+    showVideo &&
+    controlsOn &&
+    track.duration > 0 &&
+    !firefoxShowsScrubber({
+      width: track.width,
+      duration: track.duration,
+      fullscreen: Boolean(hostRef.current?.ownerDocument.fullscreenEnabled),
+    })
+
   /** 이 영상을 전체화면으로. 단추를 누른 것은 이 영상을 보기로 한 것이라 소리도 켠다. */
   const enterFullscreen = () => {
     const video = videoRef.current
@@ -249,7 +380,7 @@ function MediaItem({
           poster={previewUrl}
           // 재생바는 마우스를 올렸을 때만 띄운다. 저절로 도는 동안에도 늘 떠 있으면
           // 목록이 조작 장치로 뒤덮인다.
-          controls={hovered || engaged}
+          controls={controlsOn}
           autoPlay
           playsInline
           preload="metadata"
@@ -289,13 +420,16 @@ function MediaItem({
       {/*
         재생바와 따로 다는 전체화면 단추.
 
-        Firefox 는 영상 폭이 좁으면 재생바에서 재생·전체화면 단추를 아예 빼버린다
-        (크롬은 ⋮ 차림표에 넣어 둔다). 컬럼 안의 세로 영상은 늘 그만큼 좁아서, 그대로
-        두면 전체화면으로 볼 길이 없다. 재생바가 떠 있을 때 같이 띄운다.
+        크롬은 좁은 영상에서 전체화면을 ⋮ 차림표 안으로 숨긴다. Firefox 는 재생바를
+        300px 로 늘어놓아 양 끝이 잘렸다(remeasureFirefoxControls 로 메운다). 어느 쪽이든
+        한 번에 누를 자리를 두려고 재생바가 떠 있을 때 같이 띄운다.
 
         버튼 안이라 <button> 을 다시 쓸 수 없다 — 버튼 안의 버튼은 HTML 이 허락하지 않는다.
       */}
-      {showVideo && (hovered || engaged) && (
+      {needSeekBar && videoRef.current && (
+        <SeekBar video={videoRef.current} time={track.time} duration={track.duration} />
+      )}
+      {showVideo && controlsOn && (
         <span
           role="button"
           tabIndex={0}

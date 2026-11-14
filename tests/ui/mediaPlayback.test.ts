@@ -5,7 +5,13 @@
  * 맞물린 자리라 화면만 봐서는 어느 쪽이 한 일인지 가릴 수 없다. 규칙만 떼어 못을 박는다.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { holdsFullscreen, isUserVolume, mediaClick, videoHoldsColumn } from '@ui/lib/mediaPlayback'
+import {
+  firefoxShowsScrubber,
+  holdsFullscreen,
+  isUserVolume,
+  mediaClick,
+  videoHoldsColumn,
+} from '@ui/lib/mediaPlayback'
 
 describe('mediaClick — 눌렀을 때 할 일', () => {
   it('사진은 원본 보기로 연다', () => {
@@ -106,5 +112,25 @@ describe('holdsFullscreen — 이 영상이 지금 전체화면인지', () => {
     const { shadow, video } = mountInShadow()
     setFullscreen(shadow, null)
     expect(holdsFullscreen(video)).toBe(false)
+  })
+})
+
+describe('firefoxShowsScrubber — Firefox 재생바에 위치 막대가 들어가는지', () => {
+  // 여백 18 + 재생·소리·전체화면 30×3 + 시간 40 + 위치 막대 64 = 212
+  it('컬럼 안 세로 영상 폭(210px 안팎)에서는 빠진다', () => {
+    expect(firefoxShowsScrubber({ width: 210, duration: 108, fullscreen: true })).toBe(false)
+  })
+
+  it('212px 부터는 들어간다', () => {
+    expect(firefoxShowsScrubber({ width: 212, duration: 108, fullscreen: true })).toBe(true)
+  })
+
+  it('한 시간이 넘는 영상은 시간 표시가 길어져 더 넓어야 한다', () => {
+    expect(firefoxShowsScrubber({ width: 220, duration: 3600, fullscreen: true })).toBe(false)
+    expect(firefoxShowsScrubber({ width: 232, duration: 3600, fullscreen: true })).toBe(true)
+  })
+
+  it('전체화면을 쓸 수 없는 곳에서는 그 단추 몫만큼 좁아도 된다', () => {
+    expect(firefoxShowsScrubber({ width: 182, duration: 108, fullscreen: false })).toBe(true)
   })
 })
