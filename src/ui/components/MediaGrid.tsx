@@ -40,21 +40,36 @@ const IS_FIREFOX = typeof navigator !== 'undefined' && /firefox/i.test(navigator
  * 그 알림은 화면 배치에서만 오고 스크립트로 흉내 낸 것은 버린다. 그래서 폭을 1px
  * 줄였다가 되돌려 크기를 실제로 한 번 바꾼다. 재생바가 언제 다 만들어지는지 알 길이
  * 없어 한 번 더 늦춰서 되풀이한다.
+ *
+ * 사용자가 무언가를 누르기 시작하면 남은 조정은 거둔다. 전체화면으로 넘어가는 동안
+ * 영상 크기를 건드리면 Firefox 가 화면을 어둡게 했다가 전체화면을 거두고 돌아온다 —
+ * 재생바가 뜬 직후에 전체화면을 누르면 두세 번 눌러야 들어갔다.
  */
-function remeasureFirefoxControls(video: HTMLVideoElement): () => void {
+function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): () => void {
+  const doc = video.ownerDocument
   const timers: number[] = []
   const frames: number[] = []
-  const nudge = () => {
-    video.style.width = 'calc(100% - 1px)'
-    frames.push(requestAnimationFrame(() => (video.style.width = '')))
-  }
-  frames.push(requestAnimationFrame(() => timers.push(window.setTimeout(nudge, 0))))
-  timers.push(window.setTimeout(nudge, 250))
-  return () => {
+  let stopped = false
+  const stop = () => {
+    if (stopped) return
+    stopped = true
     timers.forEach((id) => clearTimeout(id))
     frames.forEach((id) => cancelAnimationFrame(id))
     video.style.width = ''
+    host.removeEventListener('pointerdown', stop, true)
+    doc.removeEventListener('fullscreenchange', stop)
   }
+  const nudge = () => {
+    if (stopped || holdsFullscreen(video)) return
+    video.style.width = 'calc(100% - 1px)'
+    frames.push(requestAnimationFrame(() => (video.style.width = '')))
+  }
+  // 재생바·전체화면 단추·위치 막대 어디를 누르든 영상 칸 안에서 시작한다.
+  host.addEventListener('pointerdown', stop, true)
+  doc.addEventListener('fullscreenchange', stop)
+  frames.push(requestAnimationFrame(() => timers.push(window.setTimeout(nudge, 0))))
+  timers.push(window.setTimeout(nudge, 250))
+  return stop
 }
 
 /** 0~1 사이로. */
@@ -286,8 +301,9 @@ function MediaItem({
   // Firefox 재생바가 기본값 300px 이 아니라 실제 폭으로 부품을 늘어놓게 한다.
   useEffect(() => {
     const video = videoRef.current
-    if (!IS_FIREFOX || !showVideo || !controlsOn || !video) return
-    return remeasureFirefoxControls(video)
+    const host = hostRef.current
+    if (!IS_FIREFOX || !showVideo || !controlsOn || !video || !host) return
+    return remeasureFirefoxControls(video, host)
   }, [showVideo, controlsOn])
 
   /** 대신 다는 위치 막대에 쓸 값. Firefox 에서 영상이 떠 있을 때만 지켜본다. */
