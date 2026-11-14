@@ -157,10 +157,10 @@ Firefox 에서는 추천 · 팔로잉 · 알림 · 멘션 수집까지 확인했
    ```
 
    빌드 출력 폴더(`dist/` · `dist-firefox/`)에는 두지 마세요. 구울 때마다 통째로 지워집니다
-3. `npm run sign:ff` 를 실행합니다. Firefox 용으로 구운 뒤 AMO 에 맡기고, 서명된 `.xpi` 를 `dist-xpi/` 에 받습니다. 받은 뒤에는 그 폴더의 예전 파일을 지워 새로 받은 것만 남깁니다. 서명이 실패하면 아무것도 지우지 않습니다
+3. `npm run sign:ff` 를 실행합니다. 버전을 하나 올려 Firefox 용으로 굽고, AMO 에 맡겨 서명된 `.xpi` 를 `dist-xpi/` 에 받습니다. 받은 뒤에는 그 폴더의 예전 파일을 지워 새로 받은 것만 남기고, `CHANGELOG.md` 의 `[Unreleased]` 를 그 버전으로 바꿔 `package.json` 과 함께 커밋합니다
 4. Firefox 의 `about:addons` → 톱니바퀴 → **파일에서 부가 기능 설치** 로 받은 `.xpi` 를 엽니다
 
-AMO 는 한 번 서명한 버전 번호를 다시 받지 않습니다. 그래서 이 프로젝트는 빌드 결과가 바뀌는 수정마다 버전을 올립니다. 구워 둔 빌드의 버전이 `package.json` 과 다르거나 열쇠가 비어 있으면, 번호를 헛되이 쓰지 않도록 `sign:ff` 가 맡기기 전에 멈춥니다.
+AMO 는 한 번 서명한 버전 번호를 다시 받지 않습니다. 그래서 버전은 코드를 고칠 때가 아니라 `sign:ff` 로 구울 때 하나씩 오릅니다. 열쇠가 비어 있으면 버전을 올리기 전에 멈추고, 굽기나 서명이 실패하면 올린 버전을 되돌리며 `dist-xpi/` 의 파일도 지우지 않습니다. AMO 가 '이미 있는 버전' 이라며 거절하면 그 번호는 이미 쓰인 것이므로, `package.json` 의 버전을 그 번호로 직접 올려 두고 다시 실행합니다.
 
 ### 사진 번역 준비 (선택)
 
@@ -208,7 +208,7 @@ AMO 는 한 번 서명한 버전 번호를 다시 받지 않습니다. 그래서
 | `npm run dev` | 감시(watch) 모드로 빌드합니다. 코드를 고치면 다시 굽고, 확장 페이지에서 새로고침하면 반영됩니다. 출력 자리는 `build` 와 같은 방법으로 옮깁니다 |
 | `npm run build:ff` | Firefox 용 번들을 `dist-firefox/` 에 생성합니다. 자리는 `-- --out <폴더>` 또는 환경 변수 `XDECK_OUT_FIREFOX` 로 옮깁니다 |
 | `npm run dev:ff` | Firefox 용 감시 모드입니다 |
-| `npm run sign:ff` | Firefox 용으로 구운 뒤 AMO 비공개 서명을 받아 `dist-xpi/` 에 `.xpi` 를 내려받고, 그 폴더의 예전 파일은 지웁니다. 열쇠는 `.secrets/API_Info.txt` 또는 환경 변수 `WEB_EXT_API_KEY` · `WEB_EXT_API_SECRET` 로 받습니다 ([서명받아 계속 쓰기](#서명받아-계속-쓰기)) |
+| `npm run sign:ff` | 버전을 하나 올려 Firefox 용으로 굽고 AMO 비공개 서명을 받아 `dist-xpi/` 에 `.xpi` 를 내려받습니다. 그 폴더의 예전 파일은 지우고, 버전과 CHANGELOG 를 커밋합니다. 열쇠는 `.secrets/API_Info.txt` 또는 환경 변수 `WEB_EXT_API_KEY` · `WEB_EXT_API_SECRET` 로 받습니다 ([서명받아 계속 쓰기](#서명받아-계속-쓰기)) |
 | `npm run typecheck` | 타입 검사만 수행합니다 (`tsc --noEmit`) |
 | `npm test` | 테스트를 한 번 실행합니다 |
 | `npm run test:watch` | 감시 모드로 테스트를 실행합니다 |
@@ -503,7 +503,7 @@ tests/
 ├─ content/       선택자 판단 규칙 · 강제 갱신 사다리 · 번역 도착 언어 · Papago 주소 · Grok 묻는 빈도 테스트 (손으로 만든 DOM)
 ├─ ui/            표시 형식 · 안 본 수 세기 · 계정 읽기 · 카드 클릭 판정 · 라이트박스 넘기기 테스트
 ├─ bridge/        사진 번역 브리지의 실패 문구 · codex 설정 자동 수리 · 등록 대상 테스트
-├─ scripts/       빌드 대상 · 출력 자리 결정 · 서명 전 점검 테스트
+├─ scripts/       빌드 대상 · 출력 자리 결정 · 서명 전 점검 · 버전 올림 테스트
 ├─ fixtures/      실제 x.com 화면을 떠 온 파일 (커밋하지 않습니다)
 └─ setup/         happy-dom 보정
 ```
@@ -537,7 +537,7 @@ tests/
 | [src/core/playback.ts](src/core/playback.ts) | 어느 영상을 틀지 않을지의 판정. 인터셉터가 씁니다 |
 | [src/ui/](src/ui/) | 덱 UI. x.com DOM 을 아는 코드가 한 줄도 없습니다 |
 | [scripts/out-dir.mjs](scripts/out-dir.mjs) | 빌드 결과를 놓을 자리를 고릅니다. 남의 폴더를 지우지 않게 막고, 동기화 폴더면 알려줍니다 |
-| [scripts/sign-firefox.mjs](scripts/sign-firefox.mjs) · [sign-check.mjs](scripts/sign-check.mjs) | Firefox 빌드를 AMO 에 맡겨 서명받습니다. 낡은 빌드나 빈 열쇠는 맡기기 전에 막습니다 |
+| [scripts/sign-firefox.mjs](scripts/sign-firefox.mjs) · [sign-check.mjs](scripts/sign-check.mjs) · [release.mjs](scripts/release.mjs) | 버전을 올려 Firefox 용으로 굽고 AMO 에 맡겨 서명받습니다. 빈 열쇠는 맡기기 전에 막고, 실패하면 버전을 되돌립니다 |
 | [scripts/target.mjs](scripts/target.mjs) | 크로미움 · Firefox 중 어느 쪽으로 구울지 정하고, 그에 맞춰 매니페스트를 고칩니다 |
 
 `@core` · `@ui` 경로 별칭을 사용하며, Vite 와 esbuild 양쪽에 같은 별칭을 등록해 두었습니다.
@@ -614,7 +614,7 @@ tests/
 ## 개발 규칙
 
 - 버전의 단일 출처는 [package.json](package.json) 의 `version` 입니다. 빌드 시 `dist/manifest.json` 으로 주입되므로 저장소의 `manifest.json` 값은 직접 고치지 않습니다
-- 사용자가 체감하는 변경은 [CHANGELOG.md](CHANGELOG.md) 에 기록합니다
+- 사용자가 체감하는 변경은 [CHANGELOG.md](CHANGELOG.md) 의 `[Unreleased]` 에 모으고, `npm run sign:ff` 로 구울 때 그 버전으로 굳힙니다
 - 소스를 고쳤으면 커밋 전에 `npm run check` 로 타입 검사와 테스트를 통과시킵니다
 - 커밋 메시지는 한글로 작성합니다
 - 저장소에서 작업할 때의 상세 규약은 [CLAUDE.md](CLAUDE.md) 에 정리되어 있습니다
