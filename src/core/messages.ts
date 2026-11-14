@@ -134,6 +134,16 @@ export interface DeletedMessage {
   body: string
 }
 
+/**
+ * 타래 프레임 → 덱. 상세 페이지가 받아온 대화 응답 본문.
+ * 어느 글의 것인지는 덱이 본문을 풀어 그 글이 들어 있는지로 가린다.
+ */
+export interface ThreadMessage {
+  channel: typeof CHANNEL
+  type: 'thread'
+  body: string
+}
+
 /** 덱이 띄운 번역 프레임임을 알리는 표시. 사람이 직접 연 Papago 는 건드리지 않는다. */
 export const PAPAGO_PARAM = 'xdeck_tr'
 
@@ -206,6 +216,10 @@ export function isComposedMessage(value: unknown): value is ComposedMessage {
 
 export function isDeletedMessage(value: unknown): value is DeletedMessage {
   return isTagged(value, 'deleted')
+}
+
+export function isThreadMessage(value: unknown): value is ThreadMessage {
+  return isTagged(value, 'thread') && typeof (value as { body?: unknown }).body === 'string'
 }
 
 export function isCapturedPayload(value: unknown): value is CapturedPayload {

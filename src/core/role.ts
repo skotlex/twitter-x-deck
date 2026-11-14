@@ -32,6 +32,18 @@ export function isPageFrame(): boolean {
   return window.name === PAGE_FRAME_NAME
 }
 
+/**
+ * 라이트박스가 타래를 받으려고 숨겨 띄우는 상세 페이지 프레임의 이름.
+ *
+ * 그 페이지가 스스로 부르는 대화 응답만 엿보고 곧바로 닫는다. 사람은 보지 않으므로
+ * 상세 창(`PAGE_FRAME_NAME`)과 가른다 — 거기서 일어나는 글쓰기·삭제를 알릴 일이 없다.
+ */
+export const THREAD_FRAME_NAME = `${FRAME_NAME_PREFIX}thread`
+
+export function isThreadFrame(): boolean {
+  return window.name === THREAD_FRAME_NAME
+}
+
 /** 덱이 띄운 창의 프레임인지. 수집은 안 하지만 무슨 일이 일어났는지는 알려야 한다. */
 export function isDeckPanelFrame(): boolean {
   return isComposeFrame() || isPageFrame()

@@ -525,9 +525,10 @@ tests/
 | [bridge/codex-config.mjs](bridge/codex-config.mjs) | codex 가 자기 `config.toml` 때문에 못 뜰 때 그 줄을 꺼줍니다 (원본은 `.bak` 로 보관) |
 | [bridge/install.mjs](bridge/install.mjs) | 그 호스트를 브라우저에 등록·해제하고, `codex` · `claude` 를 최신 판으로 받습니다 (최초 1회) |
 | [bridge/hosts.mjs](bridge/hosts.mjs) | 어느 브라우저에 어떤 모양으로 등록할지 정합니다 (크로미움 계열 · Firefox) |
-| [src/content/frameQueue.ts](src/content/frameQueue.ts) | 숨은 프레임 작업을 하나씩 줄 세웁니다 |
+| [src/content/thread.ts](src/content/thread.ts) | 컬럼에 없는 타래 글을 받아옵니다. 상세 페이지를 숨은 프레임에 잠깐 띄워 x.com 이 받아온 대화를 넘겨받습니다 |
+| [src/content/frameQueue.ts](src/content/frameQueue.ts) | 숨은 프레임을 띄우고, 그 작업을 하나씩 줄 세웁니다 |
 | [src/content/frameBlock.ts](src/content/frameBlock.ts) | 프레임이 막힌 원인(CSP vs X-Frame-Options)을 가려내는 관측점 |
-| [src/injected/interceptor.ts](src/injected/interceptor.ts) | 타임라인 응답만 복제해 넘기고, 문서를 '보임' 상태로 유지하며, 아무도 보지 않는 영상을 틀지 않습니다. 덱이 부탁한 Grok 번역도 여기서 묻습니다 |
+| [src/injected/interceptor.ts](src/injected/interceptor.ts) | 타임라인 응답(타래 프레임에서는 대화 응답)만 복제해 넘기고, 문서를 '보임' 상태로 유지하며, 아무도 보지 않는 영상을 틀지 않습니다. 덱이 부탁한 Grok 번역도 여기서 묻습니다 |
 | [src/core/grok.ts](src/core/grok.ts) | Grok 번역 요청 · 대답의 약속과 조각난 응답 해석. 덱과 인터셉터가 함께 씁니다 |
 | [src/core/parser.ts](src/core/parser.ts) | GraphQL 응답을 `Tweet` · `DeckNotification` 으로 정규화합니다 |
 | [src/core/db.ts](src/core/db.ts) | IndexedDB 영속 저장과 보관 정책 |

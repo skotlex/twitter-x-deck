@@ -13,7 +13,7 @@
  * 부모가 x.com 이라 프레임 문서를 직접 조작할 수 있어 content script 를 거칠 필요가 없다.
  */
 import { describeFrameBlock, refreshRuleReport } from './frameBlock'
-import { enqueue } from './frameQueue'
+import { createHiddenFrame, enqueue } from './frameQueue'
 import {
   findAccountMenuButton,
   findFocalArticle,
@@ -60,18 +60,6 @@ async function waitFor<T>(probe: () => T | null, timeoutMs: number): Promise<T |
     if (Date.now() > deadline) return null
     await sleep(POLL_MS)
   }
-}
-
-function createHiddenFrame(url: string): HTMLIFrameElement {
-  const frame = document.createElement('iframe')
-  // 화면 밖으로 밀지 않는다 — 밖에 두면 렌더링이 멈춰 버튼이 그려지지 않는다.
-  // 폭은 x.com 이 넓은 화면 배치를 쓰도록 넉넉히 준다. 좁으면 배치가 통째로 달라진다.
-  frame.style.cssText =
-    'position:fixed;left:0;top:0;width:1100px;height:900px;opacity:0;pointer-events:none;border:0;z-index:-1'
-  frame.setAttribute('aria-hidden', 'true')
-  frame.src = url
-  document.documentElement.append(frame)
-  return frame
 }
 
 export class TweetActionError extends Error {}

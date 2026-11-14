@@ -54,6 +54,9 @@ export const TIMELINE_OPERATION: Record<string, string> = {
 /** 글이 실제로 올라갔을 때 x.com 이 부르는 뮤테이션. 작성창을 닫을 근거로 쓴다. */
 export const CREATE_TWEET_OPERATION = 'CreateTweet'
 
+/** 상세 페이지가 대화(앞 글·답글)를 받아올 때 부르는 쿼리. 타래 사진을 이을 근거다. */
+export const THREAD_OPERATION = 'TweetDetail'
+
 /** 글을 지웠을 때의 뮤테이션. 지운 글을 우리 목록에서도 걷어낼 근거다. */
 export const DELETE_TWEET_OPERATION = 'DeleteTweet'
 

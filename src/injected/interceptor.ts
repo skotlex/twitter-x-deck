@@ -20,6 +20,7 @@ import {
   isDeckHostDocument,
   isDeckPanelFrame,
   isMasked,
+  isThreadFrame,
   MASK_ATTR,
   OVERLAY_ID,
   readFrameRole,
@@ -29,6 +30,7 @@ import {
   CREATE_TWEET_OPERATION,
   DELETE_TWEET_OPERATION,
   isNotificationKind,
+  THREAD_OPERATION,
   TIMELINE_OPERATION,
   type TimelineKind,
 } from '@core/types'
@@ -408,6 +410,14 @@ function main(): void {
   const panel = isDeckPanelFrame()
   if (role !== null || panel) {
     install(role, panel)
+    return
+  }
+
+  // 타래 프레임은 대화 응답 하나만 받으면 닫힌다. 수집도 글쓰기도 없다.
+  if (isThreadFrame()) {
+    WATCHED.add(THREAD_OPERATION)
+    installFetchHook()
+    installXhrHook()
     return
   }
 

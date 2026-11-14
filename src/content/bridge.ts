@@ -5,12 +5,13 @@
  * 같은 문서 안에서 직접 맡으므로 여기 관여하지 않는다.
  * 부모가 같은 오리진(x.com) 이라 메시지가 그대로 오간다 — 중계자가 필요 없다.
  *
- * 프레임은 두 종류다. 타임라인을 길어 올리는 수집 프레임과, 사람이 직접 글을 쓰는
- * 작성창 프레임. 작성창은 수집하지 않고 글이 올라간 순간만 부모에게 알린다.
+ * 프레임은 세 종류다. 타임라인을 길어 올리는 수집 프레임과, 사람이 직접 글을 쓰는
+ * 작성창 프레임, 라이트박스가 타래를 받으려고 잠깐 띄우는 타래 프레임. 작성창은
+ * 수집하지 않고 글이 올라간 순간만, 타래 프레임은 대화 응답만 부모에게 알린다.
  */
-import { CHANNEL, isCapturedPayload, isDeckCommand } from '@core/messages'
-import { isDeckPanelFrame, readFrameRole } from '@core/role'
-import { CREATE_TWEET_OPERATION, DELETE_TWEET_OPERATION } from '@core/types'
+import { CHANNEL, isCapturedPayload, isDeckCommand, type ThreadMessage } from '@core/messages'
+import { isDeckPanelFrame, isThreadFrame, readFrameRole } from '@core/role'
+import { CREATE_TWEET_OPERATION, DELETE_TWEET_OPERATION, THREAD_OPERATION } from '@core/types'
 import { startCollector } from './collector'
 import { hideFrameUnderlay } from './underlay'
 
@@ -43,5 +44,15 @@ if (role && framed) {
     } else if (operation === DELETE_TWEET_OPERATION) {
       window.parent.postMessage({ channel: CHANNEL, type: 'deleted', body }, origin)
     }
+  })
+} else if (isThreadFrame() && framed) {
+  // 라이트박스가 타래를 받으려고 숨겨 띄운 상세 페이지. 그릴 필요가 없으니 재우고,
+  // 그 페이지가 받아온 대화 응답만 위로 넘긴다.
+  hideFrameUnderlay()
+  window.addEventListener('message', (event: MessageEvent) => {
+    if (event.source !== window || !isCapturedPayload(event.data)) return
+    if (event.data.operation !== THREAD_OPERATION) return
+    const message: ThreadMessage = { channel: CHANNEL, type: 'thread', body: event.data.body }
+    window.parent.postMessage(message, origin)
   })
 }

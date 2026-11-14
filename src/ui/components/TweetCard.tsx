@@ -9,6 +9,7 @@ import {
 } from '@core/settings'
 import { runTweetAction, type ComposeMode, type TweetAction } from '../../content/actions'
 import { grok } from '../../content/grok'
+import { loadThread, type ThreadRequest } from '../../content/thread'
 import {
   looksKorean,
   READING_LANG,
@@ -21,7 +22,7 @@ import { ColumnScrollContext } from '../columnScroll'
 import { ColumnTweetsContext } from '../columnTweets'
 import { opensCardDetail } from '../lib/cardClick'
 import { formatCount, formatRelative, formatStamp, languageName } from '../lib/format'
-import { threadMedia, type ThreadMedia } from '../lib/lightboxNav'
+import { mayContinueThread, threadMedia, type ThreadMedia } from '../lib/lightboxNav'
 import { Lightbox } from './Lightbox'
 import { MEDIA_REGION_MARK, MediaSlot } from './MediaGrid'
 import { PostComposer } from './PostComposer'
@@ -836,6 +837,44 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
   const mediaSize = metrics.shrinkMedia ? smallerMediaSize(settings.mediaSize) : settings.mediaSize
   const [lightbox, setLightbox] = useState<LightboxTarget | null>(null)
   const readColumnTweets = useContext(ColumnTweetsContext)
+  /** 컬럼에 없는 타래 글을 받아오는 중인 요청. 라이트박스를 닫으면 거둔다. */
+  const threadRequest = useRef<ThreadRequest | null>(null)
+  const [threadLoading, setThreadLoading] = useState(false)
+
+  const dropThreadRequest = () => {
+    threadRequest.current?.cancel()
+    threadRequest.current = null
+    setThreadLoading(false)
+  }
+
+  // 카드가 사라지면 띄워둔 숨은 프레임도 거둔다.
+  useEffect(() => () => threadRequest.current?.cancel(), [])
+
+  /**
+   * 원글의 사진을 연다. 컬럼에 실린 타래로 먼저 열고, 이어 쓴 글이 있을 만하면
+   * 상세 페이지에서 대화를 받아와 뒤에 이어 붙인다 — 컬럼에는 보통 첫 글만 실린다.
+   */
+  const openMedia = (index: number) => {
+    dropThreadRequest()
+    setLightbox(threadMedia(readColumnTweets(), tweet, index))
+    if (!mayContinueThread(tweet)) return
+
+    const request = loadThread(tweet)
+    threadRequest.current = request
+    setThreadLoading(true)
+    void request.promise.then((fetched) => {
+      if (threadRequest.current !== request) return
+      threadRequest.current = null
+      setThreadLoading(false)
+      if (fetched.length === 0) return
+      setLightbox((prev) => prev && threadMedia([...readColumnTweets(), ...fetched], tweet, index))
+    })
+  }
+
+  const closeLightbox = () => {
+    dropThreadRequest()
+    setLightbox(null)
+  }
   const [composer, setComposer] = useState<ComposeMode | null>(null)
   const [detail, setDetail] = useState<DetailTarget | null>(null)
   // 동작 실패 이유. 툴팁에만 두면 아무도 모른 채 숫자만 되돌아간다.
@@ -912,7 +951,7 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
             size={mediaSize}
             sourceUrl={tweet.url}
             hoverPlay={settings.hoverPlay}
-            onOpen={(index) => setLightbox(threadMedia(readColumnTweets(), tweet, index))}
+            onOpen={openMedia}
           />
           {tweet.card && !tweet.media.length && settings.mediaMode !== 'hide' && (
             <LinkCard card={tweet.card} mediaSize={mediaSize} />
@@ -1020,7 +1059,8 @@ function TweetCardBase({ tweet, settings, animate = false, onActed }: TweetCardP
           groups={lightbox.groups}
           startGroup={lightbox.group}
           startIndex={lightbox.index}
-          onClose={() => setLightbox(null)}
+          threadLoading={threadLoading}
+          onClose={closeLightbox}
         />
       )}
     </article>

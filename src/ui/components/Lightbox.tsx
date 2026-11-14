@@ -10,7 +10,7 @@ import {
   translateImage,
 } from '../../content/imageTranslate'
 import { originalMediaUrl } from '../lib/format'
-import { type PhotoPosition, stepPhoto } from '../lib/lightboxNav'
+import { followGroups, type PhotoPosition, stepPhoto } from '../lib/lightboxNav'
 import { applyVolume, rememberVolume } from '../lib/volume'
 import { CloseIcon } from './icons'
 
@@ -21,6 +21,8 @@ export interface LightboxProps {
   startGroup?: number
   /** 그 묶음 안에서 처음 펼칠 사진. */
   startIndex: number
+  /** 컬럼에 없는 타래 글을 받아오는 중인지. 받으면 `groups` 가 늘어난다. */
+  threadLoading?: boolean
   onClose: () => void
 }
 
@@ -28,9 +30,16 @@ export interface LightboxProps {
  * 이미지 원본 보기. 화살표·Esc 로 조작하고, 배경을 누르면 닫힌다.
  *
  * 끝에 닿으면 멈춘다 — 처음으로 되감지 않는다. 타래면 글의 끝에서 다음 글로 넘어간다.
+ * 연 뒤에 `groups` 가 바뀌면(타래가 도착하면) 보던 사진에 그대로 머문다.
  */
-export function Lightbox({ groups, startGroup = 0, startIndex, onClose }: LightboxProps) {
+export function Lightbox({ groups, startGroup = 0, startIndex, threadLoading = false, onClose }: LightboxProps) {
   const [position, setPosition] = useState<PhotoPosition>({ group: startGroup, index: startIndex })
+  // 묶음이 바뀐 그 렌더에서 자리를 옮긴다. 효과로 미루면 한 번은 엉뚱한 사진이 그려진다.
+  const [seenGroups, setSeenGroups] = useState(groups)
+  if (seenGroups !== groups) {
+    setSeenGroups(groups)
+    setPosition(followGroups(seenGroups, groups, position))
+  }
   const rootRef = useRef<HTMLDivElement | null>(null)
   const sizes = useMemo(() => groups.map((group) => group.media.length), [groups])
   const shown = groups[position.group]
@@ -227,6 +236,16 @@ export function Lightbox({ groups, startGroup = 0, startIndex, onClose }: Lightb
         {total > 1 && (
           <span className="rounded-full bg-white/10 px-2.5 py-1 text-[12.5px] tabular-nums">
             {index + 1} / {total}
+          </span>
+        )}
+        {/* 다음 화살표가 늦게 생기는 까닭을 알려준다. 없으면 '이 글이 끝' 으로 읽힌다. */}
+        {threadLoading && (
+          <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[12.5px] text-white/60">
+            <span
+              aria-hidden="true"
+              className="h-3 w-3 animate-spin rounded-full border border-white/30 border-t-white/80"
+            />
+            타래 확인 중…
           </span>
         )}
         <a
