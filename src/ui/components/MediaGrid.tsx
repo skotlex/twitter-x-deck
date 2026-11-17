@@ -31,14 +31,14 @@ function itemClass(count: number, index: number): string {
 const IS_FIREFOX = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent)
 
 /**
- * 재생바를 띄운 뒤 폭을 다시 재게 할 시점(ms).
+ * 영상을 붙인 뒤 폭을 다시 재게 할 시점(ms). 첫 번은 다음 프레임 직후에 따로 한다.
  *
- * 덱 확장을 그대로 올려 재 보니 150ms 한 번으로 세 경로 모두 매번 맞았다. 실제 덱이 더
- * 바쁠 것에 대비해 한 번만 더 한다. 조정은 화면에 드러나지 않지만 적을수록 좋다.
- * 전에는 다섯 번에 영상 정보가 올 때마다 다시 잡아, 마우스를 올리면 4~5초 동안 재생바가
- * 위아래로 떨렸다.
+ * 재생바는 붙인 직후 다음 작업에서 만들어지므로 대개 첫 번에 맞는다. 덱 확장을 그대로
+ * 올려 재 보니 150ms 한 번으로도 매번 맞았다. 나머지는 바쁜 페이지에 대비한 것이다.
+ * 조정은 재생바를 움직이지 않아(위쪽으로 늘린다) 여러 번 해도 화면에 드러나지 않는다.
+ * 다만 영상 정보가 올 때마다 다시 잡지는 않는다 — 아래로 늘리던 때 그 탓에 4~5초를 떨었다.
  */
-const REMEASURE_DELAYS_MS = [150, 600]
+const REMEASURE_DELAYS_MS = [60, 150, 600]
 
 /**
  * Firefox 재생바가 처음 부품을 늘어놓을 때 가정하는 폭. 이보다 넓은 영상은 그 가정으로도
@@ -161,10 +161,12 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
   host.addEventListener('pointerdown', press, true)
   releaseEvents.forEach((type) => doc.addEventListener(type, release, true))
   doc.addEventListener('fullscreenchange', settle)
+  const kickoff = requestAnimationFrame(() => timers.push(window.setTimeout(nudge, 0)))
   for (const delay of REMEASURE_DELAYS_MS) timers.push(window.setTimeout(nudge, delay))
 
   return () => {
     stopped = true
+    cancelAnimationFrame(kickoff)
     cancel()
     host.removeEventListener('pointerdown', press, true)
     releaseEvents.forEach((type) => doc.removeEventListener(type, release, true))
@@ -492,13 +494,37 @@ function MediaItem({
    */
   const controlsOn = hovered || engaged || lingering
 
+  /** 첫 프레임을 받았는지. Firefox 에서 재생바를 미리 걸어 둘 때를 가른다. */
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    if (!showVideo) setLoaded(false)
+  }, [showVideo])
+
+  /**
+   * 영상 요소에 `controls` 를 거는지.
+   *
+   * Firefox 는 첫 프레임을 받은 뒤로는 마우스와 무관하게 건다. 마우스를 올릴 때 비로소 걸면
+   * Firefox 가 재생바를 그 자리에서 새로 만들면서 300px 기준으로 잘린 모양이 첫 조정까지
+   * 한두 프레임 보였다. 영상은 대개 카드 글자를 지나는 동안 먼저 붙어 돌기 시작하므로,
+   * 마우스가 영상에 닿을 즈음엔 재생바가 이미 만들어져 제 폭으로 맞춰져 있다. 재생바는
+   * 마우스가 영상 위에 있을 때만 그려지니 목록이 조작 장치로 뒤덮이지도 않는다.
+   *
+   * 붙이자마자 걸지는 않는다 — 받는 동안 Firefox 가 로딩 물레와 어두운 덮개를 깔아, 미리보기가
+   * 시작될 때마다 영상 위가 어둡게 덮였다. 또 그때 건 재생바는 '시간이 지나 숨은' 것으로
+   * 쳐져, 마우스를 올려도 0.5초 뒤에야 나타났다.
+   *
+   * 크롬은 저절로 도는 영상에도 재생바를 잠깐씩 띄워 마우스를 올렸을 때만 건다.
+   */
+  const nativeControls = controlsOn || (IS_FIREFOX && loaded)
+
   // Firefox 재생바가 기본값 300px 이 아니라 실제 폭으로 부품을 늘어놓게 한다.
+  // 재생바는 `controls` 를 걸 때 새로 만들어지므로 그때 한다.
   useEffect(() => {
     const video = videoRef.current
     const host = hostRef.current
-    if (!IS_FIREFOX || !showVideo || !controlsOn || !video || !host) return
+    if (!IS_FIREFOX || !showVideo || !nativeControls || !video || !host) return
     return remeasureFirefoxControls(video, host)
-  }, [showVideo, controlsOn])
+  }, [showVideo, nativeControls])
 
   /** 대신 다는 위치 막대에 쓸 값. Firefox 에서 영상이 떠 있을 때만 지켜본다. */
   const [track, setTrack] = useState({ width: 0, time: 0, duration: 0 })
@@ -596,8 +622,8 @@ function MediaItem({
           src={media.playbackUrl}
           poster={previewUrl}
           // 재생바는 마우스를 올렸을 때만 띄운다. 저절로 도는 동안에도 늘 떠 있으면
-          // 목록이 조작 장치로 뒤덮인다.
-          controls={controlsOn}
+          // 목록이 조작 장치로 뒤덮인다. Firefox 는 예외 — `nativeControls` 참고.
+          controls={nativeControls}
           autoPlay
           playsInline
           preload="metadata"
@@ -622,6 +648,7 @@ function MediaItem({
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onEnded={() => setPlaying(false)}
+          onLoadedData={() => setLoaded(true)}
           onError={() => setFailed(true)}
           className={`h-full w-full bg-black ${fit === 'cover' ? 'object-cover' : 'object-contain'}`}
         />
