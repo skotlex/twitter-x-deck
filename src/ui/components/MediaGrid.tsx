@@ -31,12 +31,20 @@ function itemClass(count: number, index: number): string {
 const IS_FIREFOX = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent)
 
 /**
- * 재생바를 띄운 뒤 폭을 다시 재게 할 시점(ms). 첫 번은 다음 프레임 직후에 따로 한다.
+ * 재생바를 띄운 뒤 폭을 다시 재게 할 시점(ms).
  *
- * 재생바가 언제 다 만들어질지 알 길이 없어 간격을 벌려 가며 되풀이한다. 페이지가 바쁘면
- * 재생바가 250ms 를 넘겨서야 만들어져, 그 전에 끝난 조정이 하나도 먹히지 않았다.
+ * 조정 한 번마다 재생바가 한 프레임 1px 내려갔다 온다. 덱 확장을 그대로 올려 재 보니
+ * 150ms 한 번으로 세 경로 모두 매번 맞았다. 실제 덱이 더 바쁠 것에 대비해 한 번만 더 한다.
+ * 전에는 다섯 번에 영상 정보가 올 때마다 다시 잡아, 마우스를 올리면 4~5초 동안 재생바가
+ * 위아래로 떨렸다.
  */
-const REMEASURE_DELAYS_MS = [120, 350, 800, 1600]
+const REMEASURE_DELAYS_MS = [150, 600]
+
+/**
+ * Firefox 재생바가 처음 부품을 늘어놓을 때 가정하는 폭. 이보다 넓은 영상은 그 가정으로도
+ * 부품이 다 들어가 잘리지 않으므로 손대지 않는다.
+ */
+const FIREFOX_DEFAULT_CONTROLS_WIDTH = 300
 
 /** 영상 칸을 누른 뒤·전체화면이 바뀐 뒤 폭을 건드리지 않는 시간. */
 const REMEASURE_QUIET_MS = 1000
@@ -69,27 +77,25 @@ const REMEASURE_QUIET_MS = 1000
  * 재생바 없이 돌던 영상에 재생바를 켜는 경우(카드 글자를 지나 영상에 닿을 때)가 특히 그렇다
  * — 재생바를 통째로 갈아 끼우는데, 그 뒤로 크기 알림이 오지 않는다.
  *
- * 언제 끼워질지 알 길이 없어 시점을 벌려 몇 번 되풀이하고, 마우스가 영상에 들어올 때와
- * 영상 정보가 도착할 때도 다시 한다. 마우스가 움직일 때마다 하던 때도 있었으나, 영상이
- * 움직임마다 들썩여 뺐다 — 시점만으로 맞는 것을 덱 확장을 그대로 올려 확인했다.
+ * 재생바를 켤 때마다 이 함수가 새로 불리므로, 켠 직후 정해 둔 시점에만 한다. 마우스가
+ * 움직일 때·영상 정보가 올 때마다 다시 하던 때도 있었으나 그때마다 들썩여 뺐다.
  *
  * 누르는 도중과 전체화면 전환 중에는 크기를 건드리지 않는다 — 재생바의 전체화면 단추를
- * 누른 직후 크기가 바뀌면 전체화면이 풀린다. 그동안 잡혀 있던 조정은 건너뛰고, 다음 계기에 한다.
+ * 누른 직후 크기가 바뀌면 전체화면이 풀린다. 그래서 건너뛴 조정이 있으면 손을 뗀 뒤에 한 번만 한다.
  */
 function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): () => void {
   const doc = video.ownerDocument
   let timers: number[] = []
-  let frames: number[] = []
   let quietUntil = 0
   let pressed = false
   let stopped = false
   let restoring = 0
+  /** 누르는 중이라 건너뛴 조정이 있는지. 손을 떼면 한 번 메운다. */
+  let missed = false
 
   const cancel = () => {
     timers.forEach((id) => clearTimeout(id))
-    frames.forEach((id) => cancelAnimationFrame(id))
     timers = []
-    frames = []
     cancelAnimationFrame(restoring)
     restoring = 0
     restoreSize()
@@ -99,8 +105,13 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
     video.style.height = ''
   }
   const nudge = () => {
-    if (stopped || pressed || restoring) return
-    if (performance.now() < quietUntil || holdsFullscreen(video)) return
+    if (stopped || restoring || holdsFullscreen(video)) return
+    if (video.clientWidth >= FIREFOX_DEFAULT_CONTROLS_WIDTH) return
+    if (pressed || performance.now() < quietUntil) {
+      missed = true
+      return
+    }
+    missed = false
     // 늘린 1px 은 영상 칸 아래로 잘려 보이지 않는다.
     video.style.height = 'calc(100% + 1px)'
     // 바꾼 크기로 한 프레임을 그린 뒤 되돌린다. 같은 프레임 안에 되돌리면 배치가 바꾼 크기를
@@ -112,23 +123,22 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
       })
     })
   }
-  /** 처음부터 다시 잡는다. 계기가 겹쳐 와도 한 벌만 돈다. */
-  const schedule = () => {
-    if (stopped) return
-    cancel()
-    frames.push(requestAnimationFrame(() => timers.push(window.setTimeout(nudge, 0))))
-    for (const delay of REMEASURE_DELAYS_MS) timers.push(window.setTimeout(nudge, delay))
-  }
   const hold = () => {
     quietUntil = performance.now() + REMEASURE_QUIET_MS
     cancelAnimationFrame(restoring)
     restoring = 0
     restoreSize()
   }
+  /** 손을 뗀 뒤, 건너뛴 조정이 있었으면 조용한 시간이 지나고 한 번 한다. */
+  const makeUp = () => {
+    if (!missed) return
+    timers.push(window.setTimeout(nudge, REMEASURE_QUIET_MS + 50))
+  }
   /** 전체화면 전환 중에는 손을 뗀 것이 알려 오지 않기도 한다. 눌린 채로 남지 않게 푼다. */
   const settle = () => {
     pressed = false
     hold()
+    makeUp()
   }
   /** 재생바·전체화면 단추·위치 막대 어디를 누르든 영상 칸 안에서 시작한다. */
   const press = () => {
@@ -140,25 +150,21 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
     if (!pressed) return
     pressed = false
     hold()
+    makeUp()
   }
 
-  const mediaEvents = ['loadedmetadata', 'loadeddata'] as const
   const releaseEvents = ['pointerup', 'pointercancel'] as const
   host.addEventListener('pointerdown', press, true)
-  host.addEventListener('pointerenter', schedule)
   releaseEvents.forEach((type) => doc.addEventListener(type, release, true))
   doc.addEventListener('fullscreenchange', settle)
-  mediaEvents.forEach((type) => video.addEventListener(type, schedule))
-  schedule()
+  for (const delay of REMEASURE_DELAYS_MS) timers.push(window.setTimeout(nudge, delay))
 
   return () => {
     stopped = true
     cancel()
     host.removeEventListener('pointerdown', press, true)
-    host.removeEventListener('pointerenter', schedule)
     releaseEvents.forEach((type) => doc.removeEventListener(type, release, true))
     doc.removeEventListener('fullscreenchange', settle)
-    mediaEvents.forEach((type) => video.removeEventListener(type, schedule))
   }
 }
 
