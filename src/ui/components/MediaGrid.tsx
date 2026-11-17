@@ -41,6 +41,9 @@ const REMEASURE_DELAYS_MS = [120, 350, 800, 1600]
 /** 영상 칸을 누른 뒤·전체화면이 바뀐 뒤 폭을 건드리지 않는 시간. */
 const REMEASURE_QUIET_MS = 1000
 
+/** 마우스가 영상 위에서 움직이는 동안 폭을 다시 재게 하는 최소 간격. */
+const REMEASURE_MOVE_MS = 300
+
 /**
  * Firefox 재생바가 영상 폭을 다시 재게 만든다.
  *
@@ -59,9 +62,14 @@ const REMEASURE_QUIET_MS = 1000
  *
  * **재생바가 만들어지기 전에 끝난 조정은 소용없다.** 재생바는 만들어질 때 기본값 300px 로
  * 시작하므로, 그 뒤에 크기가 한 번 더 바뀌어야 한다(videocontrols.js 의 `reflowedDimensions`).
- * 그래서 시점을 벌려 되풀이하고, 마우스가 영상에 들어올 때와 영상 정보가 도착할 때도 다시
- * 한다. 전에는 처음 250ms 안에서만 했고, 그새 누르기라도 하면 남은 조정을 통째로 거둬
- * 잘린 재생바가 그대로 남았다.
+ * 재생바 없이 돌던 영상에 재생바를 켜는 경우(카드 글자를 지나 영상에 닿을 때)가 특히 그렇다
+ * — 재생바를 통째로 갈아 끼우는데, 그 뒤로 크기 알림이 오지 않는다.
+ *
+ * 갈아 끼우는 시점은 페이지가 정한다. 덱에서는 정해 둔 시점들을 다 넘겨서야 끼워지는 일이
+ * 있어, 시점만으로는 놓친다. 그래서 **마우스가 영상 위에서 움직이는 동안에도** 간격을 두고
+ * 다시 잰다. 재생바는 마우스가 움직일 때 나타나므로, 보이는 동안에는 늘 뒤따라 맞춰진다.
+ * 전체화면을 다녀오면 맞고 다시 올리면 깨지던 것이 이것이다 — 전체화면은 끼워진 뒤에 크기를
+ * 바꾸고, 새로 올린 영상은 그 전에 조정이 끝났다.
  *
  * 누르는 도중과 전체화면 전환 중에는 크기를 건드리지 않는다 — 재생바의 전체화면 단추를
  * 누른 직후 크기가 바뀌면 전체화면이 풀린다. 그동안 잡혀 있던 조정은 건너뛰고, 다음 계기에 한다.
@@ -73,20 +81,36 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
   let quietUntil = 0
   let pressed = false
   let stopped = false
+  let restoring = 0
+  let lastMove = 0
 
   const cancel = () => {
     timers.forEach((id) => clearTimeout(id))
     frames.forEach((id) => cancelAnimationFrame(id))
     timers = []
     frames = []
+    cancelAnimationFrame(restoring)
+    restoring = 0
     video.style.width = ''
   }
   const nudge = () => {
-    if (stopped || pressed || performance.now() < quietUntil || holdsFullscreen(video)) return
+    if (stopped || pressed || restoring) return
+    if (performance.now() < quietUntil || holdsFullscreen(video)) return
     video.style.width = 'calc(100% - 1px)'
     // 줄인 폭으로 배치를 계산시킨다. 이게 없으면 되돌릴 때까지 크기가 바뀐 적이 없는 셈이 된다.
     void video.offsetWidth
-    frames.push(requestAnimationFrame(() => (video.style.width = '')))
+    // 그리기 전에 되돌린다. 줄인 폭은 화면에 한 번도 나가지 않는다.
+    restoring = requestAnimationFrame(() => {
+      restoring = 0
+      video.style.width = ''
+    })
+  }
+  /** 마우스가 움직이는 동안. 재생바가 언제 갈아 끼워졌든 보이는 동안 뒤따라 맞춘다. */
+  const follow = () => {
+    const now = performance.now()
+    if (now - lastMove < REMEASURE_MOVE_MS) return
+    lastMove = now
+    nudge()
   }
   /** 처음부터 다시 잡는다. 계기가 겹쳐 와도 한 벌만 돈다. */
   const schedule = () => {
@@ -97,7 +121,14 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
   }
   const hold = () => {
     quietUntil = performance.now() + REMEASURE_QUIET_MS
+    cancelAnimationFrame(restoring)
+    restoring = 0
     video.style.width = ''
+  }
+  /** 전체화면 전환 중에는 손을 뗀 것이 알려 오지 않기도 한다. 눌린 채로 남지 않게 푼다. */
+  const settle = () => {
+    pressed = false
+    hold()
   }
   /** 재생바·전체화면 단추·위치 막대 어디를 누르든 영상 칸 안에서 시작한다. */
   const press = () => {
@@ -115,8 +146,9 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
   const releaseEvents = ['pointerup', 'pointercancel'] as const
   host.addEventListener('pointerdown', press, true)
   host.addEventListener('pointerenter', schedule)
+  host.addEventListener('pointermove', follow)
   releaseEvents.forEach((type) => doc.addEventListener(type, release, true))
-  doc.addEventListener('fullscreenchange', hold)
+  doc.addEventListener('fullscreenchange', settle)
   mediaEvents.forEach((type) => video.addEventListener(type, schedule))
   schedule()
 
@@ -125,8 +157,9 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
     cancel()
     host.removeEventListener('pointerdown', press, true)
     host.removeEventListener('pointerenter', schedule)
+    host.removeEventListener('pointermove', follow)
     releaseEvents.forEach((type) => doc.removeEventListener(type, release, true))
-    doc.removeEventListener('fullscreenchange', hold)
+    doc.removeEventListener('fullscreenchange', settle)
     mediaEvents.forEach((type) => video.removeEventListener(type, schedule))
   }
 }
