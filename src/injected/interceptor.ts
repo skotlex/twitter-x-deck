@@ -166,10 +166,21 @@ function installXhrHook(): void {
  * x.com 은 `document.hidden` 이면 새 게시물 폴링을 멈춘다. 우리 프레임은 투명하게 감춰져
  * 있거나 백그라운드 탭에 있어서 그대로 두면 알림이 영영 뜨지 않는다.
  * 사용자가 보는 x.com 탭에는 적용되지 않는다 (역할이 있는 프레임에서만 돈다).
+ *
+ * 위장하기 전의 진짜 값을 읽는 함수를 돌려준다. 영상을 세울지는 진짜 값으로 가린다.
  */
-function spoofVisibility(): void {
+function spoofVisibility(): () => boolean {
   const alwaysVisible = { get: () => 'visible' as DocumentVisibilityState, configurable: true }
   const neverHidden = { get: () => false, configurable: true }
+
+  const realHidden = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden')?.get
+  const reallyHidden = (): boolean => {
+    try {
+      return realHidden?.call(document) === true
+    } catch {
+      return false
+    }
+  }
 
   try {
     Object.defineProperty(Document.prototype, 'visibilityState', alwaysVisible)
@@ -190,6 +201,8 @@ function spoofVisibility(): void {
     window.addEventListener(type, swallow, true)
     document.addEventListener(type, swallow, true)
   }
+
+  return reallyHidden
 }
 
 /**
@@ -216,12 +229,19 @@ function spoofVisibility(): void {
  * 플레이어는 `emptied` 를 받고 스스로 물러난다 — 트레이스에 x.com 의 `_onMediaEmptied`
  * 가 찍혀 있어, 그 경로를 자기가 갖고 있다는 것은 확인된 사실이다.
  */
-function stopUnseenPlayback(role: TimelineKind | null): void {
+function stopUnseenPlayback(role: TimelineKind | null, reallyHidden: () => boolean): void {
   const ledger = createStopLedger()
 
-  /** 이 영상은 아무도 안 보는가. 통과 모드는 오갈 수 있어 부를 때마다 다시 본다. */
+  /**
+   * 이 영상은 아무도 안 보는가. 통과 모드·탭 가시성은 오갈 수 있어 부를 때마다 다시 본다.
+   *
+   * 탭이 가려져 있는지는 진짜 값으로 본다 — 덱을 고정 탭으로 두면 브라우저를 켤 때 뒤에서
+   * 뜨는데, 가림막이 걸리기 전에 x.com 이 영상을 틀면 Firefox 가 그 재생을 미뤄 두고 탭
+   * 아이콘에 재생 표시를 띄웠다.
+   */
   const unseen = (media: HTMLMediaElement): boolean =>
-    blocksPlayback(role, isMasked()) && !isDeckMedia(media.getRootNode(), OVERLAY_ID)
+    blocksPlayback(role, isMasked(), reallyHidden()) &&
+    !isDeckMedia(media.getRootNode(), OVERLAY_ID)
 
   /**
    * 원본을 떼어 플레이어가 붙잡을 것을 없앤다.
@@ -448,8 +468,7 @@ function install(role: TimelineKind | null, panel: boolean): void {
   // 사람이 보고 있는 작성창은 숨길 이유가 없으므로 가시성도 손대지 않는다.
   // 영상을 세우는 것도 같은 기준이다 — 창으로 띄운 원본은 보라고 띄운 것이다.
   if (collecting) {
-    spoofVisibility()
-    stopUnseenPlayback(role)
+    stopUnseenPlayback(role, spoofVisibility())
   }
 
   installFetchHook()

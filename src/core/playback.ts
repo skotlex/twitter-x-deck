@@ -12,9 +12,18 @@ import type { TimelineKind } from './types'
  *
  * 수집 프레임의 영상은 어떤 경우에도 사람이 보지 않는다. 덱이 얹힌 문서는 다르다 —
  * 통과 모드로 비켜서면 그 아래 x.com 을 실제로 보고 쓰는 중이다.
+ *
+ * 다만 탭이 실제로 가려져 있으면 통과 모드여도 아무도 안 본다. 특히 덱을 고정 탭으로
+ * 두면 브라우저를 켤 때 뒤에서 뜨는데, 가림막이 걸리기 전에 x.com 이 영상을 틀면
+ * Firefox 는 그 재생을 미뤄 두고 탭 아이콘에 재생(▶) 표시를 띄운다.
  */
-export function blocksPlayback(role: TimelineKind | null, masked: boolean): boolean {
-  return role !== null || masked
+export function blocksPlayback(
+  role: TimelineKind | null,
+  masked: boolean,
+  /** 탭이 실제로 가려져 있는지. 가시성 위장과 무관한 진짜 값이어야 한다. */
+  hidden = false,
+): boolean {
+  return role !== null || masked || hidden
 }
 
 /**

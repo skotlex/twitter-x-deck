@@ -21,6 +21,12 @@ describe('blocksPlayback', () => {
   it('통과 모드로 비켜선 최상위 문서는 건드리지 않는다', () => {
     // 그 아래 x.com 을 사람이 실제로 보고 쓰는 중이다.
     expect(blocksPlayback(null, false)).toBe(false)
+    expect(blocksPlayback(null, false, false)).toBe(false)
+  })
+
+  it('탭이 실제로 가려져 있으면 통과 모드여도 세운다', () => {
+    // 뒤에서 뜬 탭이 영상을 틀면 Firefox 가 미뤄 두고 탭에 재생 표시를 띄운다.
+    expect(blocksPlayback(null, false, true)).toBe(true)
   })
 })
 

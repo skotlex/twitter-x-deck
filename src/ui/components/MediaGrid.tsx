@@ -3,6 +3,7 @@ import { MEDIA_MAX_HEIGHT, type MediaMode, type MediaSize } from '@core/settings
 import type { TweetMedia } from '@core/types'
 import { useColumnActivity } from '../columnActivity'
 import { GRID_SHARE, useColumnPixels } from '../columnWidth'
+import { usePageVisible } from '../hooks/usePageVisible'
 import { aspectRatio, sizedMediaUrl } from '../lib/format'
 import {
   firefoxShowsScrubber,
@@ -30,6 +31,17 @@ function itemClass(count: number, index: number): string {
 const IS_FIREFOX = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent)
 
 /**
+ * 재생바를 띄운 뒤 폭을 다시 재게 할 시점(ms). 첫 번은 다음 프레임 직후에 따로 한다.
+ *
+ * 재생바가 언제 다 만들어질지 알 길이 없어 간격을 벌려 가며 되풀이한다. 페이지가 바쁘면
+ * 재생바가 250ms 를 넘겨서야 만들어져, 그 전에 끝난 조정이 하나도 먹히지 않았다.
+ */
+const REMEASURE_DELAYS_MS = [120, 350, 800, 1600]
+
+/** 영상 칸을 누른 뒤·전체화면이 바뀐 뒤 폭을 건드리지 않는 시간. */
+const REMEASURE_QUIET_MS = 1000
+
+/**
  * Firefox 재생바가 영상 폭을 다시 재게 만든다.
  *
  * Firefox 는 `controls` 가 켜질 때마다 재생바를 새로 만드는데, 그때는 폭을 재지 않고
@@ -38,43 +50,85 @@ const IS_FIREFOX = typeof navigator !== 'undefined' && /firefox/i.test(navigator
  * 들어갔다 나와 크기가 한 번 바뀌어야 제 모양이 됐다.
  *
  * 그 알림은 화면 배치에서만 오고 스크립트로 흉내 낸 것은 버린다. 그래서 폭을 1px
- * 줄였다가 되돌려 크기를 실제로 한 번 바꾼다. 재생바가 언제 다 만들어지는지 알 길이
- * 없어 한 번 더 늦춰서 되풀이한다.
+ * 줄였다가 되돌려 크기를 실제로 한 번 바꾼다.
  *
  * **줄인 폭으로 배치를 한 번 계산시켜야 한다.** 줄여 두기만 하면 다음 프레임에 되돌릴
  * 때까지 배치가 한 번도 돌지 않는 일이 잦아, 크기가 바뀐 적이 없는 것이 된다. 그러면
- * 알림도 오지 않아 재생바가 300px 그대로 남았다 — 간헐적으로만 고쳐졌던 까닭이다.
+ * 알림도 오지 않아 재생바가 300px 그대로 남았다.
  * (Firefox 160 에서 시점을 바꿔 가며 찍어 확인했다. 강제로 계산시키면 매번 맞는다.)
  *
- * 사용자가 영상 칸을 누르기 시작하면 남은 조정은 거둔다 — 누르는 도중에 크기를 건드리지 않게.
+ * **재생바가 만들어지기 전에 끝난 조정은 소용없다.** 재생바는 만들어질 때 기본값 300px 로
+ * 시작하므로, 그 뒤에 크기가 한 번 더 바뀌어야 한다(videocontrols.js 의 `reflowedDimensions`).
+ * 그래서 시점을 벌려 되풀이하고, 마우스가 영상에 들어올 때와 영상 정보가 도착할 때도 다시
+ * 한다. 전에는 처음 250ms 안에서만 했고, 그새 누르기라도 하면 남은 조정을 통째로 거둬
+ * 잘린 재생바가 그대로 남았다.
+ *
+ * 누르는 도중과 전체화면 전환 중에는 크기를 건드리지 않는다 — 재생바의 전체화면 단추를
+ * 누른 직후 크기가 바뀌면 전체화면이 풀린다. 그동안 잡혀 있던 조정은 건너뛰고, 다음 계기에 한다.
  */
 function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): () => void {
   const doc = video.ownerDocument
-  const timers: number[] = []
-  const frames: number[] = []
+  let timers: number[] = []
+  let frames: number[] = []
+  let quietUntil = 0
+  let pressed = false
   let stopped = false
-  const stop = () => {
-    if (stopped) return
-    stopped = true
+
+  const cancel = () => {
     timers.forEach((id) => clearTimeout(id))
     frames.forEach((id) => cancelAnimationFrame(id))
+    timers = []
+    frames = []
     video.style.width = ''
-    host.removeEventListener('pointerdown', stop, true)
-    doc.removeEventListener('fullscreenchange', stop)
   }
   const nudge = () => {
-    if (stopped || holdsFullscreen(video)) return
+    if (stopped || pressed || performance.now() < quietUntil || holdsFullscreen(video)) return
     video.style.width = 'calc(100% - 1px)'
     // 줄인 폭으로 배치를 계산시킨다. 이게 없으면 되돌릴 때까지 크기가 바뀐 적이 없는 셈이 된다.
     void video.offsetWidth
     frames.push(requestAnimationFrame(() => (video.style.width = '')))
   }
-  // 재생바·전체화면 단추·위치 막대 어디를 누르든 영상 칸 안에서 시작한다.
-  host.addEventListener('pointerdown', stop, true)
-  doc.addEventListener('fullscreenchange', stop)
-  frames.push(requestAnimationFrame(() => timers.push(window.setTimeout(nudge, 0))))
-  timers.push(window.setTimeout(nudge, 250))
-  return stop
+  /** 처음부터 다시 잡는다. 계기가 겹쳐 와도 한 벌만 돈다. */
+  const schedule = () => {
+    if (stopped) return
+    cancel()
+    frames.push(requestAnimationFrame(() => timers.push(window.setTimeout(nudge, 0))))
+    for (const delay of REMEASURE_DELAYS_MS) timers.push(window.setTimeout(nudge, delay))
+  }
+  const hold = () => {
+    quietUntil = performance.now() + REMEASURE_QUIET_MS
+    video.style.width = ''
+  }
+  /** 재생바·전체화면 단추·위치 막대 어디를 누르든 영상 칸 안에서 시작한다. */
+  const press = () => {
+    pressed = true
+    hold()
+  }
+  /** 손을 뗀 곳은 칸 밖일 수 있다 — 음량 막대를 끌다 밖에서 놓기도 한다. */
+  const release = () => {
+    if (!pressed) return
+    pressed = false
+    hold()
+  }
+
+  const mediaEvents = ['loadedmetadata', 'loadeddata'] as const
+  const releaseEvents = ['pointerup', 'pointercancel'] as const
+  host.addEventListener('pointerdown', press, true)
+  host.addEventListener('pointerenter', schedule)
+  releaseEvents.forEach((type) => doc.addEventListener(type, release, true))
+  doc.addEventListener('fullscreenchange', hold)
+  mediaEvents.forEach((type) => video.addEventListener(type, schedule))
+  schedule()
+
+  return () => {
+    stopped = true
+    cancel()
+    host.removeEventListener('pointerdown', press, true)
+    host.removeEventListener('pointerenter', schedule)
+    releaseEvents.forEach((type) => doc.removeEventListener(type, release, true))
+    doc.removeEventListener('fullscreenchange', hold)
+    mediaEvents.forEach((type) => video.removeEventListener(type, schedule))
+  }
 }
 
 /**
@@ -184,6 +238,8 @@ function MediaItem({
   const [playing, setPlaying] = useState(false)
   const hostRef = useRef<HTMLButtonElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  /** 덱이 든 탭이 보이는지. 다른 탭을 보는 동안에는 미리보기를 틀지 않는다. */
+  const pageVisible = usePageVisible()
 
   const playable = media.kind !== 'photo' && Boolean(media.playbackUrl)
   const silent = media.kind === 'animated_gif'
@@ -197,8 +253,19 @@ function MediaItem({
    *   2순위 — 이 영상이 실린 영역을 가리켰거나 그 안에 포커스가 있다.
    *           한 영역에 영상이 여럿이면 맨 앞 하나만 돈다.
    *   그리고 한 번 소리를 켠 영상은 조건과 무관하게 계속 돈다.
+   *
+   * 미리보기는 탭이 보일 때만이다. 마우스를 올린 채 다른 탭으로 넘어가면 떠났다는 알림이
+   * 오지 않아, 아무도 안 보는 탭에서 영상이 계속 돌았다.
    */
-  const wanted = playable && !failed && (engaged || (hoverPlay && (hovered || regionLeads)))
+  const wanted =
+    playable && !failed && (engaged || (hoverPlay && pageVisible && (hovered || regionLeads)))
+
+  // 가려진 사이 마우스가 어디로 갔는지 모른다. 돌아와서 다시 가리킬 때 새로 잡는다.
+  useEffect(() => {
+    if (pageVisible) return
+    setHovered(false)
+    setRegionLeads(false)
+  }, [pageVisible])
 
   /**
    * Firefox 에서는 마우스가 떠나도 영상 요소를 잠깐 남겨 둔다.
