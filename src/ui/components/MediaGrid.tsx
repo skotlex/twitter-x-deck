@@ -55,10 +55,12 @@ const REMEASURE_MOVE_MS = 300
  * 그 알림은 화면 배치에서만 오고 스크립트로 흉내 낸 것은 버린다. 그래서 폭을 1px
  * 줄였다가 되돌려 크기를 실제로 한 번 바꾼다.
  *
- * **줄인 폭으로 배치를 한 번 계산시켜야 한다.** 줄여 두기만 하면 다음 프레임에 되돌릴
- * 때까지 배치가 한 번도 돌지 않는 일이 잦아, 크기가 바뀐 적이 없는 것이 된다. 그러면
- * 알림도 오지 않아 재생바가 300px 그대로 남았다.
- * (Firefox 160 에서 시점을 바꿔 가며 찍어 확인했다. 강제로 계산시키면 매번 맞는다.)
+ * **줄인 폭을 한 프레임 동안 실제로 그려야 한다.** 줄인 뒤 `offsetWidth` 로 배치를 강제로
+ * 계산시키고 같은 프레임 안에 되돌리던 때가 있었다. 빈 페이지에서는 그걸로 맞았지만, 덱이
+ * 얹힌 x.com 에서는 Firefox 가 그 자리에서 배치를 다시 계산하지 않는다 — 덱 확장을 그대로
+ * 올려 재 보니 `width: 150px !important` 를 줘도 곧바로 읽은 폭은 그대로였고 100ms 뒤에야
+ * 바뀌었다. 그래서 크기가 바뀐 적이 없는 것이 되어 알림이 오지 않았다. 지금은 다음 프레임이
+ * 그려진 뒤에 되돌린다. 1px 이 한 프레임 보일 뿐이다.
  *
  * **재생바가 만들어지기 전에 끝난 조정은 소용없다.** 재생바는 만들어질 때 기본값 300px 로
  * 시작하므로, 그 뒤에 크기가 한 번 더 바뀌어야 한다(videocontrols.js 의 `reflowedDimensions`).
@@ -97,12 +99,13 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
     if (stopped || pressed || restoring) return
     if (performance.now() < quietUntil || holdsFullscreen(video)) return
     video.style.width = 'calc(100% - 1px)'
-    // 줄인 폭으로 배치를 계산시킨다. 이게 없으면 되돌릴 때까지 크기가 바뀐 적이 없는 셈이 된다.
-    void video.offsetWidth
-    // 그리기 전에 되돌린다. 줄인 폭은 화면에 한 번도 나가지 않는다.
+    // 줄인 폭으로 한 프레임을 그린 뒤 되돌린다. 같은 프레임 안에 되돌리면 배치가 줄인 폭을
+    // 한 번도 보지 못해 크기가 바뀐 적이 없는 셈이 된다.
     restoring = requestAnimationFrame(() => {
-      restoring = 0
-      video.style.width = ''
+      restoring = requestAnimationFrame(() => {
+        restoring = 0
+        video.style.width = ''
+      })
     })
   }
   /** 마우스가 움직이는 동안. 재생바가 언제 갈아 끼워졌든 보이는 동안 뒤따라 맞춘다. */
