@@ -33,8 +33,8 @@ const IS_FIREFOX = typeof navigator !== 'undefined' && /firefox/i.test(navigator
 /**
  * 재생바를 띄운 뒤 폭을 다시 재게 할 시점(ms).
  *
- * 조정 한 번마다 재생바가 한 프레임 1px 내려갔다 온다. 덱 확장을 그대로 올려 재 보니
- * 150ms 한 번으로 세 경로 모두 매번 맞았다. 실제 덱이 더 바쁠 것에 대비해 한 번만 더 한다.
+ * 덱 확장을 그대로 올려 재 보니 150ms 한 번으로 세 경로 모두 매번 맞았다. 실제 덱이 더
+ * 바쁠 것에 대비해 한 번만 더 한다. 조정은 화면에 드러나지 않지만 적을수록 좋다.
  * 전에는 다섯 번에 영상 정보가 올 때마다 다시 잡아, 마우스를 올리면 4~5초 동안 재생바가
  * 위아래로 떨렸다.
  */
@@ -67,10 +67,11 @@ const REMEASURE_QUIET_MS = 1000
  * 바뀌었다. 그래서 크기가 바뀐 적이 없는 것이 되어 알림이 오지 않았다. 지금은 다음 프레임이
  * 그려진 뒤에 되돌린다.
  *
- * **폭이 아니라 높이를 늘린다.** 그 한 프레임이 화면에 나가므로, 폭을 줄이면 오른쪽 끝에
- * 1px 틈이 깜빡인다. 높이를 늘리면 그 1px 은 영상 칸(`overflow: hidden`) 아래로 잘려 나가
- * 보이지 않고, 폭은 그대로라 재생바도 제 폭으로 다시 잰다. 폭을 늘려 보기도 했지만 덱에서는
- * Firefox 가 그것을 크기 변화로 받지 않아 재생바가 그대로 잘려 있었다.
+ * **폭이 아니라 높이를, 위쪽으로 늘린다.** 그 한 프레임이 화면에 나가므로, 폭을 줄이면
+ * 오른쪽 끝에 1px 틈이 깜빡인다. 높이를 아래로 늘리면 재생바가 영상 아래 끝에 붙어 있어
+ * 1px 내려갔다 오며 떨렸다. 위로 1px 당기고 그만큼 늘리면 아래 끝·폭이 그대로라 재생바는
+ * 제자리에서 제 폭으로 다시 재고, 늘린 1px 은 영상 칸(`overflow: hidden`) 위로 잘려 나간다.
+ * 폭을 늘려 보기도 했지만 덱에서는 Firefox 가 그것을 크기 변화로 받지 않았다.
  *
  * **재생바가 만들어지기 전에 끝난 조정은 소용없다.** 재생바는 만들어질 때 기본값 300px 로
  * 시작하므로, 그 뒤에 크기가 한 번 더 바뀌어야 한다(videocontrols.js 의 `reflowedDimensions`).
@@ -103,6 +104,7 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
   /** 바꿔 둔 크기를 원래대로. */
   function restoreSize() {
     video.style.height = ''
+    video.style.marginTop = ''
   }
   const nudge = () => {
     if (stopped || restoring || holdsFullscreen(video)) return
@@ -112,7 +114,9 @@ function remeasureFirefoxControls(video: HTMLVideoElement, host: HTMLElement): (
       return
     }
     missed = false
-    // 늘린 1px 은 영상 칸 아래로 잘려 보이지 않는다.
+    // 위쪽으로 1px 늘린다. 아래 끝이 제자리라 거기 붙은 재생바는 움직이지 않고,
+    // 늘린 1px 은 영상 칸 위로 잘려 보이지 않는다.
+    video.style.marginTop = '-1px'
     video.style.height = 'calc(100% + 1px)'
     // 바꾼 크기로 한 프레임을 그린 뒤 되돌린다. 같은 프레임 안에 되돌리면 배치가 바꾼 크기를
     // 한 번도 보지 못해 크기가 바뀐 적이 없는 셈이 된다.
